@@ -1,0 +1,22 @@
+# secrets / local config
+.env
+*.key
+signing.key
+
+# runtime artifacts (control-plane, git repos, CAS)
+*.sqlite
+*.sqlite-*
+control.sqlite*
+repo.git/
+remote.git/
+cas/
+.wiki-spike/
+
+# python
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.venv/

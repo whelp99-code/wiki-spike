@@ -1,0 +1,90 @@
+[
+  {
+    "id": "clear-entail",
+    "subject": "Product A",
+    "predicate": "supports",
+    "obj": "SSO",
+    "polarity": "positive",
+    "source": "Product A supports SSO out of the box.",
+    "evidence_quote": "Product A supports SSO",
+    "model_decision": "entailed",
+    "truly_entailed": true
+  },
+  {
+    "id": "contradiction",
+    "subject": "Product A",
+    "predicate": "supports",
+    "obj": "offline mode",
+    "polarity": "positive",
+    "source": "Product A does not support offline mode.",
+    "evidence_quote": "Product A does not support offline mode",
+    "model_decision": "contradicted",
+    "truly_entailed": false
+  },
+  {
+    "id": "insufficient",
+    "subject": "Product A",
+    "predicate": "supports",
+    "obj": "GraphQL",
+    "polarity": "positive",
+    "source": "Product A has a modern API.",
+    "evidence_quote": "Product A has a modern API",
+    "model_decision": "unresolved",
+    "truly_entailed": false
+  },
+  {
+    "id": "entail-negative",
+    "subject": "Product B",
+    "predicate": "supports",
+    "obj": "IE11",
+    "polarity": "negative",
+    "source": "Product B dropped support for IE11.",
+    "evidence_quote": "Product B dropped support for IE11",
+    "model_decision": "entailed",
+    "truly_entailed": true
+  },
+  {
+    "id": "korean-entail",
+    "subject": "한국제품",
+    "predicate": "지원",
+    "obj": "SSO",
+    "polarity": "positive",
+    "source": "한국제품은 SSO를 지원한다.",
+    "evidence_quote": "한국제품은 SSO를 지원한다",
+    "model_decision": "entailed",
+    "truly_entailed": true
+  },
+  {
+    "id": "korean-contradiction",
+    "subject": "한국제품",
+    "predicate": "지원",
+    "obj": "오프라인",
+    "polarity": "positive",
+    "source": "한국제품은 오프라인 모드를 지원하지 않는다.",
+    "evidence_quote": "한국제품은 오프라인 모드를 지원하지 않는다",
+    "model_decision": "contradicted",
+    "truly_entailed": false
+  },
+  {
+    "id": "weak-evidence",
+    "subject": "Product C",
+    "predicate": "improves",
+    "obj": "latency",
+    "polarity": "positive",
+    "source": "Users report Product C feels responsive.",
+    "evidence_quote": "Product C feels responsive",
+    "model_decision": "unresolved",
+    "truly_entailed": false
+  },
+  {
+    "id": "clear-entail-2",
+    "subject": "Product D",
+    "predicate": "integrates",
+    "obj": "Slack",
+    "polarity": "positive",
+    "source": "Product D integrates natively with Slack.",
+    "evidence_quote": "Product D integrates natively with Slack",
+    "model_decision": "entailed",
+    "truly_entailed": true
+  }
+]

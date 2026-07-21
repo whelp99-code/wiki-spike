@@ -1,0 +1,360 @@
+[
+  {
+    "id": "supported-asserted",
+    "source": "Product A supports feature X.",
+    "model_output": {
+      "claims": [
+        {
+          "subject": "Product A",
+          "predicate": "supports",
+          "object": "feature X",
+          "polarity": "positive",
+          "modality": "asserted",
+          "scope": {},
+          "evidence_quote": "Product A supports feature X",
+          "offset": [
+            0,
+            0
+          ]
+        }
+      ],
+      "abstain": false
+    },
+    "expected": [
+      [
+        "Product A",
+        "supports",
+        "feature X",
+        "positive"
+      ]
+    ]
+  },
+  {
+    "id": "hedge-may-possible",
+    "source": "Product A may support feature Y in a future release.",
+    "model_output": {
+      "claims": [
+        {
+          "subject": "Product A",
+          "predicate": "supports",
+          "object": "feature Y",
+          "polarity": "positive",
+          "modality": "asserted",
+          "scope": {},
+          "evidence_quote": "Product A may support feature Y",
+          "offset": [
+            0,
+            0
+          ]
+        }
+      ],
+      "abstain": false
+    },
+    "expected": [
+      [
+        "Product A",
+        "supports",
+        "feature Y",
+        "positive"
+      ]
+    ],
+    "expect_modality": "possible"
+  },
+  {
+    "id": "hedge-likely",
+    "source": "Product A will likely support feature Z.",
+    "model_output": {
+      "claims": [
+        {
+          "subject": "Product A",
+          "predicate": "supports",
+          "object": "feature Z",
+          "polarity": "positive",
+          "modality": "asserted",
+          "scope": {},
+          "evidence_quote": "Product A will likely support feature Z",
+          "offset": [
+            0,
+            0
+          ]
+        }
+      ],
+      "abstain": false
+    },
+    "expected": [
+      [
+        "Product A",
+        "supports",
+        "feature Z",
+        "positive"
+      ]
+    ],
+    "expect_modality": "likely"
+  },
+  {
+    "id": "capability-can",
+    "source": "Product A can export data to CSV.",
+    "model_output": {
+      "claims": [
+        {
+          "subject": "Product A",
+          "predicate": "exports",
+          "object": "data to CSV",
+          "polarity": "positive",
+          "modality": "asserted",
+          "scope": {},
+          "evidence_quote": "Product A can export data to CSV",
+          "offset": [
+            0,
+            0
+          ]
+        }
+      ],
+      "abstain": false
+    },
+    "expected": [
+      [
+        "Product A",
+        "exports",
+        "data to CSV",
+        "positive"
+      ]
+    ],
+    "expect_modality": "asserted"
+  },
+  {
+    "id": "negative-polarity",
+    "source": "Product B does not support offline mode.",
+    "model_output": {
+      "claims": [
+        {
+          "subject": "Product B",
+          "predicate": "supports",
+          "object": "offline mode",
+          "polarity": "negative",
+          "modality": "asserted",
+          "scope": {},
+          "evidence_quote": "Product B does not support offline mode",
+          "offset": [
+            0,
+            0
+          ]
+        }
+      ],
+      "abstain": false
+    },
+    "expected": [
+      [
+        "Product B",
+        "supports",
+        "offline mode",
+        "negative"
+      ]
+    ]
+  },
+  {
+    "id": "scoped-claim",
+    "source": "In version 2026, Product C supports SSO.",
+    "model_output": {
+      "claims": [
+        {
+          "subject": "Product C",
+          "predicate": "supports",
+          "object": "SSO",
+          "polarity": "positive",
+          "modality": "asserted",
+          "scope": {
+            "product_version": "2026"
+          },
+          "evidence_quote": "Product C supports SSO",
+          "offset": [
+            0,
+            0
+          ]
+        }
+      ],
+      "abstain": false
+    },
+    "expected": [
+      [
+        "Product C",
+        "supports",
+        "SSO",
+        "positive"
+      ]
+    ]
+  },
+  {
+    "id": "korean-claim",
+    "source": "한국제품은 오프라인 모드를 지원한다.",
+    "model_output": {
+      "claims": [
+        {
+          "subject": "한국제품",
+          "predicate": "지원",
+          "object": "오프라인 모드",
+          "polarity": "positive",
+          "modality": "asserted",
+          "scope": {},
+          "evidence_quote": "한국제품은 오프라인 모드를 지원한다",
+          "offset": [
+            0,
+            0
+          ]
+        }
+      ],
+      "abstain": false
+    },
+    "expected": [
+      [
+        "한국제품",
+        "지원",
+        "오프라인 모드",
+        "positive"
+      ]
+    ]
+  },
+  {
+    "id": "korean-hedge",
+    "source": "이 제품은 지연을 개선할 수 있다.",
+    "model_output": {
+      "claims": [
+        {
+          "subject": "이 제품",
+          "predicate": "개선",
+          "object": "지연",
+          "polarity": "positive",
+          "modality": "asserted",
+          "scope": {},
+          "evidence_quote": "이 제품은 지연을 개선할 수 있다",
+          "offset": [
+            0,
+            0
+          ]
+        }
+      ],
+      "abstain": false
+    },
+    "expected": [
+      [
+        "이 제품",
+        "개선",
+        "지연",
+        "positive"
+      ]
+    ],
+    "expect_modality": "possible"
+  },
+  {
+    "id": "multi-claim",
+    "source": "Product D supports SAML. Product D supports OIDC.",
+    "model_output": {
+      "claims": [
+        {
+          "subject": "Product D",
+          "predicate": "supports",
+          "object": "SAML",
+          "polarity": "positive",
+          "modality": "asserted",
+          "scope": {},
+          "evidence_quote": "Product D supports SAML",
+          "offset": [
+            0,
+            0
+          ]
+        },
+        {
+          "subject": "Product D",
+          "predicate": "supports",
+          "object": "OIDC",
+          "polarity": "positive",
+          "modality": "asserted",
+          "scope": {},
+          "evidence_quote": "Product D supports OIDC",
+          "offset": [
+            0,
+            0
+          ]
+        }
+      ],
+      "abstain": false
+    },
+    "expected": [
+      [
+        "Product D",
+        "supports",
+        "SAML",
+        "positive"
+      ],
+      [
+        "Product D",
+        "supports",
+        "OIDC",
+        "positive"
+      ]
+    ]
+  },
+  {
+    "id": "explicit-possible",
+    "source": "Product E might integrate with Slack.",
+    "model_output": {
+      "claims": [
+        {
+          "subject": "Product E",
+          "predicate": "integrates",
+          "object": "Slack",
+          "polarity": "positive",
+          "modality": "possible",
+          "scope": {},
+          "evidence_quote": "Product E might integrate with Slack",
+          "offset": [
+            0,
+            0
+          ]
+        }
+      ],
+      "abstain": false
+    },
+    "expected": [
+      [
+        "Product E",
+        "integrates",
+        "Slack",
+        "positive"
+      ]
+    ],
+    "expect_modality": "possible"
+  },
+  {
+    "id": "unsupported-dropped",
+    "source": "Product Q supports feature W.",
+    "model_output": {
+      "claims": [
+        {
+          "subject": "Product A",
+          "predicate": "cures",
+          "object": "cancer",
+          "polarity": "positive",
+          "modality": "asserted",
+          "scope": {},
+          "evidence_quote": "Product A cures cancer",
+          "offset": [
+            0,
+            0
+          ]
+        }
+      ],
+      "abstain": false
+    },
+    "expected": []
+  },
+  {
+    "id": "abstain-no-claims",
+    "source": "This document contains only opinions and prose.",
+    "model_output": {
+      "claims": [],
+      "abstain": true
+    },
+    "expected": []
+  }
+]
