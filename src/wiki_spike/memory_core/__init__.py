@@ -14,6 +14,16 @@ from .errors import (
     UnknownContractField,
     UnsupportedContractVersion,
 )
+from .policy import (
+    CapabilityToken,
+    PolicyDecision,
+    PolicyEngine,
+    PolicyReason,
+    PolicyRequest,
+    ProvenanceMode,
+    Sensitivity,
+    derived_sensitivity,
+)
 from .ports import (
     ChangeSetPublicationPort,
     MemoryCommandPort,
@@ -33,6 +43,14 @@ __all__ = [
     "InvalidContractValue",
     "UnknownContractField",
     "UnsupportedContractVersion",
+    "CapabilityToken",
+    "PolicyDecision",
+    "PolicyEngine",
+    "PolicyReason",
+    "PolicyRequest",
+    "ProvenanceMode",
+    "Sensitivity",
+    "derived_sensitivity",
     "ChangeSetPublicationPort",
     "MemoryCommandPort",
     "MemoryQueryPort",
