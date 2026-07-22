@@ -111,6 +111,7 @@ class AnthropicClient:
         except urllib.error.HTTPError as e:
             from .runtime import FatalLLMError, TransientLLMError, classify_http
             cls = classify_http(e.code)
+            e.close()
             if cls is TransientLLMError:
                 raise TransientLLMError(f"Anthropic HTTP {e.code}") from e
             raise FatalLLMError(f"Anthropic HTTP {e.code}") from e
@@ -177,6 +178,7 @@ class OpenAICompatClient:
         except urllib.error.HTTPError as e:
             from .runtime import FatalLLMError, TransientLLMError, classify_http
             cls = classify_http(e.code)
+            e.close()
             if cls is TransientLLMError:
                 raise TransientLLMError(f"router HTTP {e.code}") from e
             raise FatalLLMError(f"router HTTP {e.code}") from e
