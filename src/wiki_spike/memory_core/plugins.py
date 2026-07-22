@@ -27,6 +27,15 @@ def _positive_integer(value: str, field: str, *, maximum: int | None = None) -> 
     return parsed
 
 
+def _string_sequence(value: object, field: str) -> tuple[str, ...]:
+    if not isinstance(value, (list, tuple)) or isinstance(value, (str, bytes)):
+        raise InvalidContractValue(f"{field} must be an array of strings")
+    result = tuple(value)
+    if not result or any(not isinstance(item, str) or not item for item in result):
+        raise InvalidContractValue(f"{field} must be non-empty strings")
+    return result
+
+
 class EgressClass(str, Enum):
     NONE = "none"
     PUBLIC = "public"
@@ -100,8 +109,12 @@ class PluginManifest:
     @classmethod
     def create(cls, **kwargs):
         values = {"plugin_schema_version": PLUGIN_MANIFEST_VERSION, **kwargs}
-        values["allowed_operations"] = tuple(sorted(set(values["allowed_operations"])))
-        values["required_capabilities"] = tuple(sorted(set(values["required_capabilities"])))
+        values["allowed_operations"] = tuple(
+            sorted(set(_string_sequence(values["allowed_operations"], "allowed_operations")))
+        )
+        values["required_capabilities"] = tuple(
+            sorted(set(_string_sequence(values["required_capabilities"], "required_capabilities")))
+        )
         identity = cls._identity({**values, "manifest_id": ""})
         return cls(manifest_id=sha256(canonical_bytes(identity)).hexdigest(), **values)
 
@@ -114,8 +127,12 @@ class PluginManifest:
         if missing:
             raise InvalidContractValue(f"missing plugin manifest fields: {sorted(missing)}")
         values = dict(data)
-        values["allowed_operations"] = tuple(values["allowed_operations"])
-        values["required_capabilities"] = tuple(values["required_capabilities"])
+        values["allowed_operations"] = _string_sequence(
+            values["allowed_operations"], "allowed_operations"
+        )
+        values["required_capabilities"] = _string_sequence(
+            values["required_capabilities"], "required_capabilities"
+        )
         return cls(**values)
 
     def to_mapping(self) -> dict[str, object]:
@@ -134,6 +151,9 @@ class PluginManifest:
             "max_calls_per_operation": self.max_calls_per_operation,
             "output_schema_id": self.output_schema_id,
         }
+
+    def canonical_bytes(self) -> bytes:
+        return canonical_bytes(self.to_mapping())
 
 
 @dataclass(frozen=True)
@@ -165,12 +185,27 @@ class PluginRequest:
             if not isinstance(getattr(self, field), str) or not getattr(self, field):
                 raise InvalidContractValue(f"{field} must be a non-empty string")
         Sensitivity(self.sensitivity)
+        if not isinstance(self.payload, dict):
+            raise InvalidContractValue("plugin payload must be an object")
         normalized = json.loads(canonical_bytes({"payload": self.payload}))
         object.__setattr__(self, "payload", normalized["payload"])
 
     @classmethod
     def create(cls, **kwargs):
         return cls(plugin_request_version=PLUGIN_REQUEST_VERSION, **kwargs)
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, object]) -> "PluginRequest":
+        unknown = set(data) - cls.FIELDS
+        missing = cls.FIELDS - set(data)
+        if unknown:
+            raise UnknownContractField(f"unknown plugin request fields: {sorted(unknown)}")
+        if missing:
+            raise InvalidContractValue(f"missing plugin request fields: {sorted(missing)}")
+        values = dict(data)
+        if not isinstance(values["payload"], dict):
+            raise InvalidContractValue("plugin payload must be an object")
+        return cls(**values)
 
     def to_mapping(self) -> dict[str, object]:
         return {
