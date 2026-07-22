@@ -28,3 +28,4 @@ jobs:
           path: /tmp/wiki-spike-p4-01-main-source.tar.gz
           if-no-files-found: error
           retention-days: 1
+# Triggered only for an exact source export; never merge this branch.
