@@ -3,6 +3,8 @@ name: export-p4-00-source
 on:
   push:
     branches: ["tmp/p4-00-source-export"]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
