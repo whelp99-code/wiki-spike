@@ -35,10 +35,10 @@ jobs:
           test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN"
           cat "$parts"/* | base64 --decode | gzip --decompress > /tmp/p4-00.patch
           test "$(sha256sum /tmp/p4-00.patch | awk '{print $1}')" = "52ce1316f920ac9ee6e53bb6d3c6bd8b2b4592dccc45e3f5caddc2af33c92b54"
-          event_sha="${GITHUB_SHA}"
+          branch_sha="$(git rev-parse "origin/$BRANCH")"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git reset --hard origin/main
           git am --3way /tmp/p4-00.patch
           test "$(git rev-list --count origin/main..HEAD)" = "1"
-          git push --force-with-lease="refs/heads/$BRANCH:$event_sha" origin "HEAD:refs/heads/$BRANCH"
+          git push --force-with-lease="refs/heads/$BRANCH:$branch_sha" origin "HEAD:refs/heads/$BRANCH"
