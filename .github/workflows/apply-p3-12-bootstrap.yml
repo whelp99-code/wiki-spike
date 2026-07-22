@@ -1,0 +1,75 @@
+name: apply-p3-12-bootstrap
+
+on:
+  push:
+    branches: ["phase3/p3-12-conformance-checkpoint"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-p3-12-bootstrap
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: phase3/p3-12-conformance-checkpoint
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Apply verified P3-12 payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          parts="bootstrap/p3-12.parts"
+          if [[ ! -d "$parts" ]]; then
+            echo "P3-12 payload already applied."
+            exit 0
+          fi
+
+          cat "$parts/00" "$parts/01" "$parts/02" "$parts/03" "$parts/04" "$parts/05" > /tmp/p3-12.tar.xz.b64
+          base64 --decode /tmp/p3-12.tar.xz.b64 > /tmp/p3-12.tar.xz
+          echo "34808ed3e22eceae371213ddbd465cebd0802ae948697e403f2076a0e2643c6b  /tmp/p3-12.tar.xz" | sha256sum --check --strict
+          tar -xJf /tmp/p3-12.tar.xz -C .
+
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python -m compileall -q src scripts tests/phase3
+          PYTHONPATH=src python -m pytest -W error -q tests/phase3/test_p3_12_conformance.py
+          PYTHONPATH=src python scripts/verify_g3_checkpoint.py
+          PYTHONPATH=src python scripts/p3_12_conformance.py --verify-only
+          PYTHONPATH=src python scripts/check_architecture_boundaries.py
+          PYTHONPATH=src python scripts/scan_secrets.py
+
+          # The workflow token cannot safely create another workflow file. It is
+          # tested above, then installed by the GitHub connector before the PR opens.
+          rm -f .github/workflows/phase3-g3-conformance.yml
+          git rm -r "$parts"
+          git add \
+            .github/phase3-g3-checkpoint-trust.json \
+            artifacts/checkpoints/g3 \
+            artifacts/conformance/phase3/G3/report.md \
+            artifacts/conformance/phase3/G3/requirements.json \
+            docs/adr/ADR-0010-phase3-g3-conformance-checkpoint.md \
+            docs/adversarial/P3-12_ADVERSARIAL_VALIDATION_20R_KR.md \
+            docs/releases/phase3-core-v1.0.0.md \
+            schemas/phase3/g3-checkpoint.schema.json \
+            schemas/phase3/g3-conformance.schema.json \
+            scripts/build_g3_checkpoint.py \
+            scripts/p3_12_conformance.py \
+            scripts/run_p3_12_gate.sh \
+            scripts/verify_g3_checkpoint.py \
+            tests/phase3/fixtures/g3-negative-gate.json \
+            tests/phase3/test_p3_12_conformance.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "P3-12: add G3 conformance gate and signed checkpoint"
+          git push origin HEAD:phase3/p3-12-conformance-checkpoint
