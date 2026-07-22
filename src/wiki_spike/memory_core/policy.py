@@ -10,7 +10,8 @@ class Sensitivity(str, Enum):
     PUBLIC = "public"
     INTERNAL = "internal"
     PRIVATE = "private"
-    SECRET = "secret"
+    SECRET_DATA = "secret"
+    SECRET = SECRET_DATA
 
     @property
     def rank(self) -> int:
