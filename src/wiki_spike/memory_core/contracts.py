@@ -6,13 +6,16 @@ be imported without any storage adapter or runtime implementation.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 import json
+import re
 import unicodedata
 from typing import Any, ClassVar, Mapping
 
 from .errors import InvalidContractValue, UnknownContractField, UnsupportedContractVersion
 
 CONTRACT_VERSION = "phase3-core-v1"
+EVENT_SCHEMA_VERSION = "phase3-operational-event-v1"
 JsonValue = None | bool | str | list["JsonValue"] | dict[str, "JsonValue"]
 
 
@@ -180,24 +183,101 @@ class CoreResult:
         return canonical_bytes(self.to_mapping())
 
 
+def _event_identity_body(values: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "event_schema_version": values["event_schema_version"],
+        "workspace_id": values["workspace_id"],
+        "generation_id": values["generation_id"],
+        "parent_generation_id": values["parent_generation_id"],
+        "generation_seq": values["generation_seq"],
+        "event_type": values["event_type"],
+        "causation_id": values["causation_id"],
+        "correlation_id": values["correlation_id"],
+        "sensitivity": values["sensitivity"],
+        "payload_ref": values["payload_ref"],
+        "emitted_at": values["emitted_at"],
+    }
+
+
 @dataclass(frozen=True)
 class OperationalEvent:
-    contract_version: str
+    event_schema_version: str
     event_id: str
-    event_type: str
     workspace_id: str
-    generation_id: str | None
-    payload: dict[str, JsonValue]
+    generation_id: str
+    parent_generation_id: str | None
+    generation_seq: str
+    event_type: str
+    causation_id: str
+    correlation_id: str
+    sensitivity: str
+    payload_ref: str | None
+    emitted_at: str
 
-    def canonical_bytes(self) -> bytes:
-        return canonical_bytes({
-            "contract_version": self.contract_version,
+    FIELDS: ClassVar[set[str]] = {
+        "event_schema_version", "event_id", "workspace_id", "generation_id",
+        "parent_generation_id", "generation_seq", "event_type", "causation_id",
+        "correlation_id", "sensitivity", "payload_ref", "emitted_at",
+    }
+
+    def __post_init__(self) -> None:
+        values = self.to_mapping()
+        if self.event_schema_version != EVENT_SCHEMA_VERSION:
+            raise UnsupportedContractVersion(
+                f"unsupported event_schema_version: {self.event_schema_version!r}"
+            )
+        for field in self.FIELDS - {
+            "parent_generation_id", "payload_ref", "event_id"
+        }:
+            value = values[field]
+            if not isinstance(value, str) or not value:
+                raise InvalidContractValue(f"{field} must be a non-empty string")
+        for field in ("parent_generation_id", "payload_ref"):
+            value = values[field]
+            if value is not None and (not isinstance(value, str) or not value):
+                raise InvalidContractValue(f"{field} must be null or a non-empty string")
+        if not re.fullmatch(r"0|[1-9][0-9]*", self.generation_seq):
+            raise InvalidContractValue("generation_seq must be a canonical non-negative integer string")
+        if self.sensitivity not in {"public", "internal", "private", "secret"}:
+            raise InvalidContractValue("unsupported event sensitivity")
+        expected = sha256(canonical_bytes(_event_identity_body(values))).hexdigest()
+        if self.event_id != expected:
+            raise InvalidContractValue("event_id does not match canonical event identity")
+
+    @classmethod
+    def create(cls, **kwargs: Any) -> "OperationalEvent":
+        values = {"event_schema_version": EVENT_SCHEMA_VERSION, **kwargs}
+        body = _event_identity_body(values)
+        return cls(event_id=sha256(canonical_bytes(body)).hexdigest(), **values)
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "OperationalEvent":
+        unknown = set(data) - cls.FIELDS
+        if unknown:
+            raise UnknownContractField(f"unknown event fields: {sorted(unknown)}")
+        missing = cls.FIELDS - set(data)
+        if missing:
+            raise InvalidContractValue(f"missing event fields: {sorted(missing)}")
+        return cls(**{key: data[key] for key in cls.FIELDS})
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {
+            "event_schema_version": self.event_schema_version,
             "event_id": self.event_id,
-            "event_type": self.event_type,
             "workspace_id": self.workspace_id,
             "generation_id": self.generation_id,
-            "payload": self.payload,
-        })
+            "parent_generation_id": self.parent_generation_id,
+            "generation_seq": self.generation_seq,
+            "event_type": self.event_type,
+            "causation_id": self.causation_id,
+            "correlation_id": self.correlation_id,
+            "sensitivity": self.sensitivity,
+            "payload_ref": self.payload_ref,
+            "emitted_at": self.emitted_at,
+        }
+
+    def canonical_bytes(self) -> bytes:
+        return canonical_bytes(self.to_mapping())
 
 
 @dataclass(frozen=True)
