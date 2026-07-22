@@ -65,3 +65,27 @@ def test_conformance_report_preserves_phase_boundary():
     assert "P4-01" in text
     assert "Phase 5" in text
     assert "Production" in text
+
+
+def test_p4_02_intent_temporal_schema_is_strict_and_versioned():
+    schema = json.loads((root() / "schemas/phase4/intent-temporal-contracts.schema.json").read_text("utf-8"))
+    assert schema["title"].endswith("P4-02")
+    assert len(schema["oneOf"]) == 4
+    definitions = schema["$defs"]
+    assert set(definitions) == {
+        "intentTemporalInput",
+        "intentResolution",
+        "temporalResolution",
+        "intentTemporalResolution",
+    }
+    assert all(value["additionalProperties"] is False for value in definitions.values())
+
+
+def test_p4_02_documents_preserve_runtime_and_phase_boundaries():
+    adr = (root() / "docs/adr/ADR-0013-intent-temporal-resolution.md").read_text("utf-8")
+    report = (root() / "artifacts/conformance/phase4/P4-02/report.md").read_text("utf-8")
+    adversarial = (root() / "docs/adversarial/P4-02_ADVERSARIAL_VALIDATION_20R_KR.md").read_text("utf-8")
+    assert "IANA" in adr and "LLM" in adr
+    assert "P4-F-002" in report and "Phase 5" in report
+    rounds = [int(value) for value in re.findall(r"^## Round (\d{2})", adversarial, re.M)]
+    assert rounds == list(range(1, 21))
