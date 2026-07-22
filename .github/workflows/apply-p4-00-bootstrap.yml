@@ -21,11 +21,11 @@ jobs:
         with:
           fetch-depth: 0
           ref: phase4/p4-00-contract-pin
-      - name: Apply verified P4-00 patch as a single clean commit
+      - name: Publish verified P4-00 code commit to a clean product branch
         shell: bash
         env:
           EXPECTED_MAIN: fa7523344008c8c5bfbcc6aca790f297524f33dc
-          BRANCH: phase4/p4-00-contract-pin
+          TARGET_BRANCH: phase4/p4-00-product
         run: |
           set -Eeuo pipefail
           : > "$BOOTSTRAP_STATUS"
@@ -33,31 +33,34 @@ jobs:
           echo "START event=${GITHUB_EVENT_NAME} sha=${GITHUB_SHA}" >> "$BOOTSTRAP_STATUS"
           parts="bootstrap/p4-00.parts"
           ready="bootstrap/p4-00.ready"
-          if [[ ! -f "$ready" ]]; then
-            echo "NO_READY" >> "$BOOTSTRAP_STATUS"
-            exit 0
-          fi
+          test -f "$ready"
           test -d "$parts"
           echo "PARTS count=$(find "$parts" -maxdepth 1 -type f | wc -l)" >> "$BOOTSTRAP_STATUS"
           actual_main="$(git rev-parse origin/main)"
           echo "MAIN $actual_main" >> "$BOOTSTRAP_STATUS"
           test "$actual_main" = "$EXPECTED_MAIN"
+          if git ls-remote --exit-code --heads origin "refs/heads/$TARGET_BRANCH" >/dev/null 2>&1; then
+            echo "TARGET_EXISTS" >> "$BOOTSTRAP_STATUS"
+            exit 1
+          fi
           cat "$parts"/* | base64 --decode | gzip --decompress > /tmp/p4-00.patch
           actual_patch="$(sha256sum /tmp/p4-00.patch | awk '{print $1}')"
           echo "PATCH $actual_patch bytes=$(wc -c </tmp/p4-00.patch)" >> "$BOOTSTRAP_STATUS"
           test "$actual_patch" = "52ce1316f920ac9ee6e53bb6d3c6bd8b2b4592dccc45e3f5caddc2af33c92b54"
-          branch_sha="$(git rev-parse "origin/$BRANCH")"
-          echo "BRANCH_BEFORE $branch_sha" >> "$BOOTSTRAP_STATUS"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git reset --hard origin/main
-          echo "RESET $(git rev-parse HEAD)" >> "$BOOTSTRAP_STATUS"
           git am --3way /tmp/p4-00.patch
+          git checkout origin/main -- \
+            .github/workflows/phase3-g3-conformance.yml \
+            .github/workflows/phase3-preflight.yml
+          git rm .github/workflows/phase4-preflight.yml
+          git commit --amend --no-edit
           product_sha="$(git rev-parse HEAD)"
-          echo "APPLIED $product_sha count=$(git rev-list --count origin/main..HEAD)" >> "$BOOTSTRAP_STATUS"
+          echo "APPLIED_CODE_ONLY $product_sha count=$(git rev-list --count origin/main..HEAD)" >> "$BOOTSTRAP_STATUS"
           test "$(git rev-list --count origin/main..HEAD)" = "1"
-          git push --force-with-lease="refs/heads/$BRANCH:$branch_sha" origin "HEAD:refs/heads/$BRANCH"
-          echo "PUSHED $product_sha" >> "$BOOTSTRAP_STATUS"
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          echo "PUSHED $product_sha target=$TARGET_BRANCH" >> "$BOOTSTRAP_STATUS"
       - name: Upload bootstrap diagnostics
         if: always()
         uses: actions/upload-artifact@v4
