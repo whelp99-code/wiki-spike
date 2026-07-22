@@ -23,13 +23,13 @@ jobs:
           BRANCH: phase4/p4-00-contract-pin
         run: |
           set -euo pipefail
-          payload="bootstrap/p4-00.patch.gz.b64"
-          if [[ ! -f "$payload" ]]; then
-            echo "Patch payload not uploaded yet; nothing to apply."
+          parts="bootstrap/p4-00.parts"
+          if [[ ! -d "$parts" ]]; then
+            echo "Patch parts not uploaded yet; nothing to apply."
             exit 0
           fi
           test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN"
-          base64 --decode "$payload" | gzip --decompress > /tmp/p4-00.patch
+          cat "$parts"/* | base64 --decode | gzip --decompress > /tmp/p4-00.patch
           test "$(sha256sum /tmp/p4-00.patch | awk '{print $1}')" = "52ce1316f920ac9ee6e53bb6d3c6bd8b2b4592dccc45e3f5caddc2af33c92b54"
           event_sha="${GITHUB_SHA}"
           git config user.name "github-actions[bot]"
