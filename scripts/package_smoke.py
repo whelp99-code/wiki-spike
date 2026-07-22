@@ -111,7 +111,7 @@ def package_smoke(repo: Path) -> dict[str, str]:
             python = venv / "bin" / "python"
             wiki = venv / "bin" / "wiki"
         _ensure_pip(python=python, cwd=repo)
-        _run([str(python), "-m", "pip", "install", "--force-reinstall", str(wheel)], cwd=repo)
+        _run([str(python), "-m", "pip", "install", "--force-reinstall", "--no-deps", str(wheel)], cwd=repo)
         _run([str(python), "-c", "import wiki_spike; print(wiki_spike.__name__)"], cwd=repo)
         help_result = _run([str(wiki), "--help"], cwd=repo)
         if "usage" not in help_result.stdout.lower():

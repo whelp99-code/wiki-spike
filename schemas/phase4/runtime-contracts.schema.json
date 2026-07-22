@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/phase4/runtime-contracts.schema.json",
+  "title": "Phase 4 Runtime Contracts — P4-00 Closed Skeleton",
+  "description": "P4-00 publishes no Runtime request/result data contract. Every instance is rejected until P4-01 introduces versioned contracts.",
+  "not": {}
+}

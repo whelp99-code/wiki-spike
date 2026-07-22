@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import base64
+from contextlib import contextmanager
 from copy import deepcopy
 import json
 from pathlib import Path
 import shutil
+import subprocess
+import tempfile
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -30,6 +33,34 @@ def root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+@contextmanager
+def g3_release_tree():
+    """Expose the immutable signed G3 tag without treating current Phase 4 files as G3."""
+    parent = Path(tempfile.mkdtemp(prefix="wiki-g3-test-"))
+    target = parent / "release"
+    added = False
+    try:
+        result = subprocess.run(
+            ["git", "worktree", "add", "--detach", str(target), "phase3-core-v1.0.0^{commit}"],
+            cwd=root(), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"cannot create G3 release worktree: {result.stderr}")
+        added = True
+        yield target
+    finally:
+        if added:
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", str(target)],
+                cwd=root(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            )
+            subprocess.run(
+                ["git", "worktree", "prune"], cwd=root(),
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            )
+        shutil.rmtree(parent, ignore_errors=True)
+
+
 def matrix() -> dict:
     return strict_json_load(
         root() / "artifacts/conformance/phase3/G3/requirements.json",
@@ -47,21 +78,25 @@ def committed_inventory() -> dict:
 def copy_verification_repo(tmp_path: Path) -> Path:
     destination = tmp_path / "repo"
     destination.mkdir()
-    inventory = committed_inventory()
-    paths = [entry["path"] for entry in inventory["entries"]]
-    extras = [
-        "artifacts/checkpoints/g2/phase2-storage-checkpoint.json",
-        "artifacts/checkpoints/g3/phase3-source-inventory.json",
-        "artifacts/checkpoints/g3/phase3-g3-checkpoint.json",
-        "artifacts/checkpoints/g3/phase3-g3-checkpoint.sig",
-        "artifacts/checkpoints/g3/phase3-g3-public-key.pem",
-        ".github/phase3-g3-checkpoint-trust.json",
-    ]
-    for relative in sorted(set(paths + extras)):
-        source = root() / relative
-        target = destination / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
+    with g3_release_tree() as release:
+        inventory = strict_json_load(
+            release / "artifacts/checkpoints/g3/phase3-source-inventory.json",
+            require_canonical=True,
+        )
+        paths = [entry["path"] for entry in inventory["entries"]]
+        extras = [
+            "artifacts/checkpoints/g2/phase2-storage-checkpoint.json",
+            "artifacts/checkpoints/g3/phase3-source-inventory.json",
+            "artifacts/checkpoints/g3/phase3-g3-checkpoint.json",
+            "artifacts/checkpoints/g3/phase3-g3-checkpoint.sig",
+            "artifacts/checkpoints/g3/phase3-g3-public-key.pem",
+            ".github/phase3-g3-checkpoint-trust.json",
+        ]
+        for relative in sorted(set(paths + extras)):
+            source = release / relative
+            target = destination / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
     return destination
 
 
@@ -75,7 +110,8 @@ def test_committed_matrix_has_exact_requirement_coverage():
 
 
 def test_committed_g3_checkpoint_verifies():
-    result = verify_g3_checkpoint(repo=root())
+    with g3_release_tree() as release:
+        result = verify_g3_checkpoint(repo=release)
     assert result["status"] == "pass"
     assert result["contract_release"] == CONTRACT_RELEASE
     assert int(result["phase3_test_count"]) >= 256
@@ -163,18 +199,27 @@ def test_checkpoint_artifacts_are_not_self_inventoried():
     assert not any("/runs/" in path for path in paths)
 
 
-def test_current_source_inventory_matches_committed_root():
-    assert verify_inventory(root(), committed_inventory())["source_root"] == committed_inventory()["source_root"]
+def test_immutable_release_source_inventory_matches_committed_root():
+    with g3_release_tree() as release:
+        inventory = strict_json_load(
+            release / "artifacts/checkpoints/g3/phase3-source-inventory.json",
+            require_canonical=True,
+        )
+        assert verify_inventory(release, inventory)["source_root"] == inventory["source_root"]
 
 
 def test_source_tamper_is_rejected(tmp_path):
     repo = tmp_path / "repo"
-    inventory = committed_inventory()
-    for entry in inventory["entries"]:
-        source = root() / entry["path"]
-        target = repo / entry["path"]
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
+    with g3_release_tree() as release:
+        inventory = strict_json_load(
+            release / "artifacts/checkpoints/g3/phase3-source-inventory.json",
+            require_canonical=True,
+        )
+        for entry in inventory["entries"]:
+            source = release / entry["path"]
+            target = repo / entry["path"]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
     target = repo / "src/wiki_spike/memory_core/contracts.py"
     target.write_bytes(target.read_bytes() + b"\n# tampered\n")
     with pytest.raises(PreflightError, match="do not match"):
@@ -235,7 +280,8 @@ def test_lineage_anchor_must_be_available_and_ancestor(tmp_path):
 
 
 def test_test_inventory_floor_is_enforced_by_committed_checkpoint():
-    result = verify_g3_checkpoint(repo=root(), verify_test_counts=True)
+    with g3_release_tree() as release:
+        result = verify_g3_checkpoint(repo=release, verify_test_counts=True)
     assert int(result["phase3_test_count"]) >= 256
     assert int(result["total_test_count"]) >= 390
 

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/phase4/phase3-contract-pin.schema.json",
+  "title": "Phase 4 Pin to Signed Phase 3 G3 Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["pin", "pin_id"],
+  "properties": {
+    "pin_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "repository", "contract_release", "release_tag",
+        "release_commit", "release_tag_object", "tag_object_type", "g3_checkpoint_id", "g3_source_root",
+        "public_api_sha256", "required_status_checks", "allowed_runtime_core_modules",
+        "contract_files"
+      ],
+      "properties": {
+        "schema_version": {"const": "phase4-phase3-contract-pin-v1"},
+        "repository": {"const": "whelp99-code/wiki-spike"},
+        "contract_release": {"const": "phase3-core-v1.0.0"},
+        "release_tag": {"const": "phase3-core-v1.0.0"},
+        "release_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "release_tag_object": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "tag_object_type": {"const": "tag"},
+        "g3_checkpoint_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "g3_source_root": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "public_api_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "required_status_checks": {
+          "type": "array", "minItems": 2, "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "allowed_runtime_core_modules": {
+          "type": "array", "minItems": 2, "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "contract_files": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["path", "sha256", "byte_length"],
+            "properties": {
+              "path": {"type": "string", "minLength": 1},
+              "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+              "byte_length": {"type": "string", "pattern": "^(0|[1-9][0-9]*)$"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

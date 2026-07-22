@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -491,7 +492,9 @@ forbidden = {'wiki_spike.cas','wiki_spike.controlplane','wiki_spike.generation',
 loaded = forbidden.intersection(sys.modules)
 assert not loaded, loaded
 """
-    subprocess.run([sys.executable, "-c", code], check=True)
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(ROOT / "src")
+    subprocess.run([sys.executable, "-c", code], check=True, env=env)
 
 
 def test_registry_contract_schema_is_strict():

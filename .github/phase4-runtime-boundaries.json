@@ -1,0 +1,1 @@
+{"policy":{"allowed_wiki_module_prefixes":["wiki_spike.memory_core.contracts","wiki_spike.memory_core.ports","wiki_spike.memory_runtime"],"runtime_root":"src/wiki_spike/memory_runtime","schema_version":"phase4-runtime-boundaries-v1"},"policy_id":"38b99dac05c46942b97a7777804cc6b10ca849fbc77520aba0a6597937dba62a"}
