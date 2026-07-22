@@ -38,6 +38,14 @@ from .ports import (
     MemoryQueryPort,
     OperationalEventSink,
 )
+from .query_gateway import (
+    MemoryQueryGateway,
+    MemoryRecord,
+    ObjectStateReader,
+    QueryBackend,
+    QueryBatch,
+    QueryCapabilityResolver,
+)
 
 __all__ = [
     "CONTRACT_VERSION",
@@ -65,6 +73,12 @@ __all__ = [
     "IdempotencyRecord",
     "InMemoryIdempotencyStore",
     "MemoryCommandGateway",
+    "MemoryQueryGateway",
+    "MemoryRecord",
+    "ObjectStateReader",
+    "QueryBackend",
+    "QueryBatch",
+    "QueryCapabilityResolver",
     "ChangeSetPublicationPort",
     "MemoryCommandPort",
     "MemoryQueryPort",
