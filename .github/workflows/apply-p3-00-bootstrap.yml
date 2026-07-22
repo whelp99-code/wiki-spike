@@ -1,0 +1,32 @@
+name: apply-p3-00-bootstrap
+
+on:
+  push:
+    branches: ["phase3/p3-00-preflight-ci-boundaries"]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply verified P3-00 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f bootstrap/p3-00.patch ]]; then
+            echo "Patch not uploaded yet; nothing to apply."
+            exit 0
+          fi
+          git apply --check bootstrap/p3-00.patch
+          git apply --index bootstrap/p3-00.patch
+          git rm bootstrap/p3-00.patch .github/workflows/apply-p3-00-bootstrap.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "P3-00: add preflight CI, G2 checkpoint, and boundary gates"
+          git push origin HEAD:phase3/p3-00-preflight-ci-boundaries
