@@ -3,6 +3,8 @@ name: apply-p4-00-bootstrap
 on:
   push:
     branches: ["phase4/p4-00-contract-pin"]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
