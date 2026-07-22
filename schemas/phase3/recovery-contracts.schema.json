@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/phase3/recovery-contracts.schema.json",
+  "title": "Phase 3 Recovery Contracts",
+  "$defs": {
+    "canonicalValue": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "boolean"},
+        {"type": "string"},
+        {"type": "array", "items": {"$ref": "#/$defs/canonicalValue"}},
+        {"type": "object", "additionalProperties": {"$ref": "#/$defs/canonicalValue"}}
+      ]
+    },
+    "recoveryItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recovery_item_version", "item_id", "category", "logical_path",
+        "content_digest", "byte_length", "encrypted", "encryption_key_id",
+        "dependencies"
+      ],
+      "properties": {
+        "recovery_item_version": {"const": "phase3-recovery-item-v1"},
+        "item_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "category": {
+          "enum": [
+            "cas_object", "cas_tombstone", "git_object", "git_ref",
+            "generation_manifest", "release_manifest", "export_manifest",
+            "historical_key_registry", "secret_sidecar",
+            "control_plane_checkpoint", "schema_registry", "kind_registry",
+            "policy_registry"
+          ]
+        },
+        "logical_path": {"type": "string", "minLength": 1},
+        "content_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "byte_length": {"type": "string", "pattern": "^(0|[1-9][0-9]*)$"},
+        "encrypted": {"type": "boolean"},
+        "encryption_key_id": {"type": ["string", "null"]},
+        "dependencies": {
+          "type": "array", "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "signatureBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recovery_signature_version", "binding_id", "payload_item_id",
+        "key_id", "purpose", "domain", "signed_at", "signature_b64"
+      ],
+      "properties": {
+        "recovery_signature_version": {"const": "phase3-recovery-signature-v1"},
+        "binding_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "payload_item_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "key_id": {"type": "string", "minLength": 1},
+        "purpose": {"type": "string", "minLength": 1},
+        "domain": {"type": "string", "minLength": 1},
+        "signed_at": {"type": "string", "minLength": 1},
+        "signature_b64": {"type": "string", "minLength": 1}
+      }
+    },
+    "recoveryQuery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recovery_query_version", "query_id", "query_type",
+        "as_of_generation_id", "parameters", "expected_result_digest"
+      ],
+      "properties": {
+        "recovery_query_version": {"const": "phase3-recovery-query-v1"},
+        "query_id": {"type": "string", "minLength": 1},
+        "query_type": {"type": "string", "minLength": 1},
+        "as_of_generation_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "parameters": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/canonicalValue"}
+        },
+        "expected_result_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "recoveryManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recovery_manifest_version", "manifest_id", "workspace_id",
+        "source_generation_id", "publication_generation_id",
+        "publication_release_commit_oid", "state_root",
+        "key_registry_item_id", "schema_registry_item_id",
+        "kind_registry_item_id", "control_plane_checkpoint_item_id",
+        "required_projection_names", "items", "signatures", "sample_queries"
+      ],
+      "properties": {
+        "recovery_manifest_version": {"const": "phase3-recovery-manifest-v1"},
+        "manifest_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "workspace_id": {"type": "string", "minLength": 1},
+        "source_generation_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "publication_generation_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "publication_release_commit_oid": {
+          "type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+        },
+        "state_root": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "key_registry_item_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "schema_registry_item_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "kind_registry_item_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "control_plane_checkpoint_item_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "required_projection_names": {
+          "type": "array", "minItems": 2, "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "items": {
+          "type": "array", "minItems": 9,
+          "items": {"$ref": "#/$defs/recoveryItem"}
+        },
+        "signatures": {
+          "type": "array", "minItems": 2,
+          "items": {"$ref": "#/$defs/signatureBinding"}
+        },
+        "sample_queries": {
+          "type": "array", "minItems": 1,
+          "items": {"$ref": "#/$defs/recoveryQuery"}
+        }
+      }
+    },
+    "signedRecoveryManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recovery_envelope_version", "manifest", "signer_key_id",
+        "signed_at", "signature_b64"
+      ],
+      "properties": {
+        "recovery_envelope_version": {"const": "phase3-signed-recovery-manifest-v1"},
+        "manifest": {"$ref": "#/$defs/recoveryManifest"},
+        "signer_key_id": {"type": "string", "minLength": 1},
+        "signed_at": {"type": "string", "minLength": 1},
+        "signature_b64": {"type": "string", "minLength": 1}
+      }
+    },
+    "recoveryTrustAnchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recovery_trust_version", "anchor_id", "workspace_id",
+        "recovery_signer_key_id", "recovery_signer_public_key_b64",
+        "key_registry_snapshot_digest", "expected_manifest_id"
+      ],
+      "properties": {
+        "recovery_trust_version": {"const": "phase3-recovery-trust-v1"},
+        "anchor_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "workspace_id": {"type": "string", "minLength": 1},
+        "recovery_signer_key_id": {"type": "string", "minLength": 1},
+        "recovery_signer_public_key_b64": {"type": "string", "minLength": 1},
+        "key_registry_snapshot_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "expected_manifest_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "recoveryEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recovery_evidence_version", "evidence_id", "manifest_id",
+        "workspace_id", "status", "verified_item_count",
+        "verified_signature_count", "state_root", "publication_generation_id",
+        "publication_release_commit_oid", "projection_pointers",
+        "query_result_digests", "completed_at"
+      ],
+      "properties": {
+        "recovery_evidence_version": {"const": "phase3-recovery-evidence-v1"},
+        "evidence_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "manifest_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "workspace_id": {"type": "string", "minLength": 1},
+        "status": {"enum": ["verified", "restored"]},
+        "verified_item_count": {"type": "string", "pattern": "^(0|[1-9][0-9]*)$"},
+        "verified_signature_count": {"type": "string", "pattern": "^(0|[1-9][0-9]*)$"},
+        "state_root": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "publication_generation_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "publication_release_commit_oid": {
+          "type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+        },
+        "projection_pointers": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["projection_name", "generation_id"],
+            "properties": {
+              "projection_name": {"type": "string", "minLength": 1},
+              "generation_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+            }
+          }
+        },
+        "query_result_digests": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["query_id", "result_digest"],
+            "properties": {
+              "query_id": {"type": "string", "minLength": 1},
+              "result_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+            }
+          }
+        },
+        "completed_at": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "oneOf": [
+    {"$ref": "#/$defs/recoveryItem"},
+    {"$ref": "#/$defs/signatureBinding"},
+    {"$ref": "#/$defs/recoveryQuery"},
+    {"$ref": "#/$defs/recoveryManifest"},
+    {"$ref": "#/$defs/signedRecoveryManifest"},
+    {"$ref": "#/$defs/recoveryTrustAnchor"},
+    {"$ref": "#/$defs/recoveryEvidence"}
+  ]
+}
