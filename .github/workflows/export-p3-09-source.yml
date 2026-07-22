@@ -1,0 +1,27 @@
+name: export-p3-09-source
+
+on:
+  push:
+    branches: ["tmp/p3-09-source-export"]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Export source snapshot
+        run: |
+          set -euo pipefail
+          git archive --format=zip --output=/tmp/wiki-spike-main.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wiki-spike-main-source
+          path: /tmp/wiki-spike-main.zip
+          if-no-files-found: error
+          retention-days: 1
