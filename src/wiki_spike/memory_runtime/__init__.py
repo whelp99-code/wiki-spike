@@ -1,9 +1,32 @@
-"""Phase 4 Memory Runtime package boundary.
+"""Public Phase 4 Memory Runtime contract and orchestration surface.
 
-P4-00 intentionally exposes only the pinned Phase 3 Core facade.  Runtime
-request/answer contracts and orchestration state machines are introduced by
-P4-01 and later PRs.
+P4-01 adds deterministic request/status/response contracts and a provider-neutral
+orchestrator.  Later Runtime stages may implement intent, retrieval, verification,
+and proposal logic behind these interfaces; they may not bypass the pinned Phase 3
+Core ports exposed by :mod:`wiki_spike.memory_runtime.core_api`.
 """
+from .errors import (
+    InvalidContractValue,
+    RuntimeContractError,
+    UnknownContractField,
+    UnsupportedContractVersion,
+)
+from .contracts import (
+    CANCELLATION_SIGNAL_VERSION,
+    RUNTIME_REQUEST_VERSION,
+    RUNTIME_RESPONSE_VERSION,
+    RUNTIME_STATUS_VERSION,
+    STAGE_RESULT_REF_VERSION,
+    CancellationSignal,
+    OperationState,
+    RuntimeRequest,
+    RuntimeResponse,
+    RuntimeResponseStatus,
+    RuntimeStatus,
+    StageDisposition,
+    StageResultRef,
+    TERMINAL_STATES,
+)
 from .core_api import (
     PHASE3_CONTRACT_RELEASE,
     PHASE3_G3_CHECKPOINT_ID,
@@ -20,8 +43,36 @@ from .core_api import (
     ProjectionPort,
     QueryEnvelope,
 )
+from .orchestrator import (
+    ClaimDecision,
+    Clock,
+    FatalStageError,
+    InMemoryOperationStore,
+    InMemoryStageResultStore,
+    OperationCancelled,
+    OperationConflict,
+    OperationDeadlineExceeded,
+    OperationStore,
+    PipelineDefinition,
+    RuntimeOrchestrationError,
+    RuntimeOrchestrator,
+    RuntimeOperationInput,
+    RuntimeStageHandler,
+    RuntimeStageResult,
+    StageClaim,
+    StageClaimConflict,
+    StageExecutionContext,
+    StageResultConflict,
+    StageResultStore,
+    SystemClock,
+    TransientStageError,
+)
 
 __all__ = [
+    "UnsupportedContractVersion",
+    "UnknownContractField",
+    "InvalidContractValue",
+    "RuntimeContractError",
     "PHASE3_CONTRACT_RELEASE",
     "PHASE3_G3_CHECKPOINT_ID",
     "RUNTIME_BOUNDARY_VERSION",
@@ -36,4 +87,40 @@ __all__ = [
     "OperationalEventSink",
     "ProjectionPort",
     "QueryEnvelope",
+    "RUNTIME_REQUEST_VERSION",
+    "RUNTIME_RESPONSE_VERSION",
+    "RUNTIME_STATUS_VERSION",
+    "STAGE_RESULT_REF_VERSION",
+    "CANCELLATION_SIGNAL_VERSION",
+    "OperationState",
+    "TERMINAL_STATES",
+    "StageDisposition",
+    "RuntimeResponseStatus",
+    "RuntimeRequest",
+    "CancellationSignal",
+    "StageResultRef",
+    "RuntimeStatus",
+    "RuntimeResponse",
+    "RuntimeOrchestrationError",
+    "OperationConflict",
+    "StageClaimConflict",
+    "StageResultConflict",
+    "TransientStageError",
+    "FatalStageError",
+    "OperationCancelled",
+    "OperationDeadlineExceeded",
+    "Clock",
+    "SystemClock",
+    "RuntimeStageResult",
+    "RuntimeStageHandler",
+    "PipelineDefinition",
+    "StageExecutionContext",
+    "StageClaim",
+    "ClaimDecision",
+    "OperationStore",
+    "InMemoryOperationStore",
+    "StageResultStore",
+    "InMemoryStageResultStore",
+    "RuntimeOrchestrator",
+    "RuntimeOperationInput",
 ]

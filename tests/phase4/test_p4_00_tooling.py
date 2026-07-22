@@ -18,10 +18,12 @@ def test_pin_and_runtime_boundary_policies_are_canonical():
     assert policy["policy"]["runtime_root"] == "src/wiki_spike/memory_runtime"
 
 
-def test_runtime_schema_is_fail_closed_until_p4_01():
+def test_runtime_schema_is_versioned_by_p4_01():
     schema = json.loads((root() / "schemas/phase4/runtime-contracts.schema.json").read_text("utf-8"))
-    assert schema["not"] == {}
-    assert "P4-01" in schema["description"]
+    assert schema["title"].endswith("P4-01")
+    assert len(schema["oneOf"]) == 5
+    assert schema["$defs"]["runtimeRequest"]["additionalProperties"] is False
+    assert schema["$defs"]["runtimeResponse"]["additionalProperties"] is False
 
 
 def test_phase4_workflow_checks_out_tags_runs_gate_and_uploads_evidence():
