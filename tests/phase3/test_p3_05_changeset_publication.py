@@ -6,7 +6,7 @@ from wiki_spike.claims import DeterministicMockExtractor
 from wiki_spike.controlplane import ControlPlane
 from wiki_spike.generation import GenerationBuilder
 from wiki_spike.gitrepo import GitRepo
-from wiki_spike.memory_core import (
+from wiki_spike.memory_core.changeset_publication import (
     ChangeSetBuilder,
     InMemoryChangeObjectStore,
     StoragePublicationAdapter,
