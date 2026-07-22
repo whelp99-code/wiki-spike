@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/phase3/operational-event.schema.json",
+  "title": "Phase 3 Operational Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_schema_version",
+    "event_id",
+    "workspace_id",
+    "generation_id",
+    "parent_generation_id",
+    "generation_seq",
+    "event_type",
+    "causation_id",
+    "correlation_id",
+    "sensitivity",
+    "payload_ref",
+    "emitted_at"
+  ],
+  "properties": {
+    "event_schema_version": {"const": "phase3-operational-event-v1"},
+    "event_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "workspace_id": {"type": "string", "minLength": 1},
+    "generation_id": {"type": "string", "minLength": 1},
+    "parent_generation_id": {"type": ["string", "null"]},
+    "generation_seq": {"type": "string", "pattern": "^(0|[1-9][0-9]*)$"},
+    "event_type": {"type": "string", "minLength": 1},
+    "causation_id": {"type": "string", "minLength": 1},
+    "correlation_id": {"type": "string", "minLength": 1},
+    "sensitivity": {"enum": ["public", "internal", "private", "secret"]},
+    "payload_ref": {"type": ["string", "null"]},
+    "emitted_at": {"type": "string", "minLength": 1}
+  }
+}
