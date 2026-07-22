@@ -1,0 +1,148 @@
+{
+  "$defs": {
+    "inventoryEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_length": {
+          "pattern": "^(?:0|[1-9][0-9]*)$",
+          "type": "string"
+        },
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "byte_length"
+      ],
+      "type": "object"
+    },
+    "path": {
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$",
+      "type": "string"
+    },
+    "requirement": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_paths": {
+          "items": {
+            "$ref": "#/$defs/path"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "gate_ids": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "implementation_paths": {
+          "items": {
+            "$ref": "#/$defs/path"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "requirement_id": {
+          "pattern": "^P3-F-(?:00[1-9]|01[0-9]|020)$",
+          "type": "string"
+        },
+        "test_paths": {
+          "items": {
+            "pattern": "^tests/phase3/.+\\.py$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "title": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "requirement_id",
+        "title",
+        "implementation_paths",
+        "test_paths",
+        "evidence_paths",
+        "gate_ids"
+      ],
+      "type": "object"
+    },
+    "stringArray": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    }
+  },
+  "$id": "https://wiki-spike.local/schemas/phase3/g3-conformance.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "contract_release": {
+          "const": "phase3-core-v1.0.0"
+        },
+        "matrix_version": {
+          "const": "phase3-conformance-matrix-v1"
+        },
+        "phase": {
+          "const": "3"
+        },
+        "requirements": {
+          "items": {
+            "$ref": "#/$defs/requirement"
+          },
+          "maxItems": 20,
+          "minItems": 20,
+          "type": "array"
+        }
+      },
+      "required": [
+        "matrix_version",
+        "phase",
+        "contract_release",
+        "requirements"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/inventoryEntry"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "inventory_version": {
+          "const": "phase3-source-inventory-v1"
+        },
+        "source_root": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "inventory_version",
+        "entries",
+        "source_root"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "Phase 3 G3 Conformance Matrix and Source Inventory"
+}

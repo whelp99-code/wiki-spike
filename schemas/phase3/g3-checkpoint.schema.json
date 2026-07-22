@@ -1,0 +1,160 @@
+{
+  "$defs": {
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "ref": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://wiki-spike.local/schemas/phase3/g3-checkpoint.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "checkpoint": {
+      "additionalProperties": false,
+      "properties": {
+        "acceptance": {
+          "additionalProperties": false,
+          "properties": {
+            "clean_room_recovery": {
+              "const": "required"
+            },
+            "minimum_phase3_tests": {
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            },
+            "minimum_total_tests": {
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            },
+            "negative_fixture": {
+              "const": "required"
+            },
+            "package_smoke": {
+              "const": "required"
+            },
+            "warnings_as_errors": {
+              "const": "required"
+            }
+          },
+          "required": [
+            "minimum_phase3_tests",
+            "minimum_total_tests",
+            "warnings_as_errors",
+            "package_smoke",
+            "negative_fixture",
+            "clean_room_recovery"
+          ],
+          "type": "object"
+        },
+        "checkpoint_scope": {
+          "const": "phase3-core"
+        },
+        "contract_release": {
+          "const": "phase3-core-v1.0.0"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "g2_checkpoint_id": {
+          "$ref": "#/$defs/digest"
+        },
+        "lineage_anchor_commit": {
+          "pattern": "^[0-9a-f]{40}$",
+          "type": "string"
+        },
+        "public_api_sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "public_key_sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "repository": {
+          "const": "whelp99-code/wiki-spike"
+        },
+        "required_adr_paths": {
+          "items": {
+            "pattern": "^docs/adr/ADR-[0-9]{4}-.+\\.md$",
+            "type": "string"
+          },
+          "minItems": 10,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "required_gate_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "requirements_matrix_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "schema_version": {
+          "const": "phase3-g3-checkpoint-v1"
+        },
+        "signer_key_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "signing_domain": {
+          "const": "wiki.phase3.checkpoint.v1"
+        },
+        "source_inventory_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "source_root": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "schema_version",
+        "checkpoint_scope",
+        "contract_release",
+        "repository",
+        "lineage_anchor_commit",
+        "created_at",
+        "g2_checkpoint_id",
+        "source_root",
+        "source_inventory_ref",
+        "requirements_matrix_ref",
+        "public_api_sha256",
+        "required_gate_ids",
+        "required_adr_paths",
+        "acceptance",
+        "signer_key_id",
+        "public_key_sha256",
+        "signing_domain"
+      ],
+      "type": "object"
+    },
+    "checkpoint_id": {
+      "$ref": "#/$defs/digest"
+    }
+  },
+  "required": [
+    "checkpoint",
+    "checkpoint_id"
+  ],
+  "title": "Phase 3 G3 Checkpoint",
+  "type": "object"
+}

@@ -1,0 +1,50 @@
+name: phase3-g3-conformance
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, "phase3/p3-12-conformance-checkpoint"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase3-g3-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  g3:
+    name: G3 conformance checkpoint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install project and test tooling
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+
+      - name: Run G3 conformance gate
+        env:
+          PYTHONHASHSEED: "0"
+          G3_LOG_DIR: artifacts/conformance/phase3/G3/runs/${{ github.sha }}/logs
+          G3_EVIDENCE_OUT: artifacts/conformance/phase3/G3/runs/${{ github.sha }}/evidence.json
+        run: bash scripts/run_p3_12_gate.sh
+
+      - name: Upload G3 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase3-g3-conformance-${{ github.sha }}
+          path: artifacts/conformance/phase3/G3/runs/${{ github.sha }}/
+          if-no-files-found: error
+          retention-days: 90
