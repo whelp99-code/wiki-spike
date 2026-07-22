@@ -14,7 +14,6 @@ from wiki_spike.memory_core import (
     MemoryRecord,
     ProjectionContractError,
     ProjectionCoordinator,
-    ProjectionPointer,
     ProjectionRecord,
     ProjectionSpec,
     ProjectionStagingManifest,
@@ -66,14 +65,14 @@ class SelectiveFailureBuilder(DeterministicProjectionBuilder):
     def __init__(self, failures=()):
         self.failures = set(failures)
 
-    def build(self, spec, source_generation_id, records):
+    def build(self, spec, workspace_id, source_generation_id, records):
         if spec.name in self.failures:
             raise RuntimeError(f"injected failure: {spec.name}")
-        return super().build(spec, source_generation_id, records)
+        return super().build(spec, workspace_id, source_generation_id, records)
 
 
 class RequiredConflictStore(InMemoryProjectionPointerStore):
-    def publish_required(self, staging_manifest_digest, expected, artifacts):
+    def publish_required(self, workspace_id, staging_manifest_digest, expected, artifacts):
         return False
 
 
@@ -82,10 +81,12 @@ class OptionalConflictStore(InMemoryProjectionPointerStore):
         super().__init__()
         self.conflict_name = conflict_name
 
-    def publish_optional(self, staging_manifest_digest, expected, artifact):
+    def publish_optional(self, workspace_id, staging_manifest_digest, expected, artifact):
         if artifact.projection_name == self.conflict_name:
             return False
-        return super().publish_optional(staging_manifest_digest, expected, artifact)
+        return super().publish_optional(
+            workspace_id, staging_manifest_digest, expected, artifact
+        )
 
 
 def test_minimum_profile_requires_exactly_identity_and_chronology():
@@ -116,9 +117,9 @@ def test_required_projection_failure_advances_nothing():
     assert result.status == "retry_later"
     assert result.error_code == "required_projection_failed"
     assert result.failed_required == ("identity",)
-    assert store.current("identity") is None
-    assert store.current("chronology") is None
-    assert store.current("semantic") is None
+    assert store.current("ws-1", "identity") is None
+    assert store.current("ws-1", "chronology") is None
+    assert store.current("ws-1", "semantic") is None
 
 
 def test_optional_failure_advances_minimum_and_preserves_lkg():
@@ -130,16 +131,16 @@ def test_optional_failure_advances_minimum_and_preserves_lkg():
     core = coordinator(source=source, store=store, builder=builder, projections=specs("semantic"))
     first = core.rebuild("ws-1", "g1")
     assert first.status == "ok"
-    assert store.current("semantic").generation_id == "g1"
+    assert store.current("ws-1", "semantic").generation_id == "g1"
 
     builder.failures.add("semantic")
     second = core.rebuild("ws-1", "g2")
     assert second.status == "ok"
     assert second.failed_optional == ("semantic",)
-    assert store.current("identity").generation_id == "g2"
-    assert store.current("chronology").generation_id == "g2"
-    assert store.current("semantic").generation_id == "g1"
-    assert store.last_known_good("semantic").generation_id == "g1"
+    assert store.current("ws-1", "identity").generation_id == "g2"
+    assert store.current("ws-1", "chronology").generation_id == "g2"
+    assert store.current("ws-1", "semantic").generation_id == "g1"
+    assert store.last_known_good("ws-1", "semantic").generation_id == "g1"
 
 
 def test_required_pointer_conflict_has_no_partial_advance():
@@ -149,33 +150,36 @@ def test_required_pointer_conflict_has_no_partial_advance():
     result = coordinator(source=source, store=store, projections=specs()).rebuild("ws-1", "g1")
     assert result.status == "retry_later"
     assert result.error_code == "required_projection_pointer_conflict"
-    assert store.current("identity") is None
-    assert store.current("chronology") is None
+    assert store.current("ws-1", "identity") is None
+    assert store.current("ws-1", "chronology") is None
 
 
 def test_pointer_store_required_cas_checks_all_before_update():
     builder = DeterministicProjectionBuilder()
     store = InMemoryProjectionPointerStore()
     records = [record("a")]
-    g1_artifacts = tuple(builder.build(spec, "g1", records) for spec in specs())
+    g1_artifacts = tuple(builder.build(spec, "ws-1", "g1", records) for spec in specs())
     g1_manifest = ProjectionStagingManifest.create("ws-1", "g1", g1_artifacts)
     store.stage(g1_manifest)
     assert store.publish_required(
+        "ws-1",
         g1_manifest.manifest_digest,
         {"identity": None, "chronology": None},
         g1_artifacts,
     )
 
-    g2_artifacts = tuple(builder.build(spec, "g2", records) for spec in specs())
+    g2_artifacts = tuple(builder.build(spec, "ws-1", "g2", records) for spec in specs())
     g2_manifest = ProjectionStagingManifest.create("ws-1", "g2", g2_artifacts)
     store.stage(g2_manifest)
     wrong_expected = {
-        "identity": store.current("identity"),
+        "identity": store.current("ws-1", "identity"),
         "chronology": None,
     }
-    assert not store.publish_required(g2_manifest.manifest_digest, wrong_expected, g2_artifacts)
-    assert store.current("identity").generation_id == "g1"
-    assert store.current("chronology").generation_id == "g1"
+    assert not store.publish_required(
+        "ws-1", g2_manifest.manifest_digest, wrong_expected, g2_artifacts
+    )
+    assert store.current("ws-1", "identity").generation_id == "g1"
+    assert store.current("ws-1", "chronology").generation_id == "g1"
 
 
 def test_optional_pointer_conflict_does_not_rollback_minimum():
@@ -187,9 +191,9 @@ def test_optional_pointer_conflict_does_not_rollback_minimum():
     )
     assert result.status == "ok"
     assert result.failed_optional == ("semantic",)
-    assert store.current("identity").generation_id == "g1"
-    assert store.current("chronology").generation_id == "g1"
-    assert store.current("semantic") is None
+    assert store.current("ws-1", "identity").generation_id == "g1"
+    assert store.current("ws-1", "chronology").generation_id == "g1"
+    assert store.current("ws-1", "semantic") is None
 
 
 def test_optional_pointers_are_independent():
@@ -208,9 +212,24 @@ def test_optional_pointers_are_independent():
     builder.failures.add("graph")
     result = core.rebuild("ws-1", "g2")
     assert result.status == "ok"
-    assert store.current("semantic").generation_id == "g2"
-    assert store.current("graph").generation_id == "g1"
-    assert store.current("identity").generation_id == "g2"
+    assert store.current("ws-1", "semantic").generation_id == "g2"
+    assert store.current("ws-1", "graph").generation_id == "g1"
+    assert store.current("ws-1", "identity").generation_id == "g2"
+
+
+def test_workspace_pointers_and_empty_artifacts_are_isolated():
+    source = InMemoryProjectionSource()
+    source.put("ws-1", "g1", [])
+    source.put("ws-2", "g1", [])
+    store = InMemoryProjectionPointerStore()
+    core = coordinator(source=source, store=store, projections=specs())
+    assert core.rebuild("ws-1", "g1").status == "ok"
+    assert core.rebuild("ws-2", "g1").status == "ok"
+    ws1 = store.current("ws-1", "identity")
+    ws2 = store.current("ws-2", "identity")
+    assert ws1.workspace_id == "ws-1"
+    assert ws2.workspace_id == "ws-2"
+    assert ws1.artifact_digest != ws2.artifact_digest
 
 
 def test_rebuild_is_deterministic_across_input_and_spec_order():
@@ -237,22 +256,25 @@ def test_same_generation_rebuild_is_idempotent():
     store = InMemoryProjectionPointerStore()
     core = coordinator(source=source, store=store, projections=specs("semantic"))
     first = core.rebuild("ws-1", "g1")
-    pointers = {name: store.current(name) for name in ("identity", "chronology", "semantic")}
+    names = ("identity", "chronology", "semantic")
+    pointers = {name: store.current("ws-1", name) for name in names}
     second = core.rebuild("ws-1", "g1")
     assert second.status == "ok"
     assert second.staging_manifest_digest == first.staging_manifest_digest
-    assert {name: store.current(name) for name in pointers} == pointers
+    assert {name: store.current("ws-1", name) for name in names} == pointers
 
 
 def test_staging_manifest_rejects_unbound_artifact():
     builder = DeterministicProjectionBuilder()
     store = InMemoryProjectionPointerStore()
-    semantic = builder.build(ProjectionSpec("semantic", "v1", False), "g1", [record("a")])
+    semantic = builder.build(
+        ProjectionSpec("semantic", "v1", False), "ws-1", "g1", [record("a")]
+    )
     manifest = ProjectionStagingManifest.create("ws-1", "g1", [semantic])
     store.stage(manifest)
     tampered = replace(semantic, artifact_digest="0" * 64)
     with pytest.raises(ProjectionContractError):
-        store.publish_optional(manifest.manifest_digest, None, tampered)
+        store.publish_optional("ws-1", manifest.manifest_digest, None, tampered)
 
 
 def test_source_unavailable_returns_retry_later():
@@ -293,8 +315,8 @@ def test_empty_generation_builds_deterministic_minimum_profile():
         "ws-1", "g-empty"
     )
     assert result.status == "ok"
-    assert store.current("identity").generation_id == "g-empty"
-    assert store.current("chronology").generation_id == "g-empty"
+    assert store.current("ws-1", "identity").generation_id == "g-empty"
+    assert store.current("ws-1", "chronology").generation_id == "g-empty"
 
 
 def test_stale_projection_is_post_filtered_against_as_of_state():
