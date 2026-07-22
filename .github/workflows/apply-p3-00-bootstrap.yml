@@ -3,6 +3,8 @@ name: apply-p3-00-bootstrap
 on:
   push:
     branches: ["phase3/p3-00-preflight-ci-boundaries"]
+  pull_request:
+    branches: ["main"]
 
 permissions:
   contents: write
@@ -15,6 +17,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.head_ref || github.ref_name }}
       - name: Apply verified P3-00 patch
         shell: bash
         run: |
