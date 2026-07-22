@@ -1,0 +1,30 @@
+name: export-p4-02-source
+
+on:
+  push:
+    branches: ["tmp/p4-02-source-export"]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create exact main source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "e5c845934af11658e51b3d2c73a3d7e7fd071e70"
+          git archive --format=tar.gz --output=/tmp/wiki-spike-p4-01-main-source.tar.gz e5c845934af11658e51b3d2c73a3d7e7fd071e70
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: wiki-spike-p4-01-main-source
+          path: /tmp/wiki-spike-p4-01-main-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
