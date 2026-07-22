@@ -1,7 +1,412 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://wiki-spike.local/schemas/phase4/runtime-contracts.schema.json",
-  "title": "Phase 4 Runtime Contracts — P4-00 Closed Skeleton",
-  "description": "P4-00 publishes no Runtime request/result data contract. Every instance is rejected until P4-01 introduces versioned contracts.",
-  "not": {}
+  "title": "Phase 4 Runtime Contracts — P4-01",
+  "$defs": {
+    "canonicalValue": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/canonicalValue"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/canonicalValue"
+          }
+        }
+      ]
+    },
+    "hex64": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "canonicalInteger": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$"
+    },
+    "operationState": {
+      "enum": [
+        "received",
+        "planned",
+        "retrieved",
+        "generated",
+        "verified",
+        "proposed",
+        "completed",
+        "rejected",
+        "abstained",
+        "degraded",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "stageName": {
+      "enum": [
+        "planned",
+        "retrieved",
+        "generated",
+        "verified",
+        "proposed"
+      ]
+    },
+    "stageResultRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stage_result_ref_version",
+        "result_id",
+        "operation_id",
+        "stage_name",
+        "input_digest",
+        "content_digest",
+        "schema_id",
+        "created_at",
+        "provenance_refs"
+      ],
+      "properties": {
+        "stage_result_ref_version": {
+          "const": "phase4-stage-result-ref-v1"
+        },
+        "result_id": {
+          "$ref": "#/$defs/hex64"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/hex64"
+        },
+        "stage_name": {
+          "$ref": "#/$defs/stageName"
+        },
+        "input_digest": {
+          "$ref": "#/$defs/hex64"
+        },
+        "content_digest": {
+          "$ref": "#/$defs/hex64"
+        },
+        "schema_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "provenance_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "runtimeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime_request_version",
+        "request_id",
+        "operation_id",
+        "idempotency_key",
+        "workspace_id",
+        "actor_id",
+        "request_type",
+        "received_at",
+        "deadline_at",
+        "requested_generation_id",
+        "payload"
+      ],
+      "properties": {
+        "runtime_request_version": {
+          "const": "phase4-runtime-request-v1"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operation_id": {
+          "$ref": "#/$defs/hex64"
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspace_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actor_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "request_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "received_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "deadline_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "requested_generation_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/canonicalValue"
+          }
+        }
+      }
+    },
+    "cancellationSignal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cancellation_signal_version",
+        "cancellation_id",
+        "workspace_id",
+        "actor_id",
+        "operation_id",
+        "requested_at",
+        "reason_code"
+      ],
+      "properties": {
+        "cancellation_signal_version": {
+          "const": "phase4-cancellation-signal-v1"
+        },
+        "cancellation_id": {
+          "$ref": "#/$defs/hex64"
+        },
+        "workspace_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operation_id": {
+          "$ref": "#/$defs/hex64"
+        },
+        "requested_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "reason_code": {
+          "$ref": "#/$defs/safeCode"
+        },
+        "actor_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "runtimeStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime_status_version",
+        "operation_id",
+        "workspace_id",
+        "state",
+        "current_stage",
+        "attempt",
+        "revision",
+        "deadline_at",
+        "cancellation_id",
+        "stage_result_refs",
+        "updated_at",
+        "error_code"
+      ],
+      "properties": {
+        "runtime_status_version": {
+          "const": "phase4-runtime-status-v1"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/hex64"
+        },
+        "workspace_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "$ref": "#/$defs/operationState"
+        },
+        "current_stage": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/stageName"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attempt": {
+          "$ref": "#/$defs/canonicalInteger"
+        },
+        "revision": {
+          "$ref": "#/$defs/canonicalInteger"
+        },
+        "deadline_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "cancellation_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/hex64"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stage_result_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stageResultRef"
+          },
+          "maxItems": 5
+        },
+        "updated_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "error_code": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/safeCode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "runtimeResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime_response_version",
+        "request_id",
+        "operation_id",
+        "workspace_id",
+        "status",
+        "state",
+        "requested_generation_id",
+        "stage_result_refs",
+        "result_ref",
+        "retryable",
+        "error_code",
+        "updated_at"
+      ],
+      "properties": {
+        "runtime_response_version": {
+          "const": "phase4-runtime-response-v1"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operation_id": {
+          "$ref": "#/$defs/hex64"
+        },
+        "workspace_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "rejected",
+            "abstained",
+            "degraded",
+            "failed",
+            "cancelled",
+            "retry_later"
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/operationState"
+        },
+        "requested_generation_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "stage_result_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stageResultRef"
+          },
+          "maxItems": 5
+        },
+        "result_ref": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/stageResultRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "error_code": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/safeCode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updated_at": {
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
+    "safeCode": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.-]{0,127}$"
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/runtimeRequest"
+    },
+    {
+      "$ref": "#/$defs/cancellationSignal"
+    },
+    {
+      "$ref": "#/$defs/stageResultRef"
+    },
+    {
+      "$ref": "#/$defs/runtimeStatus"
+    },
+    {
+      "$ref": "#/$defs/runtimeResponse"
+    }
+  ]
 }
