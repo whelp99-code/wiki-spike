@@ -1,0 +1,31 @@
+name: export-p3-11-bundle
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create complete Git bundle
+        run: |
+          set -euo pipefail
+          git bundle create wiki-spike.bundle --all
+          git bundle verify wiki-spike.bundle
+          sha256sum wiki-spike.bundle > wiki-spike.bundle.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wiki-spike-p3-11-git-bundle
+          path: |
+            wiki-spike.bundle
+            wiki-spike.bundle.sha256
+          if-no-files-found: error
+          retention-days: 1
