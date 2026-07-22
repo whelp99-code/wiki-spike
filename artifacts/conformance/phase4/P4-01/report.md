@@ -52,5 +52,6 @@ its files returns Runtime to the P4-00 closed contract skeleton.
 ## Completion semantics
 
 P4-01 is complete only after full regression and all three required CI checks pass on
-the PR. It does not create G4 and does not authorize Phase 5 work. P4-02 may begin only
-after P4-01 is merged.
+the exact PR head. CI evidence from an earlier bootstrap or superseded commit is not
+sufficient. It does not create G4 and does not authorize Phase 5 work. P4-02 may begin
+only after P4-01 is merged.
