@@ -35,7 +35,7 @@ jobs:
             exit 0
           fi
 
-          cat "$parts"/* > /tmp/p3-11.tar.gz.b64
+          cat "$parts/00" "$parts/01" "$parts/02" "$parts/03" > /tmp/p3-11.tar.gz.b64
           base64 --decode /tmp/p3-11.tar.gz.b64 > /tmp/p3-11.tar.gz
           echo "96d9ec37a83da64a56b5375d35456380eee13798a5d099199dbceff7e7b6177e  /tmp/p3-11.tar.gz" | sha256sum --check --strict
           tar -xzf /tmp/p3-11.tar.gz -C .
