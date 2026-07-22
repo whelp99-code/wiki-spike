@@ -9,6 +9,9 @@ on:
 permissions:
   contents: write
 
+env:
+  BOOTSTRAP_STATUS: /tmp/p4-00-bootstrap-status.txt
+
 jobs:
   apply:
     runs-on: ubuntu-latest
@@ -24,21 +27,42 @@ jobs:
           EXPECTED_MAIN: fa7523344008c8c5bfbcc6aca790f297524f33dc
           BRANCH: phase4/p4-00-contract-pin
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
+          : > "$BOOTSTRAP_STATUS"
+          trap 'rc=$?; echo "FAIL line=$LINENO rc=$rc command=$BASH_COMMAND" >> "$BOOTSTRAP_STATUS"; exit $rc' ERR
+          echo "START event=${GITHUB_EVENT_NAME} sha=${GITHUB_SHA}" >> "$BOOTSTRAP_STATUS"
           parts="bootstrap/p4-00.parts"
           ready="bootstrap/p4-00.ready"
           if [[ ! -f "$ready" ]]; then
-            echo "Patch payload is not marked ready; nothing to apply."
+            echo "NO_READY" >> "$BOOTSTRAP_STATUS"
             exit 0
           fi
           test -d "$parts"
-          test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN"
+          echo "PARTS count=$(find "$parts" -maxdepth 1 -type f | wc -l)" >> "$BOOTSTRAP_STATUS"
+          actual_main="$(git rev-parse origin/main)"
+          echo "MAIN $actual_main" >> "$BOOTSTRAP_STATUS"
+          test "$actual_main" = "$EXPECTED_MAIN"
           cat "$parts"/* | base64 --decode | gzip --decompress > /tmp/p4-00.patch
-          test "$(sha256sum /tmp/p4-00.patch | awk '{print $1}')" = "52ce1316f920ac9ee6e53bb6d3c6bd8b2b4592dccc45e3f5caddc2af33c92b54"
+          actual_patch="$(sha256sum /tmp/p4-00.patch | awk '{print $1}')"
+          echo "PATCH $actual_patch bytes=$(wc -c </tmp/p4-00.patch)" >> "$BOOTSTRAP_STATUS"
+          test "$actual_patch" = "52ce1316f920ac9ee6e53bb6d3c6bd8b2b4592dccc45e3f5caddc2af33c92b54"
           branch_sha="$(git rev-parse "origin/$BRANCH")"
+          echo "BRANCH_BEFORE $branch_sha" >> "$BOOTSTRAP_STATUS"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git reset --hard origin/main
+          echo "RESET $(git rev-parse HEAD)" >> "$BOOTSTRAP_STATUS"
           git am --3way /tmp/p4-00.patch
+          product_sha="$(git rev-parse HEAD)"
+          echo "APPLIED $product_sha count=$(git rev-list --count origin/main..HEAD)" >> "$BOOTSTRAP_STATUS"
           test "$(git rev-list --count origin/main..HEAD)" = "1"
           git push --force-with-lease="refs/heads/$BRANCH:$branch_sha" origin "HEAD:refs/heads/$BRANCH"
+          echo "PUSHED $product_sha" >> "$BOOTSTRAP_STATUS"
+      - name: Upload bootstrap diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p4-00-bootstrap-diagnostics-${{ github.run_id }}
+          path: /tmp/p4-00-bootstrap-status.txt
+          if-no-files-found: warn
+          retention-days: 1
