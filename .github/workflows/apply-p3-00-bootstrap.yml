@@ -18,7 +18,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.head_ref || github.ref_name }}
-      - name: Apply verified P3-00 patch
+      - name: Apply verified P3-00 code patch
         shell: bash
         run: |
           set -euo pipefail
@@ -30,8 +30,13 @@ jobs:
           cat "$parts"/* | base64 --decode | gzip --decompress > /tmp/p3-00.patch
           git apply --check /tmp/p3-00.patch
           git apply --index /tmp/p3-00.patch
-          git rm -r "$parts" .github/workflows/apply-p3-00-bootstrap.yml
+          # GITHUB_TOKEN cannot safely create/update workflow files. Leave the
+          # bootstrap workflow unchanged and let the GitHub connector install
+          # the final preflight workflow after this code-only push succeeds.
+          git reset -- .github/workflows/phase3-preflight.yml
+          rm -f .github/workflows/phase3-preflight.yml
+          git rm -r "$parts"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "P3-00: add preflight CI, G2 checkpoint, and boundary gates"
+          git commit -m "P3-00: add G2 checkpoint and architecture boundary gates"
           git push origin HEAD:phase3/p3-00-preflight-ci-boundaries
