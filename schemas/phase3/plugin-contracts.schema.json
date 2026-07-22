@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/phase3/plugin-contracts.schema.json",
+  "title": "Phase 3 Plugin Contracts",
+  "$defs": {
+    "canonicalValue": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "boolean"},
+        {"type": "string"},
+        {"type": "array", "items": {"$ref": "#/$defs/canonicalValue"}},
+        {"type": "object", "additionalProperties": {"$ref": "#/$defs/canonicalValue"}}
+      ]
+    },
+    "manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plugin_schema_version", "manifest_id", "plugin_id", "plugin_version",
+        "runner_mode", "allowed_operations", "required_capabilities", "egress_class",
+        "max_request_bytes", "max_response_bytes", "timeout_ms",
+        "max_calls_per_operation", "output_schema_id"
+      ],
+      "properties": {
+        "plugin_schema_version": {"const": "phase3-plugin-manifest-v1"},
+        "manifest_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "plugin_id": {"type": "string", "minLength": 1},
+        "plugin_version": {"type": "string", "minLength": 1},
+        "runner_mode": {"const": "out_of_process"},
+        "allowed_operations": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "required_capabilities": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "egress_class": {"enum": ["none", "public", "internal", "private", "secret"]},
+        "max_request_bytes": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+        "max_response_bytes": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+        "timeout_ms": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+        "max_calls_per_operation": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+        "output_schema_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plugin_request_version", "request_id", "plugin_id", "plugin_version",
+        "workspace_id", "actor_id", "operation_id", "operation_type",
+        "capability_token_ref", "sensitivity", "deadline_at", "correlation_id", "payload"
+      ],
+      "properties": {
+        "plugin_request_version": {"const": "phase3-plugin-request-v1"},
+        "request_id": {"type": "string", "minLength": 1},
+        "plugin_id": {"type": "string", "minLength": 1},
+        "plugin_version": {"type": "string", "minLength": 1},
+        "workspace_id": {"type": "string", "minLength": 1},
+        "actor_id": {"type": "string", "minLength": 1},
+        "operation_id": {"type": "string", "minLength": 1},
+        "operation_type": {"type": "string", "minLength": 1},
+        "capability_token_ref": {"type": "string", "minLength": 1},
+        "sensitivity": {"enum": ["public", "internal", "private", "secret"]},
+        "deadline_at": {"type": "string", "minLength": 1},
+        "correlation_id": {"type": "string", "minLength": 1},
+        "payload": {"type": "object", "additionalProperties": {"$ref": "#/$defs/canonicalValue"}}
+      }
+    },
+    "response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plugin_response_version", "request_id", "plugin_id", "plugin_version",
+        "output_schema_id", "output"
+      ],
+      "properties": {
+        "plugin_response_version": {"const": "phase3-plugin-response-v1"},
+        "request_id": {"type": "string", "minLength": 1},
+        "plugin_id": {"type": "string", "minLength": 1},
+        "plugin_version": {"type": "string", "minLength": 1},
+        "output_schema_id": {"type": "string", "minLength": 1},
+        "output": {"type": "object", "additionalProperties": {"$ref": "#/$defs/canonicalValue"}}
+      }
+    }
+  },
+  "oneOf": [
+    {"$ref": "#/$defs/manifest"},
+    {"$ref": "#/$defs/request"},
+    {"$ref": "#/$defs/response"}
+  ]
+}
