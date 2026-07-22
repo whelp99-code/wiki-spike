@@ -8,12 +8,16 @@ version = "0.0.3a0"
 requires-python = ">=3.12"
 dependencies = ["cryptography>=42"]
 
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+filterwarnings = ["error"]
 
 [project.scripts]
 wiki = "wiki_spike.cli:main"
