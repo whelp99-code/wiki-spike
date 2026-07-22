@@ -3,6 +3,8 @@ name: export-p3-09-source
 on:
   push:
     branches: ["tmp/p3-09-source-export"]
+  pull_request:
+    branches: ["main"]
 
 permissions:
   contents: read
