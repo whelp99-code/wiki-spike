@@ -22,7 +22,7 @@ plugins, recovery, or G3.
 | P3-F-020 machine evidence foundation | G2 checkpoint, CI workflow, evidence writer | PASS for P3-00 scope |
 | G2 input | checkpoint `8eeb54bfe307ced8b3ce77bc642d2beea560441129e09a78dbc4d5f659dd012a` | PASS |
 | Existing regression | 116 baseline + P3-00 adversarial tests | PASS locally |
-| Required GitHub check | `phase3-preflight / P3-00 preflight` | CONDITIONAL — repository setting is external |
+| Required GitHub check | `phase3-preflight / P3-00 preflight` | PASS — required on `main` with strict up-to-date checks |
 
 ## Security and privacy
 

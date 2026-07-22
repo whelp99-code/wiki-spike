@@ -24,7 +24,9 @@ FORBIDDEN_WHEEL_NAMES = {
 FORBIDDEN_WHEEL_SUFFIXES = {".key", ".sqlite", ".sqlite3"}
 
 
-def _run(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+def _run(
+    command: list[str], *, cwd: Path, check: bool = True
+) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env.pop("PYTHONPATH", None)
     env.pop("PYTHONHOME", None)
@@ -37,12 +39,19 @@ def _run(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
         stderr=subprocess.PIPE,
         check=False,
     )
-    if result.returncode != 0:
+    if check and result.returncode != 0:
         raise PreflightError(
             f"command failed ({result.returncode}): {' '.join(command)}\n"
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
     return result
+
+
+def _ensure_pip(*, python: Path, cwd: Path) -> None:
+    present = _run([str(python), "-m", "pip", "--version"], cwd=cwd, check=False)
+    if present.returncode == 0:
+        return
+    _run([str(python), "-m", "ensurepip", "--upgrade"], cwd=cwd)
 
 
 def _inspect_wheel(wheel: Path) -> list[str]:
@@ -62,13 +71,15 @@ def _inspect_wheel(wheel: Path) -> list[str]:
 
 
 def package_smoke(repo: Path) -> dict[str, str]:
+    build_python = Path(__import__("sys").executable)
+    _ensure_pip(python=build_python, cwd=repo)
     with tempfile.TemporaryDirectory(prefix="wiki-pkg-smoke-") as temp_dir:
         temp = Path(temp_dir)
         dist = temp / "dist"
         dist.mkdir()
         _run(
             [
-                os.fspath(Path(__import__("sys").executable)),
+                os.fspath(build_python),
                 "-m",
                 "pip",
                 "wheel",
@@ -99,7 +110,8 @@ def package_smoke(repo: Path) -> dict[str, str]:
         else:
             python = venv / "bin" / "python"
             wiki = venv / "bin" / "wiki"
-        _run([str(python), "-m", "pip", "install", "--force-reinstall", "--no-deps", str(wheel)], cwd=repo)
+        _ensure_pip(python=python, cwd=repo)
+        _run([str(python), "-m", "pip", "install", "--force-reinstall", str(wheel)], cwd=repo)
         _run([str(python), "-c", "import wiki_spike; print(wiki_spike.__name__)"], cwd=repo)
         help_result = _run([str(wiki), "--help"], cwd=repo)
         if "usage" not in help_result.stdout.lower():
