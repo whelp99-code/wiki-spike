@@ -9,8 +9,12 @@ mkdir -p "$LOG_DIR" "$(dirname "$EVIDENCE_OUT")"
 
 python scripts/verify_phase2_checkpoint.py >"$LOG_DIR/checkpoint.log" 2>&1
 cat "$LOG_DIR/checkpoint.log"
+python scripts/verify_phase3_contract_pin.py --json >"$LOG_DIR/phase3-pin.json" 2>&1
+cat "$LOG_DIR/phase3-pin.json"
 python scripts/check_architecture_boundaries.py >"$LOG_DIR/boundaries.log" 2>&1
 cat "$LOG_DIR/boundaries.log"
+python scripts/check_runtime_boundaries.py --json >"$LOG_DIR/runtime-boundaries.json" 2>&1
+cat "$LOG_DIR/runtime-boundaries.json"
 python scripts/scan_secrets.py >"$LOG_DIR/secrets.log" 2>&1
 cat "$LOG_DIR/secrets.log"
 python -m pytest -W error -q >"$LOG_DIR/pytest.log" 2>&1

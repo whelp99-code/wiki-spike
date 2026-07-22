@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/phase4/runtime-boundaries.schema.json",
+  "title": "Phase 4 Runtime Import Boundary Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["policy", "policy_id"],
+  "properties": {
+    "policy_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "runtime_root", "allowed_wiki_module_prefixes"],
+      "properties": {
+        "schema_version": {"const": "phase4-runtime-boundaries-v1"},
+        "runtime_root": {"const": "src/wiki_spike/memory_runtime"},
+        "allowed_wiki_module_prefixes": {
+          "type": "array", "minItems": 3, "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

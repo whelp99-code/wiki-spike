@@ -29,7 +29,17 @@ def _read_pass_log(path: Path, marker: str, repo: Path) -> dict[str, str]:
 
 def build_evidence(repo: Path, log_dir: Path) -> dict:
     checkpoint = _read_pass_log(log_dir / "checkpoint.log", "PASS: Phase 2 checkpoint", repo)
+    phase3_pin_path = log_dir / "phase3-pin.json"
+    phase3_pin = json.loads(phase3_pin_path.read_text("utf-8"))
+    if phase3_pin.get("status") != "pass":
+        raise PreflightError("Phase 3 contract pin did not pass")
+    phase3_pin_ref = {"path": _relative(phase3_pin_path, repo), "sha256": sha256_file(phase3_pin_path), "status": "pass", "pin_id": str(phase3_pin["pin_id"])}
     boundaries = _read_pass_log(log_dir / "boundaries.log", "PASS: architecture boundaries", repo)
+    runtime_path = log_dir / "runtime-boundaries.json"
+    runtime = json.loads(runtime_path.read_text("utf-8"))
+    if runtime.get("status") != "pass":
+        raise PreflightError("Runtime boundary gate did not pass")
+    runtime_ref = {"path": _relative(runtime_path, repo), "sha256": sha256_file(runtime_path), "status": "pass"}
     secrets = _read_pass_log(log_dir / "secrets.log", "PASS: no tracked secrets detected", repo)
     pytest_path = log_dir / "pytest.log"
     pytest_text = pytest_path.read_text("utf-8")
@@ -47,6 +57,8 @@ def build_evidence(repo: Path, log_dir: Path) -> dict:
     return {
         "commands": {
             "architecture_boundaries": boundaries,
+            "phase3_contract_pin": phase3_pin_ref,
+            "runtime_boundaries": runtime_ref,
             "package_smoke": {
                 "path": _relative(package_path, repo),
                 "sha256": sha256_file(package_path),

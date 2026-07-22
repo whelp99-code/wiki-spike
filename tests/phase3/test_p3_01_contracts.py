@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -96,7 +97,9 @@ forbidden = {'wiki_spike.cas','wiki_spike.controlplane','wiki_spike.generation',
 loaded = forbidden.intersection(sys.modules)
 assert not loaded, loaded
 """
-    subprocess.run([sys.executable, "-c", code], check=True)
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "src")
+    subprocess.run([sys.executable, "-c", code], check=True, env=env)
 
 
 def test_protocol_is_runtime_checkable_without_adapter_dependency():
