@@ -1,0 +1,34 @@
+name: export-p4-00-source
+
+on:
+  push:
+    branches: ["tmp/p4-00-source-export"]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar \
+            --exclude=.git \
+            --exclude='.pytest_cache' \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            -czf /tmp/wiki-spike-g3-main-source.tar.gz .
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: wiki-spike-g3-main-source
+          path: /tmp/wiki-spike-g3-main-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
