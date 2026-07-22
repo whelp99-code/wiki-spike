@@ -19,7 +19,7 @@ class Sensitivity(str, Enum):
             Sensitivity.PUBLIC: 0,
             Sensitivity.INTERNAL: 1,
             Sensitivity.PRIVATE: 2,
-            Sensitivity.SECRET: 3,
+            Sensitivity.SECRET_DATA: 3,
         }[self]
 
 
