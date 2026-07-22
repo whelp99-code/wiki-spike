@@ -9,6 +9,7 @@ from .command_gateway import (
 )
 from .contracts import (
     CONTRACT_VERSION,
+    EVENT_SCHEMA_VERSION,
     AcceptedChangeSet,
     CommandEnvelope,
     CoreResult,
@@ -21,6 +22,20 @@ from .errors import (
     InvalidContractValue,
     UnknownContractField,
     UnsupportedContractVersion,
+)
+from .events import (
+    ConsumerEffect,
+    EventCheckpoint,
+    EventConsumeResult,
+    EventConsumerStore,
+    EventHandler,
+    EventReplayCoordinator,
+    EventReplayLog,
+    InMemoryEventConsumerStore,
+    InMemoryEventLog,
+    OperationalEventConsumer,
+    OperationalEventFactory,
+    OutboxEventRecord,
 )
 from .policy import (
     CapabilityToken,
@@ -66,6 +81,7 @@ from .query_gateway import (
 
 __all__ = [
     "CONTRACT_VERSION",
+    "EVENT_SCHEMA_VERSION",
     "AcceptedChangeSet",
     "CommandEnvelope",
     "CoreResult",
@@ -76,6 +92,18 @@ __all__ = [
     "InvalidContractValue",
     "UnknownContractField",
     "UnsupportedContractVersion",
+    "ConsumerEffect",
+    "EventCheckpoint",
+    "EventConsumeResult",
+    "EventConsumerStore",
+    "EventHandler",
+    "EventReplayCoordinator",
+    "EventReplayLog",
+    "InMemoryEventConsumerStore",
+    "InMemoryEventLog",
+    "OperationalEventConsumer",
+    "OperationalEventFactory",
+    "OutboxEventRecord",
     "CapabilityToken",
     "PolicyDecision",
     "PolicyEngine",
