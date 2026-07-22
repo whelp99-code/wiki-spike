@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -23,17 +24,18 @@ def test_package_build_install_and_console_smoke():
 def test_workflow_runs_full_history_and_preflight():
     text = (root() / ".github/workflows/phase3-preflight.yml").read_text("utf-8")
     assert "fetch-depth: 0" in text
-    assert "python-version: \"3.12\"" in text
+    assert 'python-version: "3.12"' in text
     assert "bash scripts/run_p3_00_preflight.sh" in text
     assert "actions/upload-artifact@v4" in text
     assert "P3_00_LOG_DIR: artifacts/conformance/phase3/${{ github.sha }}/logs" in text
     assert "path: artifacts/conformance/phase3/${{ github.sha }}/" in text
 
 
-def test_pytest_warnings_are_errors_by_default():
-    text = (root() / "pyproject.toml").read_text("utf-8")
-    assert 'filterwarnings = ["error"]' in text
-    assert 'dev = ["pytest>=8"]' in text
+def test_pytest_and_build_tooling_contracts_are_declared():
+    config = tomllib.loads((root() / "pyproject.toml").read_text("utf-8"))
+    dev = set(config["project"]["optional-dependencies"]["dev"])
+    assert {"pytest>=8", "setuptools>=68", "wheel>=0.43"} <= dev
+    assert config["tool"]["pytest"]["ini_options"]["filterwarnings"] == ["error"]
 
 
 def test_public_checkpoint_key_contains_no_private_material():
