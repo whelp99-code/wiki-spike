@@ -105,7 +105,7 @@ def test_derived_sensitivity_is_monotonic_maximum():
 def test_declassification_requires_capability_and_reason():
     engine = PolicyEngine()
     denied_action = engine.authorize_declassification(
-        token(actions=frozenset({"memory.write"})),
+        token(actions=frozenset({"memory.write"}), max_sensitivity=Sensitivity.SECRET),
         request(action="memory.write", object_sensitivity=Sensitivity.SECRET),
         Sensitivity.SECRET,
         Sensitivity.INTERNAL,
