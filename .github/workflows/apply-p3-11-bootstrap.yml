@@ -1,0 +1,43 @@
+name: apply-p3-11-bootstrap
+
+on:
+  push:
+    branches: ["phase3/p3-11-operability-privacy"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-p3-11-bootstrap
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: phase3/p3-11-operability-privacy
+      - name: Apply verified P3-11 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          parts="bootstrap/p3-11.parts"
+          ready="bootstrap/p3-11.ready"
+          if [[ ! -f "$ready" ]]; then
+            echo "P3-11 payload not ready; nothing to apply."
+            exit 0
+          fi
+          test -f "$parts/part-00"
+          test -f "$parts/part-01"
+          cat "$parts"/part-* | base64 --decode | gzip --decompress > /tmp/p3-11.patch
+          echo "937dc40080b9ee4e35af1f3158edfa8f1620f7867935e5e6e4f52b4c8c620fa2  /tmp/p3-11.patch" | sha256sum --check -
+          git apply --check /tmp/p3-11.patch
+          git apply --index /tmp/p3-11.patch
+          git rm -r "$parts" "$ready"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "P3-11: add privacy-safe operability and bounded export requests"
+          git push origin HEAD:phase3/p3-11-operability-privacy
