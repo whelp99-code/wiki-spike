@@ -18,11 +18,24 @@ jobs:
     name: G3 conformance checkpoint
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      G3_RELEASE_TAG: phase3-core-v1.0.0
+      G3_RELEASE_COMMIT: fa7523344008c8c5bfbcc6aca790f297524f33dc
     steps:
-      - name: Checkout full history
+      - name: Checkout immutable G3 release
         uses: actions/checkout@v4
         with:
+          ref: phase3-core-v1.0.0
           fetch-depth: 0
+          fetch-tags: true
+
+      - name: Verify immutable tag binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git cat-file -t refs/tags/$G3_RELEASE_TAG)" = "tag"
+          test "$(git rev-list -n 1 refs/tags/$G3_RELEASE_TAG)" = "$G3_RELEASE_COMMIT"
+          test "$(git rev-parse HEAD)" = "$G3_RELEASE_COMMIT"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -30,10 +43,10 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install project and test tooling
+      - name: Install frozen Phase 3 project and test tooling
         run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
 
-      - name: Run G3 conformance gate
+      - name: Run immutable G3 conformance gate
         env:
           PYTHONHASHSEED: "0"
           G3_LOG_DIR: artifacts/conformance/phase3/G3/runs/${{ github.sha }}/logs
