@@ -1,0 +1,57 @@
+name: create-g3-release-tag
+
+on:
+  push:
+    branches: ["tmp/create-g3-release-tag"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: Create or verify immutable G3 release tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPECTED_COMMIT: fa7523344008c8c5bfbcc6aca790f297524f33dc
+      RELEASE_TAG: phase3-core-v1.0.0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Verify signed G3 checkpoint at exact merge commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --tags
+          actual_main="$(git rev-parse origin/main)"
+          test "$actual_main" = "$EXPECTED_COMMIT"
+          git checkout --detach "$EXPECTED_COMMIT"
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python scripts/verify_g3_checkpoint.py
+          python scripts/p3_12_conformance.py --verify-only
+      - name: Create or verify immutable release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            git fetch origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            actual="$(git rev-list -n 1 "$RELEASE_TAG")"
+            test "$actual" = "$EXPECTED_COMMIT"
+            echo "PASS: existing tag points to $actual"
+          else
+            test "${{ github.event_name }}" = "push"
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$RELEASE_TAG" "$EXPECTED_COMMIT" \
+              -m "Phase 3 Memory OS Core v1.0.0 — signed G3 checkpoint"
+            git push origin "refs/tags/$RELEASE_TAG"
+            echo "PASS: created $RELEASE_TAG at $EXPECTED_COMMIT"
+          fi
