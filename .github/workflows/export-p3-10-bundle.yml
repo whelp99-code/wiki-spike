@@ -1,0 +1,31 @@
+name: export-p3-10-bundle
+
+on:
+  push:
+    branches: ["tmp/p3-10-git-bundle"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create full Git bundle
+        run: |
+          set -euo pipefail
+          git fetch --all --tags --prune
+          git bundle create /tmp/wiki-spike.bundle --all
+          git bundle verify /tmp/wiki-spike.bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wiki-spike-full-git-bundle
+          path: /tmp/wiki-spike.bundle
+          if-no-files-found: error
+          retention-days: 1
