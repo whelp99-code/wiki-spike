@@ -1,4 +1,12 @@
 """Public Phase 3 core contract surface."""
+from .command_gateway import (
+    CapabilityResolver,
+    CommandHandler,
+    GenerationReader,
+    IdempotencyRecord,
+    InMemoryIdempotencyStore,
+    MemoryCommandGateway,
+)
 from .contracts import (
     CONTRACT_VERSION,
     AcceptedChangeSet,
@@ -51,6 +59,12 @@ __all__ = [
     "ProvenanceMode",
     "Sensitivity",
     "derived_sensitivity",
+    "CapabilityResolver",
+    "CommandHandler",
+    "GenerationReader",
+    "IdempotencyRecord",
+    "InMemoryIdempotencyStore",
+    "MemoryCommandGateway",
     "ChangeSetPublicationPort",
     "MemoryCommandPort",
     "MemoryQueryPort",
