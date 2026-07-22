@@ -1,8 +1,9 @@
 """Deterministic projection coordination with independent, generation-pinned pointers.
 
-This module is deliberately storage-independent.  It coordinates projection builders
+This module is deliberately storage-independent. It coordinates projection builders
 through Protocols and keeps the minimum Core profile (identity + chronology) atomic,
-while optional projections retain independent last-known-good pointers.
+while optional projections retain independent last-known-good pointers. Every artifact
+and pointer is scoped by workspace.
 """
 from __future__ import annotations
 
@@ -63,6 +64,7 @@ class ProjectionSpec:
 @dataclass(frozen=True)
 class ProjectionArtifact:
     projection_name: str
+    workspace_id: str
     source_generation_id: str
     schema_version: str
     required: bool
@@ -73,6 +75,7 @@ class ProjectionArtifact:
     def to_mapping(self) -> dict[str, JsonValue]:
         return {
             "projection_name": self.projection_name,
+            "workspace_id": self.workspace_id,
             "source_generation_id": self.source_generation_id,
             "schema_version": self.schema_version,
             "required": self.required,
@@ -102,6 +105,8 @@ class ProjectionStagingManifest:
             raise ProjectionContractError("workspace, generation, and artifacts are required")
         if len({item.projection_name for item in ordered}) != len(ordered):
             raise ProjectionContractError("duplicate projection artifact")
+        if any(item.workspace_id != workspace_id for item in ordered):
+            raise ProjectionContractError("artifact workspace mismatch")
         if any(item.source_generation_id != source_generation_id for item in ordered):
             raise ProjectionContractError("artifact generation mismatch")
         body = {
@@ -132,6 +137,7 @@ class ProjectionStagingManifest:
 @dataclass(frozen=True)
 class ProjectionPointer:
     projection_name: str
+    workspace_id: str
     generation_id: str
     artifact_digest: str
     staging_manifest_digest: str
@@ -156,20 +162,24 @@ class ProjectionBuilder(Protocol):
     def build(
         self,
         spec: ProjectionSpec,
+        workspace_id: str,
         source_generation_id: str,
         records: Sequence[ProjectionRecord],
     ) -> ProjectionArtifact: ...
 
 
 class ProjectionPointerStore(Protocol):
-    def current(self, projection_name: str) -> ProjectionPointer | None: ...
+    def current(self, workspace_id: str, projection_name: str) -> ProjectionPointer | None: ...
 
-    def last_known_good(self, projection_name: str) -> ProjectionPointer | None: ...
+    def last_known_good(
+        self, workspace_id: str, projection_name: str
+    ) -> ProjectionPointer | None: ...
 
     def stage(self, manifest: ProjectionStagingManifest) -> None: ...
 
     def publish_required(
         self,
+        workspace_id: str,
         staging_manifest_digest: str,
         expected: Mapping[str, ProjectionPointer | None],
         artifacts: Sequence[ProjectionArtifact],
@@ -177,6 +187,7 @@ class ProjectionPointerStore(Protocol):
 
     def publish_optional(
         self,
+        workspace_id: str,
         staging_manifest_digest: str,
         expected: ProjectionPointer | None,
         artifact: ProjectionArtifact,
@@ -210,11 +221,14 @@ class DeterministicProjectionBuilder:
     def build(
         self,
         spec: ProjectionSpec,
+        workspace_id: str,
         source_generation_id: str,
         records: Sequence[ProjectionRecord],
     ) -> ProjectionArtifact:
-        if not source_generation_id:
-            raise ProjectionContractError("source_generation_id is required")
+        if not workspace_id or not source_generation_id:
+            raise ProjectionContractError("workspace_id and source_generation_id are required")
+        if any(item.workspace_id != workspace_id for item in records):
+            raise ProjectionContractError("record workspace mismatch")
         if spec.name == "identity":
             projected = [self._identity(item) for item in records]
             projected.sort(key=lambda item: (str(item["object_id"]), str(item["revision_id"])))
@@ -243,10 +257,11 @@ class DeterministicProjectionBuilder:
             ]
             projected.sort(key=lambda item: (str(item["object_id"]), str(item["revision_id"])))
 
-        records_body = {"records": projected}
+        records_body = {"workspace_id": workspace_id, "records": projected}
         records_root = sha256(canonical_bytes(records_body)).hexdigest()
         artifact_body = {
             "projection_name": spec.name,
+            "workspace_id": workspace_id,
             "source_generation_id": source_generation_id,
             "schema_version": spec.schema_version,
             "required": spec.required,
@@ -256,6 +271,7 @@ class DeterministicProjectionBuilder:
         artifact_digest = sha256(canonical_bytes(artifact_body)).hexdigest()
         return ProjectionArtifact(
             spec.name,
+            workspace_id,
             source_generation_id,
             spec.schema_version,
             spec.required,
@@ -287,21 +303,27 @@ class InMemoryProjectionSource:
 
 
 class InMemoryProjectionPointerStore:
-    """Atomic minimum-profile CAS plus independent optional pointers."""
+    """Atomic minimum-profile CAS plus independent optional pointers per workspace."""
 
     def __init__(self) -> None:
-        self._pointers: dict[str, ProjectionPointer] = {}
-        self._lkg: dict[str, ProjectionPointer] = {}
+        self._pointers: dict[tuple[str, str], ProjectionPointer] = {}
+        self._lkg: dict[tuple[str, str], ProjectionPointer] = {}
         self._staged: dict[str, ProjectionStagingManifest] = {}
         self._lock = RLock()
 
-    def current(self, projection_name: str) -> ProjectionPointer | None:
-        with self._lock:
-            return self._pointers.get(projection_name)
+    @staticmethod
+    def _key(workspace_id: str, projection_name: str) -> tuple[str, str]:
+        return workspace_id, projection_name
 
-    def last_known_good(self, projection_name: str) -> ProjectionPointer | None:
+    def current(self, workspace_id: str, projection_name: str) -> ProjectionPointer | None:
         with self._lock:
-            return self._lkg.get(projection_name)
+            return self._pointers.get(self._key(workspace_id, projection_name))
+
+    def last_known_good(
+        self, workspace_id: str, projection_name: str
+    ) -> ProjectionPointer | None:
+        with self._lock:
+            return self._lkg.get(self._key(workspace_id, projection_name))
 
     def stage(self, manifest: ProjectionStagingManifest) -> None:
         with self._lock:
@@ -312,14 +334,19 @@ class InMemoryProjectionPointerStore:
 
     def _assert_staged(
         self,
+        workspace_id: str,
         manifest_digest: str,
         artifacts: Sequence[ProjectionArtifact],
     ) -> ProjectionStagingManifest:
         manifest = self._staged.get(manifest_digest)
         if manifest is None:
             raise ProjectionContractError("staging manifest is missing")
+        if manifest.workspace_id != workspace_id:
+            raise ProjectionContractError("staging manifest workspace mismatch")
         expected = {item.projection_name: item for item in manifest.artifacts}
         for artifact in artifacts:
+            if artifact.workspace_id != workspace_id:
+                raise ProjectionContractError("artifact workspace mismatch")
             if expected.get(artifact.projection_name) != artifact:
                 raise ProjectionContractError("artifact is not bound to staging manifest")
         return manifest
@@ -328,6 +355,7 @@ class InMemoryProjectionPointerStore:
     def _pointer(manifest_digest: str, artifact: ProjectionArtifact) -> ProjectionPointer:
         return ProjectionPointer(
             artifact.projection_name,
+            artifact.workspace_id,
             artifact.source_generation_id,
             artifact.artifact_digest,
             manifest_digest,
@@ -335,21 +363,27 @@ class InMemoryProjectionPointerStore:
 
     def publish_required(
         self,
+        workspace_id: str,
         staging_manifest_digest: str,
         expected: Mapping[str, ProjectionPointer | None],
         artifacts: Sequence[ProjectionArtifact],
     ) -> bool:
         with self._lock:
-            self._assert_staged(staging_manifest_digest, artifacts)
+            self._assert_staged(workspace_id, staging_manifest_digest, artifacts)
             names = {item.projection_name for item in artifacts}
             if names != MINIMUM_PROJECTIONS or any(not item.required for item in artifacts):
                 raise ProjectionContractError("required publication must contain identity and chronology")
             if set(expected) != MINIMUM_PROJECTIONS:
                 raise ProjectionContractError("expected pointer set does not match minimum profile")
-            if any(self._pointers.get(name) != expected[name] for name in MINIMUM_PROJECTIONS):
+            if any(
+                self._pointers.get(self._key(workspace_id, name)) != expected[name]
+                for name in MINIMUM_PROJECTIONS
+            ):
                 return False
             updates = {
-                item.projection_name: self._pointer(staging_manifest_digest, item)
+                self._key(workspace_id, item.projection_name): self._pointer(
+                    staging_manifest_digest, item
+                )
                 for item in artifacts
             }
             self._pointers.update(updates)
@@ -358,19 +392,21 @@ class InMemoryProjectionPointerStore:
 
     def publish_optional(
         self,
+        workspace_id: str,
         staging_manifest_digest: str,
         expected: ProjectionPointer | None,
         artifact: ProjectionArtifact,
     ) -> bool:
         with self._lock:
-            self._assert_staged(staging_manifest_digest, (artifact,))
+            self._assert_staged(workspace_id, staging_manifest_digest, (artifact,))
             if artifact.required or artifact.projection_name in MINIMUM_PROJECTIONS:
                 raise ProjectionContractError("minimum projections use atomic required publication")
-            if self._pointers.get(artifact.projection_name) != expected:
+            key = self._key(workspace_id, artifact.projection_name)
+            if self._pointers.get(key) != expected:
                 return False
             pointer = self._pointer(staging_manifest_digest, artifact)
-            self._pointers[artifact.projection_name] = pointer
-            self._lkg[artifact.projection_name] = pointer
+            self._pointers[key] = pointer
+            self._lkg[key] = pointer
             return True
 
 
@@ -422,7 +458,9 @@ class ProjectionCoordinator:
         failed_optional: list[str] = []
         for spec in self.specs:
             try:
-                artifacts[spec.name] = self.builder.build(spec, source_generation_id, records)
+                artifacts[spec.name] = self.builder.build(
+                    spec, workspace_id, source_generation_id, records
+                )
             except Exception:
                 (failed_required if spec.required else failed_optional).append(spec.name)
         if failed_required:
@@ -455,9 +493,12 @@ class ProjectionCoordinator:
             )
 
         required = tuple(artifacts[name] for name in sorted(MINIMUM_PROJECTIONS))
-        expected_required = {name: self.pointers.current(name) for name in MINIMUM_PROJECTIONS}
+        expected_required = {
+            name: self.pointers.current(workspace_id, name) for name in MINIMUM_PROJECTIONS
+        }
         try:
             required_published = self.pointers.publish_required(
+                workspace_id,
                 manifest.manifest_digest,
                 expected_required,
                 required,
@@ -479,9 +520,10 @@ class ProjectionCoordinator:
         for spec in self.specs:
             if spec.required or spec.name not in artifacts:
                 continue
-            expected = self.pointers.current(spec.name)
+            expected = self.pointers.current(workspace_id, spec.name)
             try:
                 published = self.pointers.publish_optional(
+                    workspace_id,
                     manifest.manifest_digest,
                     expected,
                     artifacts[spec.name],
