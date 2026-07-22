@@ -61,6 +61,8 @@ class GenerationBuilder:
         parent_generation_id: str | None,
         source_snapshot_hash: str,
         accepted_claim_set_root: str,
+        *,
+        changeset_binding: dict | None = None,
     ) -> CandidateResult:
         # ---- N2 order: render -> citation -> snapshot -> digests --------- #
         pages = render_pages(accepted)
@@ -83,6 +85,8 @@ class GenerationBuilder:
             "publication_profile": self.profile,
             "engine_versions": ENGINE_VERSIONS,
         }
+        if changeset_binding is not None:
+            descriptor["accepted_changeset"] = changeset_binding
         generation_id = canonical_hash(descriptor)  # acyclic: descriptor has no self-ref
         signature = self.keyring.sign(self.key_id, generation_id.encode("utf-8")).hex()
         manifest = {
