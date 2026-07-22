@@ -26,7 +26,7 @@ jobs:
             exit 0
           fi
           cat "$parts"/* | base64 --decode | gzip --decompress > /tmp/p3-10.patch
-          echo "58314c600cf3e2107b5bdb3bf3b24bc39c275da317d2adcc1c6f0dae69458f49  /tmp/p3-10.patch" | sha256sum --check -
+          echo "e1a749741c04a3f24e9bfb3622ed6f3d72d38ddf947e354acc1a46fdae8a2cd4  /tmp/p3-10.patch" | sha256sum --check -
           git apply --check /tmp/p3-10.patch
           git apply --index /tmp/p3-10.patch
           git rm -r "$parts"
