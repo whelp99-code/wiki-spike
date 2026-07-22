@@ -1,0 +1,36 @@
+name: apply-p3-10-bootstrap
+
+on:
+  push:
+    branches: ["phase3/p3-10-recovery"]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: phase3/p3-10-recovery
+      - name: Apply verified P3-10 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          parts="bootstrap/p3-10.parts"
+          if [[ ! -d "$parts" ]]; then
+            echo "Patch parts not present; nothing to apply."
+            exit 0
+          fi
+          cat "$parts"/* | base64 --decode | gzip --decompress > /tmp/p3-10.patch
+          echo "58314c600cf3e2107b5bdb3bf3b24bc39c275da317d2adcc1c6f0dae69458f49  /tmp/p3-10.patch" | sha256sum --check -
+          git apply --check /tmp/p3-10.patch
+          git apply --index /tmp/p3-10.patch
+          git rm -r "$parts"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "P3-10: complete Recovery Set and clean-room restore drill"
+          git push origin HEAD:phase3/p3-10-recovery
