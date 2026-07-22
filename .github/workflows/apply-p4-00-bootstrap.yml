@@ -24,10 +24,12 @@ jobs:
         run: |
           set -euo pipefail
           parts="bootstrap/p4-00.parts"
-          if [[ ! -d "$parts" ]]; then
-            echo "Patch parts not uploaded yet; nothing to apply."
+          ready="bootstrap/p4-00.ready"
+          if [[ ! -f "$ready" ]]; then
+            echo "Patch payload is not marked ready; nothing to apply."
             exit 0
           fi
+          test -d "$parts"
           test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN"
           cat "$parts"/* | base64 --decode | gzip --decompress > /tmp/p4-00.patch
           test "$(sha256sum /tmp/p4-00.patch | awk '{print $1}')" = "52ce1316f920ac9ee6e53bb6d3c6bd8b2b4592dccc45e3f5caddc2af33c92b54"
