@@ -79,7 +79,10 @@ class PluginManifest:
 
     @staticmethod
     def _identity(values: Mapping[str, object]) -> dict[str, object]:
-        return {key: values[key] for key in PluginManifest.FIELDS - {"manifest_id"}}
+        result = {key: values[key] for key in PluginManifest.FIELDS - {"manifest_id"}}
+        result["allowed_operations"] = list(result["allowed_operations"])
+        result["required_capabilities"] = list(result["required_capabilities"])
+        return result
 
     def __post_init__(self) -> None:
         if self.plugin_schema_version != PLUGIN_MANIFEST_VERSION:
