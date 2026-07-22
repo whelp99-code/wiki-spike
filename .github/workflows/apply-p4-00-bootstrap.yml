@@ -1,0 +1,40 @@
+name: apply-p4-00-bootstrap
+
+on:
+  push:
+    branches: ["phase4/p4-00-contract-pin"]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: phase4/p4-00-contract-pin
+      - name: Apply verified P4-00 patch as a single clean commit
+        shell: bash
+        env:
+          EXPECTED_MAIN: fa7523344008c8c5bfbcc6aca790f297524f33dc
+          BRANCH: phase4/p4-00-contract-pin
+        run: |
+          set -euo pipefail
+          payload="bootstrap/p4-00.patch.gz.b64"
+          if [[ ! -f "$payload" ]]; then
+            echo "Patch payload not uploaded yet; nothing to apply."
+            exit 0
+          fi
+          test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN"
+          base64 --decode "$payload" | gzip --decompress > /tmp/p4-00.patch
+          test "$(sha256sum /tmp/p4-00.patch | awk '{print $1}')" = "52ce1316f920ac9ee6e53bb6d3c6bd8b2b4592dccc45e3f5caddc2af33c92b54"
+          event_sha="${GITHUB_SHA}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git reset --hard origin/main
+          git am --3way /tmp/p4-00.patch
+          test "$(git rev-list --count origin/main..HEAD)" = "1"
+          git push --force-with-lease="refs/heads/$BRANCH:$event_sha" origin "HEAD:refs/heads/$BRANCH"
