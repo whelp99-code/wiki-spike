@@ -9,7 +9,7 @@ requires-python = ">=3.12"
 dependencies = ["cryptography>=42"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "setuptools>=68", "wheel>=0.43"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
