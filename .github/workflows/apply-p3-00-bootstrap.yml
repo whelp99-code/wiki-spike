@@ -19,13 +19,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! -f bootstrap/p3-00.patch ]]; then
-            echo "Patch not uploaded yet; nothing to apply."
+          payload="bootstrap/p3-00.patch.gz.b64"
+          if [[ ! -f "$payload" ]]; then
+            echo "Patch payload not uploaded yet; nothing to apply."
             exit 0
           fi
-          git apply --check bootstrap/p3-00.patch
-          git apply --index bootstrap/p3-00.patch
-          git rm bootstrap/p3-00.patch .github/workflows/apply-p3-00-bootstrap.yml
+          base64 --decode "$payload" | gzip --decompress > /tmp/p3-00.patch
+          git apply --check /tmp/p3-00.patch
+          git apply --index /tmp/p3-00.patch
+          git rm "$payload" .github/workflows/apply-p3-00-bootstrap.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "P3-00: add preflight CI, G2 checkpoint, and boundary gates"
