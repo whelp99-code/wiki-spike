@@ -32,8 +32,8 @@ jobs:
           set -Eeuo pipefail
           : > "$BOOTSTRAP_STATUS"
           trap 'rc=$?; echo "FAIL line=$LINENO rc=$rc command=$BASH_COMMAND" >> "$BOOTSTRAP_STATUS"; exit $rc' ERR
-          ready="bootstrap/p5.ready"
-          parts="bootstrap/p5.parts"
+          ready="bootstrap/p5.bin.ready"
+          parts="bootstrap/p5.bin"
           if [[ ! -f "$ready" ]]; then
             echo "NO_READY" >> "$BOOTSTRAP_STATUS"
             exit 0
@@ -41,7 +41,7 @@ jobs:
           test -d "$parts"
           test "$(find "$parts" -maxdepth 1 -type f -name 'part-*' | wc -l)" = "12"
           test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN"
-          cat "$parts"/part-* | base64 --decode > /tmp/p5.patch.gz
+          cat "$parts"/part-* > /tmp/p5.patch.gz
           test "$(sha256sum /tmp/p5.patch.gz | awk '{print $1}')" = "$EXPECTED_GZIP_SHA256"
           gzip --decompress --stdout /tmp/p5.patch.gz > /tmp/p5.patch
           test "$(sha256sum /tmp/p5.patch | awk '{print $1}')" = "$EXPECTED_PATCH_SHA256"
