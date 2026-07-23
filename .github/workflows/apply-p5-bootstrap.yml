@@ -1,0 +1,59 @@
+name: apply-p5-bootstrap
+
+on:
+  push:
+    branches: ["phase5/p5-00-to-p5-17-application-completion"]
+
+permissions:
+  contents: write
+
+env:
+  BOOTSTRAP_STATUS: /tmp/p5-bootstrap-status.txt
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: phase5/p5-00-to-p5-17-application-completion
+      - name: Apply verified Phase 5 product patch
+        shell: bash
+        env:
+          EXPECTED_MAIN: 6de541c3b8897f608dd4752cb643109e720aa4c7
+          EXPECTED_PATCH_SHA256: a41496feb62dcd33fa198f6dcd3ec33785fb7e0959b2c0eaa87b5f60fc1b6150
+          BRANCH: phase5/p5-00-to-p5-17-application-completion
+        run: |
+          set -Eeuo pipefail
+          : > "$BOOTSTRAP_STATUS"
+          trap 'rc=$?; echo "FAIL line=$LINENO rc=$rc command=$BASH_COMMAND" >> "$BOOTSTRAP_STATUS"; exit $rc' ERR
+          ready="bootstrap/p5.ready"
+          parts="bootstrap/p5.parts"
+          if [[ ! -f "$ready" ]]; then
+            echo "NO_READY" >> "$BOOTSTRAP_STATUS"
+            exit 0
+          fi
+          test -d "$parts"
+          test "$(find "$parts" -maxdepth 1 -type f -name 'part-*' | wc -l)" = "6"
+          test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN"
+          cat "$parts"/part-* | base64 --decode | gzip --decompress > /tmp/p5.patch
+          test "$(sha256sum /tmp/p5.patch | awk '{print $1}')" = "$EXPECTED_PATCH_SHA256"
+          branch_sha="$(git rev-parse "origin/$BRANCH")"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git reset --hard origin/main
+          git am --3way /tmp/p5.patch
+          product_sha="$(git rev-parse HEAD)"
+          test "$(git rev-list --count origin/main..HEAD)" = "1"
+          git push --force-with-lease="refs/heads/$BRANCH:$branch_sha" origin "HEAD:refs/heads/$BRANCH"
+          echo "PUSHED $product_sha" >> "$BOOTSTRAP_STATUS"
+      - name: Upload bootstrap diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p5-bootstrap-diagnostics-${{ github.run_id }}
+          path: /tmp/p5-bootstrap-status.txt
+          if-no-files-found: warn
+          retention-days: 1
