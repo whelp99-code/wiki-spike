@@ -1,0 +1,47 @@
+name: export-p4-00-source
+
+on:
+  push:
+    branches: ["tmp/p4-00-source-export"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Create source archive and full Git bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin --tags
+          tar \
+            --exclude=.git \
+            --exclude='.pytest_cache' \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            -czf /tmp/wiki-spike-g3-main-source.tar.gz .
+          git bundle create /tmp/wiki-spike-g3-full.bundle --all
+          git bundle verify /tmp/wiki-spike-g3-full.bundle
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: wiki-spike-g3-main-source
+          path: /tmp/wiki-spike-g3-main-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+      - name: Upload full Git bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: wiki-spike-g3-full-bundle
+          path: /tmp/wiki-spike-g3-full.bundle
+          if-no-files-found: error
+          retention-days: 1
