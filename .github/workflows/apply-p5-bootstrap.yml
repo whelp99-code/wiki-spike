@@ -3,6 +3,8 @@ name: apply-p5-bootstrap
 on:
   push:
     branches: ["phase5/p5-00-to-p5-17-application-completion"]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
