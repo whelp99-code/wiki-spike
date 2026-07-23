@@ -1,9 +1,10 @@
 """Public Phase 4 Memory Runtime contract and orchestration surface.
 
 P4-01 adds deterministic request/status/response contracts and a provider-neutral
-orchestrator.  Later Runtime stages may implement intent, retrieval, verification,
-and proposal logic behind these interfaces; they may not bypass the pinned Phase 3
-Core ports exposed by :mod:`wiki_spike.memory_runtime.core_api`.
+orchestrator. P4-02 adds conservative intent and IANA-timezone temporal resolution.
+Later Runtime stages may implement retrieval, verification, and proposal logic behind
+these interfaces; they may not bypass the pinned Phase 3 Core ports exposed by
+:mod:`wiki_spike.memory_runtime.core_api`.
 """
 from .errors import (
     InvalidContractValue,
@@ -42,6 +43,30 @@ from .core_api import (
     OperationalEventSink,
     ProjectionPort,
     QueryEnvelope,
+)
+from .intent import (
+    INTENT_RESOLUTION_VERSION,
+    INTENT_TEMPORAL_INPUT_VERSION,
+    INTENT_TEMPORAL_RESOLUTION_VERSION,
+    INTENT_TEMPORAL_STAGE_SCHEMA_ID,
+    IntentClassification,
+    IntentResolution,
+    IntentResolver,
+    IntentSource,
+    IntentTemporalInput,
+    IntentTemporalResolution,
+    IntentTemporalResolver,
+    IntentTemporalStageHandler,
+)
+from .temporal import (
+    TEMPORAL_RESOLUTION_VERSION,
+    SystemTimezoneProvider,
+    TemporalMode,
+    TemporalPrecision,
+    TemporalResolution,
+    TemporalResolver,
+    TemporalSource,
+    TimezoneProvider,
 )
 from .orchestrator import (
     ClaimDecision,
@@ -123,4 +148,24 @@ __all__ = [
     "InMemoryStageResultStore",
     "RuntimeOrchestrator",
     "RuntimeOperationInput",
+    "INTENT_TEMPORAL_INPUT_VERSION",
+    "INTENT_RESOLUTION_VERSION",
+    "INTENT_TEMPORAL_RESOLUTION_VERSION",
+    "INTENT_TEMPORAL_STAGE_SCHEMA_ID",
+    "TEMPORAL_RESOLUTION_VERSION",
+    "IntentClassification",
+    "IntentSource",
+    "IntentTemporalInput",
+    "IntentResolution",
+    "IntentResolver",
+    "IntentTemporalResolution",
+    "IntentTemporalResolver",
+    "IntentTemporalStageHandler",
+    "TemporalMode",
+    "TemporalPrecision",
+    "TemporalSource",
+    "TimezoneProvider",
+    "SystemTimezoneProvider",
+    "TemporalResolution",
+    "TemporalResolver",
 ]

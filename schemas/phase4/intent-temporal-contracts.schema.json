@@ -1,0 +1,339 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/phase4/intent-temporal-contracts.schema.json",
+  "title": "Phase 4 Intent and Temporal Contracts — P4-02",
+  "$defs": {
+    "intentTemporalInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intent_temporal_input_version",
+        "input_id",
+        "operation_id",
+        "request_type",
+        "query_text",
+        "intent_hint",
+        "timezone",
+        "as_of_at",
+        "temporal_expression",
+        "temporal_fold"
+      ],
+      "properties": {
+        "intent_temporal_input_version": {
+          "const": "phase4-intent-temporal-input-v1"
+        },
+        "input_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "operation_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "request_type": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]{0,127}$"
+        },
+        "query_text": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8192
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "intent_hint": {
+          "enum": [
+            "recall",
+            "ask",
+            "extract_decision",
+            "clarify",
+            "proactive_evaluate",
+            null
+          ]
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "as_of_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+        },
+        "temporal_expression": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "temporal_fold": {
+          "enum": [
+            "0",
+            "1",
+            null
+          ]
+        }
+      }
+    },
+    "intentResolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intent_resolution_version",
+        "resolution_id",
+        "operation_id",
+        "classification",
+        "source",
+        "query_digest",
+        "requires_clarification",
+        "reason_codes"
+      ],
+      "properties": {
+        "intent_resolution_version": {
+          "const": "phase4-intent-resolution-v1"
+        },
+        "resolution_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "operation_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "classification": {
+          "enum": [
+            "recall",
+            "ask",
+            "extract_decision",
+            "clarify",
+            "proactive_evaluate",
+            "ambiguous"
+          ]
+        },
+        "source": {
+          "enum": [
+            "request_type",
+            "explicit_hint",
+            "unresolved"
+          ]
+        },
+        "query_digest": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requires_clarification": {
+          "type": "boolean"
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_.-]{0,127}$"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "temporalResolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "temporal_resolution_version",
+        "resolution_id",
+        "operation_id",
+        "timezone",
+        "tzdb_version",
+        "as_of_at",
+        "mode",
+        "source",
+        "expression_kind",
+        "precision",
+        "start_at",
+        "end_at",
+        "duration_seconds",
+        "fold",
+        "requires_clarification",
+        "reason_codes"
+      ],
+      "properties": {
+        "temporal_resolution_version": {
+          "const": "phase4-temporal-resolution-v1"
+        },
+        "resolution_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "operation_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "tzdb_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "as_of_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+        },
+        "mode": {
+          "enum": [
+            "none",
+            "as_of",
+            "interval",
+            "instant"
+          ]
+        },
+        "source": {
+          "enum": [
+            "none",
+            "explicit_field",
+            "query_text"
+          ]
+        },
+        "expression_kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]{0,127}$"
+        },
+        "precision": {
+          "enum": [
+            "unspecified",
+            "second",
+            "day",
+            "week",
+            "month",
+            "year",
+            "rolling"
+          ]
+        },
+        "start_at": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "end_at": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "duration_seconds": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fold": {
+          "enum": [
+            "0",
+            "1",
+            null
+          ]
+        },
+        "requires_clarification": {
+          "type": "boolean"
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_.-]{0,127}$"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "intentTemporalResolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intent_temporal_resolution_version",
+        "resolution_id",
+        "operation_id",
+        "input_id",
+        "intent",
+        "temporal",
+        "requires_clarification"
+      ],
+      "properties": {
+        "intent_temporal_resolution_version": {
+          "const": "phase4-intent-temporal-resolution-v1"
+        },
+        "resolution_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "operation_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "input_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "intent": {
+          "$ref": "#/$defs/intentResolution"
+        },
+        "temporal": {
+          "$ref": "#/$defs/temporalResolution"
+        },
+        "requires_clarification": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/intentTemporalInput"
+    },
+    {
+      "$ref": "#/$defs/intentResolution"
+    },
+    {
+      "$ref": "#/$defs/temporalResolution"
+    },
+    {
+      "$ref": "#/$defs/intentTemporalResolution"
+    }
+  ]
+}
