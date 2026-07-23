@@ -37,7 +37,7 @@ jobs:
             exit 0
           fi
           test -d "$parts"
-          test "$(find "$parts" -maxdepth 1 -type f -name 'part-*' | wc -l)" = "6"
+          test "$(find "$parts" -maxdepth 1 -type f -name 'part-*' | wc -l)" = "12"
           test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN"
           cat "$parts"/part-* | base64 --decode > /tmp/p5.patch.gz
           test "$(sha256sum /tmp/p5.patch.gz | awk '{print $1}')" = "$EXPECTED_GZIP_SHA256"
