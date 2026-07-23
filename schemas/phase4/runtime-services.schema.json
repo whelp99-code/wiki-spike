@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/phase4/runtime-services.schema.json",
+  "title": "Phase 4 Runtime Service Contracts",
+  "type": "object",
+  "required": ["contract_family", "contract"],
+  "additionalProperties": false,
+  "properties": {
+    "contract_family": {
+      "enum": [
+        "context_plan", "retrieval_result", "evidence_pack", "verification_outcome",
+        "recall_answer", "decision_candidate", "clarification_question",
+        "proactive_suggestion", "action_intent", "write_proposal", "model_call_result",
+        "degrade_decision", "offline_eval_report", "online_metric"
+      ]
+    },
+    "contract": {
+      "type": "object",
+      "minProperties": 2,
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"}
+    }
+  }
+}

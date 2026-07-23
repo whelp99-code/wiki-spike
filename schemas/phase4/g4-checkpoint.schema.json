@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/phase4/g4-checkpoint.schema.json",
+  "title": "Phase 4 G4 Checkpoint",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["checkpoint", "checkpoint_id"],
+  "properties": {
+    "checkpoint_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "checkpoint_scope", "contract_release", "repository",
+        "parent_main_commit", "g3_checkpoint_id", "public_api_sha256",
+        "source_inventory_ref", "source_root", "required_work_units",
+        "acceptance", "created_at", "signer_key_id", "signing_domain",
+        "public_key_sha256"
+      ],
+      "properties": {
+        "schema_version": {"const": "phase4-g4-checkpoint-v1"},
+        "checkpoint_scope": {"const": "phase4-runtime"},
+        "contract_release": {"const": "phase4-runtime-v1.0.0"},
+        "repository": {"const": "whelp99-code/wiki-spike"},
+        "parent_main_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "g3_checkpoint_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "public_api_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "source_inventory_ref": {"type": "object"},
+        "source_root": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "required_work_units": {"type": "array", "minItems": 12, "uniqueItems": true},
+        "acceptance": {"type": "object"},
+        "created_at": {"type": "string"},
+        "signer_key_id": {"type": "string"},
+        "signing_domain": {"const": "wiki.phase4.checkpoint.v1"},
+        "public_key_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}
