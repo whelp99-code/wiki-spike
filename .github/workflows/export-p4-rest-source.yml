@@ -3,6 +3,8 @@ name: export-p4-rest-source
 on:
   push:
     branches: ["tmp/p4-rest-source-export"]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
@@ -19,7 +21,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "b60967d627a31ba7c340f398369c6df0019a5114"
           git archive --format=tar.gz --output=/tmp/wiki-spike-p4-02-main-source.tar.gz b60967d627a31ba7c340f398369c6df0019a5114
           git bundle create /tmp/wiki-spike-p4-02-main.bundle --all
       - name: Upload source archive
