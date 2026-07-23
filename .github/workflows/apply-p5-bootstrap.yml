@@ -24,21 +24,23 @@ jobs:
         env:
           EXPECTED_MAIN: 6de541c3b8897f608dd4752cb643109e720aa4c7
           EXPECTED_PATCH_SHA256: a41496feb62dcd33fa198f6dcd3ec33785fb7e0959b2c0eaa87b5f60fc1b6150
+          EXPECTED_GZIP_SHA256: 2f0fcfeb62d6d36a83c16a353d6030a8c998acdb4fb5e4b3a048f2957a700e0e
           BRANCH: phase5/p5-00-to-p5-17-application-completion
         run: |
           set -Eeuo pipefail
           : > "$BOOTSTRAP_STATUS"
           trap 'rc=$?; echo "FAIL line=$LINENO rc=$rc command=$BASH_COMMAND" >> "$BOOTSTRAP_STATUS"; exit $rc' ERR
           ready="bootstrap/p5.ready"
-          parts="bootstrap/p5.parts"
+          payload="bootstrap/p5.patch.gz.b64"
           if [[ ! -f "$ready" ]]; then
             echo "NO_READY" >> "$BOOTSTRAP_STATUS"
             exit 0
           fi
-          test -d "$parts"
-          test "$(find "$parts" -maxdepth 1 -type f -name 'part-*' | wc -l)" = "6"
+          test -f "$payload"
           test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN"
-          cat "$parts"/part-* | base64 --decode | gzip --decompress > /tmp/p5.patch
+          base64 --decode "$payload" > /tmp/p5.patch.gz
+          test "$(sha256sum /tmp/p5.patch.gz | awk '{print $1}')" = "$EXPECTED_GZIP_SHA256"
+          gzip --decompress --stdout /tmp/p5.patch.gz > /tmp/p5.patch
           test "$(sha256sum /tmp/p5.patch | awk '{print $1}')" = "$EXPECTED_PATCH_SHA256"
           branch_sha="$(git rev-parse "origin/$BRANCH")"
           git config user.name "github-actions[bot]"
