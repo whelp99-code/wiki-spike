@@ -1,0 +1,39 @@
+name: export-p4-rest-source
+
+on:
+  push:
+    branches: ["tmp/p4-rest-source-export"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create exact main source archive and bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          git archive --format=tar.gz --output=/tmp/wiki-spike-p4-02-main-source.tar.gz b60967d627a31ba7c340f398369c6df0019a5114
+          git bundle create /tmp/wiki-spike-p4-02-main.bundle --all
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: wiki-spike-p4-02-main-source
+          path: /tmp/wiki-spike-p4-02-main-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+      - name: Upload git bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: wiki-spike-p4-02-main-bundle
+          path: /tmp/wiki-spike-p4-02-main.bundle
+          if-no-files-found: error
+          retention-days: 1
