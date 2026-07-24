@@ -318,3 +318,197 @@ class EncryptedLifecyclePipeline:
             kind="CHANGESET_ACCEPTED",
             ref_digest=changeset["changeset_id"],
         )
+
+    # ------------------------------------------------------------------
+    # APPROVE / REJECT candidate review
+    # ------------------------------------------------------------------
+
+    def review_candidate(
+        self,
+        *,
+        artifact_id: str,
+        reviewer_handle: str,
+        review_state: str,
+    ) -> str:
+        """Record an APPROVE or REJECT review for a candidate artifact.
+
+        ``review_state`` must be ``"APPROVED"`` or ``"REJECTED"``.
+        Returns the review_id.
+        """
+        if review_state not in ("APPROVED", "REJECTED"):
+            raise PipelineError("invalid_review_state", f"review_state must be APPROVED or REJECTED, got {review_state!r}")
+        review_id = hashlib.sha256(
+            canonical_bytes({"artifact_id": artifact_id, "reviewer_handle": reviewer_handle, "review_state": review_state, "ts": _utcnow()})
+        ).hexdigest()
+        now = _utcnow()
+        with self.db.unit_of_work() as uow:
+            art = uow.get_canonical_artifact(artifact_id)
+            if art is None:
+                raise PipelineError("artifact_not_found", f"artifact {artifact_id} not found")
+            uow.insert_candidate_review(
+                review_id=review_id,
+                artifact_id=artifact_id,
+                reviewer_handle=reviewer_handle,
+                review_state=review_state,
+                created_at=now,
+            )
+            if review_state == "APPROVED":
+                uow.upsert_key_state(artifact_id=artifact_id, custody_state="APPROVED", updated_at=now)
+
+        prev = self.db.event_chain_head()
+        self.db.append_event(prev_digest=prev, kind=f"CANDIDATE_{review_state}", ref_digest=artifact_id)
+        return review_id
+
+    # ------------------------------------------------------------------
+    # Signed generation + binding checkpoint
+    # ------------------------------------------------------------------
+
+    def create_generation(
+        self,
+        *,
+        changeset_id: str,
+        signing_key: "Ed25519PrivateKey",
+        signer_key_id: str,
+        binding_registry: "BindingRegistry | None" = None,
+        namespace: str = "encrypted-lifecycle",
+        provider_handle: str = "default",
+    ) -> dict:
+        """Create a signed generation for an accepted changeset.
+
+        Signs the generation payload under ``wiki.generation.v1`` (R10-2)
+        and optionally appends a binding registry leaf + checkpoint.
+        """
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+        with self.db.unit_of_work() as uow:
+            cs_row = uow.get_accepted_changeset(changeset_id)
+            if cs_row is None:
+                raise PipelineError("changeset_not_found", f"changeset {changeset_id} not found")
+
+        generation_id = hashlib.sha256(
+            canonical_bytes({"changeset_id": changeset_id, "workspace_id": self.workspace_id, "ts": _utcnow()})
+        ).hexdigest()
+
+        generation_payload = {
+            "domain": GENERATION_DOMAIN,
+            "workspace_id": self.workspace_id,
+            "generation_id": generation_id,
+            "changeset_id": changeset_id,
+            "changes_root": cs_row["changes_root_digest"],
+        }
+        signature = crypto.sign(signing_key, GENERATION_DOMAIN, generation_payload)
+
+        binding_checkpoint_id = None
+        if binding_registry is not None:
+            deltas = []
+            with self.db.unit_of_work() as uow:
+                delta_rows = uow.list_state_deltas(changeset_id)
+                for dr in delta_rows:
+                    deltas.append(dict(dr))
+
+            for dr in deltas:
+                binding_registry.append_leaf(
+                    namespace=namespace,
+                    provider_handle=provider_handle,
+                    provider_key_fingerprint=hashlib.sha256(signer_key_id.encode()).hexdigest(),
+                    intent_id=dr.get("object_id", generation_id),
+                    artifact_id=dr.get("object_id", generation_id),
+                    revision_id=dr.get("revision_id") or generation_id,
+                    semantic_digest=dr.get("scope_digest") or cs_row["changes_root_digest"],
+                    metadata_digest=cs_row["changes_root_digest"],
+                    status="PREPARED",
+                )
+
+            checkpoint, checkpoint_sig = binding_registry.checkpoint(
+                signing_key=signing_key,
+                signer_key_id=signer_key_id,
+                generation_id=generation_id,
+            )
+            binding_checkpoint_id = hashlib.sha256(canonical_bytes(checkpoint)).hexdigest()
+
+        now = _utcnow()
+        with self.db.unit_of_work() as uow:
+            uow.insert_generation(
+                generation_id=generation_id,
+                workspace_id=self.workspace_id,
+                changeset_id=changeset_id,
+                generation_state="SIGNED",
+                binding_checkpoint_id=binding_checkpoint_id,
+                created_at=now,
+            )
+
+        prev = self.db.event_chain_head()
+        self.db.append_event(prev_digest=prev, kind="GENERATION_SIGNED", ref_digest=generation_id)
+
+        return {
+            "generation_id": generation_id,
+            "signature": signature,
+            "binding_checkpoint_id": binding_checkpoint_id,
+            "payload": generation_payload,
+        }
+
+    # ------------------------------------------------------------------
+    # Activation via readback / CAS
+    # ------------------------------------------------------------------
+
+    def activate_artifact(
+        self,
+        *,
+        artifact_id: str,
+        blob_id: str,
+    ) -> None:
+        """Activate a PREPARED artifact: verify CAS blob exists, transition
+        key state to ACTIVE, and append an activation event."""
+        if not self.cas.exists(blob_id):
+            raise PipelineError("blob_not_found", f"CAS blob {blob_id} not found")
+
+        now = _utcnow()
+        with self.db.unit_of_work() as uow:
+            ks = uow.get_key_state(artifact_id)
+            if ks is None:
+                raise PipelineError("key_state_not_found", f"no key_state for artifact {artifact_id}")
+            if ks["custody_state"] not in ("PREPARED", "APPROVED"):
+                raise PipelineError(
+                    "invalid_activation_state",
+                    f"cannot activate from custody_state={ks['custody_state']!r}",
+                )
+            uow.upsert_key_state(artifact_id=artifact_id, custody_state="ACTIVE", updated_at=now)
+
+        prev = self.db.event_chain_head()
+        self.db.append_event(prev_digest=prev, kind="ARTIFACT_ACTIVATED", ref_digest=artifact_id)
+
+    # ------------------------------------------------------------------
+    # Opaque projection
+    # ------------------------------------------------------------------
+
+    def project_expected_active(self, changeset_id: str) -> list[dict]:
+        """Return the ExpectedActiveRevisionV1 sorted-unique projection
+        for a persisted changeset."""
+        with self.db.unit_of_work() as uow:
+            cs = uow.get_accepted_changeset(changeset_id)
+            if cs is None:
+                raise PipelineError("changeset_not_found", f"changeset {changeset_id} not found")
+            delta_rows = uow.list_state_deltas(changeset_id)
+
+        deltas = [dict(dr) for dr in delta_rows]
+        mapped = []
+        for dr in deltas:
+            mapped.append({
+                "delta_version": "1",
+                "delta_id": dr["delta_id"],
+                "operation": dr["operation_kind"],
+                "object_kind": dr["object_kind"],
+                "object_id": dr["object_id"],
+                "revision_id": dr.get("revision_id"),
+                "expected_active_revision_id": dr.get("expected_active_revision_id"),
+                "envelope_ref": dr.get("envelope_ref_id"),
+                "assertion_id": dr.get("assertion_id"),
+                "evidence_edge_id": dr.get("evidence_edge_id"),
+                "evidence_fragment_ref": dr.get("evidence_fragment_ref_id"),
+                "deletion_command_id": dr.get("deletion_command_id"),
+                "scope_digest": dr.get("scope_digest"),
+                "reason_code": dr.get("reason_state"),
+            })
+
+        from wiki_spike.infrastructure.changeset import project_expected_active_revisions
+        return project_expected_active_revisions(mapped)

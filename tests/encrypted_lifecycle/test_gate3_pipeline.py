@@ -145,3 +145,134 @@ def test_remember_rejects_bom(pipeline):
     from wiki_spike.infrastructure.ingestion import InputNormalizationError
     with pytest.raises(InputNormalizationError):
         pipeline.remember(raw_body=b"\xef\xbb\xbfhello", project_id="proj-1")
+
+
+# ---------------------------------------------------------------------------
+# APPROVE / REJECT
+# ---------------------------------------------------------------------------
+
+
+def test_review_candidate_approve(pipeline):
+    r = pipeline.remember(raw_body=b"review me", project_id="proj-1")
+    review_id = pipeline.review_candidate(
+        artifact_id=r.artifact_semantic_digest,
+        reviewer_handle="reviewer-1",
+        review_state="APPROVED",
+    )
+    assert len(review_id) == 64
+    with pipeline.db.unit_of_work() as uow:
+        ks = uow.get_key_state(r.artifact_semantic_digest)
+        assert ks["custody_state"] == "APPROVED"
+
+
+def test_review_candidate_reject(pipeline):
+    r = pipeline.remember(raw_body=b"reject me", project_id="proj-1")
+    review_id = pipeline.review_candidate(
+        artifact_id=r.artifact_semantic_digest,
+        reviewer_handle="reviewer-1",
+        review_state="REJECTED",
+    )
+    assert len(review_id) == 64
+
+
+def test_review_candidate_invalid_state(pipeline):
+    r = pipeline.remember(raw_body=b"bad review", project_id="proj-1")
+    with pytest.raises(PipelineError) as excinfo:
+        pipeline.review_candidate(
+            artifact_id=r.artifact_semantic_digest,
+            reviewer_handle="reviewer-1",
+            review_state="MAYBE",
+        )
+    assert excinfo.value.code == "invalid_review_state"
+
+
+# ---------------------------------------------------------------------------
+# Activation
+# ---------------------------------------------------------------------------
+
+
+def test_activate_artifact(pipeline):
+    r = pipeline.remember(raw_body=b"activate me", project_id="proj-1")
+    pipeline.activate_artifact(artifact_id=r.artifact_semantic_digest, blob_id=r.blob_id)
+    with pipeline.db.unit_of_work() as uow:
+        ks = uow.get_key_state(r.artifact_semantic_digest)
+        assert ks["custody_state"] == "ACTIVE"
+
+
+def test_activate_artifact_missing_blob(pipeline):
+    r = pipeline.remember(raw_body=b"no blob", project_id="proj-1")
+    with pytest.raises(PipelineError) as excinfo:
+        pipeline.activate_artifact(artifact_id=r.artifact_semantic_digest, blob_id="ff" * 32)
+    assert excinfo.value.code == "blob_not_found"
+
+
+# ---------------------------------------------------------------------------
+# Generation
+# ---------------------------------------------------------------------------
+
+
+def test_create_generation(pipeline):
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    r = pipeline.remember(raw_body=b"generation test", project_id="proj-1")
+    cs = pipeline.build_changeset(command_ids=[r.command_id])
+    pipeline.persist_changeset(cs)
+
+    signing_key = Ed25519PrivateKey.from_private_bytes(hashlib.sha256(b"test-gen-key").digest())
+    gen = pipeline.create_generation(
+        changeset_id=cs["changeset_id"],
+        signing_key=signing_key,
+        signer_key_id="test-signer",
+    )
+    assert len(gen["generation_id"]) == 64
+    assert len(gen["signature"]) == 128
+    assert gen["binding_checkpoint_id"] is None
+
+
+# ---------------------------------------------------------------------------
+# Opaque projection
+# ---------------------------------------------------------------------------
+
+
+def test_project_expected_active(pipeline):
+    r = pipeline.remember(raw_body=b"projection test", project_id="proj-1")
+    cs = pipeline.build_changeset(command_ids=[r.command_id])
+    pipeline.persist_changeset(cs)
+
+    ears = pipeline.project_expected_active(cs["changeset_id"])
+    assert len(ears) == 1
+    assert ears[0]["object_kind"] == "MEMORY_REVISION"
+    assert ears[0]["object_id"] == r.artifact_semantic_digest
+
+
+# ---------------------------------------------------------------------------
+# Full vertical: REMEMBER → review → changeset → generation → activate → project
+# ---------------------------------------------------------------------------
+
+
+def test_full_deterministic_vertical(pipeline):
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    r = pipeline.remember(raw_body=b"full vertical slice", project_id="proj-1")
+    pipeline.review_candidate(
+        artifact_id=r.artifact_semantic_digest,
+        reviewer_handle="reviewer-1",
+        review_state="APPROVED",
+    )
+    cs = pipeline.build_changeset(command_ids=[r.command_id])
+    pipeline.persist_changeset(cs)
+
+    signing_key = Ed25519PrivateKey.from_private_bytes(hashlib.sha256(b"vertical-key").digest())
+    gen = pipeline.create_generation(
+        changeset_id=cs["changeset_id"],
+        signing_key=signing_key,
+        signer_key_id="vertical-signer",
+    )
+
+    pipeline.activate_artifact(artifact_id=r.artifact_semantic_digest, blob_id=r.blob_id)
+
+    ears = pipeline.project_expected_active(cs["changeset_id"])
+    assert len(ears) == 1
+
+    with pipeline.db.unit_of_work() as uow:
+        ks = uow.get_key_state(r.artifact_semantic_digest)
+        assert ks["custody_state"] == "ACTIVE"
