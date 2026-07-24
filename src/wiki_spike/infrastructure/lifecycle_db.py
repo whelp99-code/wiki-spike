@@ -197,6 +197,63 @@ CREATE TABLE IF NOT EXISTS outbox (
   ref_digest TEXT NOT NULL,
   outbox_state TEXT NOT NULL DEFAULT 'PENDING'
 );
+CREATE TABLE IF NOT EXISTS accepted_changeset (
+  changeset_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  parent_generation_id TEXT,
+  changes_root_digest TEXT NOT NULL,
+  changeset_state TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS state_delta (
+  delta_id TEXT PRIMARY KEY,
+  changeset_id TEXT NOT NULL,
+  operation_kind TEXT NOT NULL,
+  object_kind TEXT NOT NULL,
+  object_id TEXT NOT NULL,
+  revision_id TEXT,
+  expected_active_revision_id TEXT,
+  envelope_ref_id TEXT,
+  assertion_id TEXT,
+  evidence_edge_id TEXT,
+  evidence_fragment_ref_id TEXT,
+  deletion_command_id TEXT,
+  scope_digest TEXT,
+  reason_state TEXT,
+  FOREIGN KEY (changeset_id) REFERENCES accepted_changeset(changeset_id)
+);
+CREATE TABLE IF NOT EXISTS generation (
+  generation_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  changeset_id TEXT NOT NULL,
+  generation_state TEXT NOT NULL,
+  binding_checkpoint_id TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (changeset_id) REFERENCES accepted_changeset(changeset_id)
+);
+CREATE TABLE IF NOT EXISTS floor_candidate (
+  attempt_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  candidate_kind TEXT NOT NULL,
+  expected_old_floor_digest TEXT NOT NULL,
+  expected_keychain_generation TEXT NOT NULL,
+  candidate_floor_hex TEXT NOT NULL,
+  candidate_floor_digest TEXT NOT NULL,
+  challenge_sequence TEXT NOT NULL,
+  nonce_digest TEXT NOT NULL,
+  disposition_state TEXT NOT NULL,
+  reason_state TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS freshness_serve_gate (
+  workspace_id TEXT PRIMARY KEY,
+  gate_state TEXT NOT NULL,
+  stable_floor_generation TEXT NOT NULL,
+  stable_checkpoint_id TEXT NOT NULL,
+  source_candidate_digest TEXT NOT NULL,
+  reason_state TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 """
 
 # Tables in declaration order, used for both DDL introspection and the
@@ -215,6 +272,11 @@ TABLE_NAMES: tuple[str, ...] = (
     "binding_checkpoint",
     "event_log",
     "outbox",
+    "accepted_changeset",
+    "state_delta",
+    "generation",
+    "floor_candidate",
+    "freshness_serve_gate",
 )
 
 EVENT_LOG_DOMAIN = "wiki-spike.lifecycle-db.event-log.v1"
@@ -450,6 +512,149 @@ class UnitOfWork:
             "INSERT INTO outbox (event_kind, ref_digest, outbox_state) VALUES (?,?,'PENDING')",
             (event_kind, ref_digest),
         )
+
+    # -- Gate 3: accepted_changeset / state_delta / generation --------------- #
+
+    def insert_accepted_changeset(
+        self,
+        changeset_id: str,
+        workspace_id: str,
+        parent_generation_id: str | None,
+        changes_root_digest: str,
+        changeset_state: str,
+        created_at: str,
+    ) -> None:
+        self._con.execute(
+            "INSERT INTO accepted_changeset "
+            "(changeset_id, workspace_id, parent_generation_id, changes_root_digest, "
+            " changeset_state, created_at) VALUES (?,?,?,?,?,?)",
+            (changeset_id, workspace_id, parent_generation_id, changes_root_digest,
+             changeset_state, created_at),
+        )
+
+    def insert_state_delta(
+        self,
+        delta_id: str,
+        changeset_id: str,
+        operation_kind: str,
+        object_kind: str,
+        object_id: str,
+        revision_id: str | None = None,
+        expected_active_revision_id: str | None = None,
+        envelope_ref_id: str | None = None,
+        assertion_id: str | None = None,
+        evidence_edge_id: str | None = None,
+        evidence_fragment_ref_id: str | None = None,
+        deletion_command_id: str | None = None,
+        scope_digest: str | None = None,
+        reason_state: str | None = None,
+    ) -> None:
+        self._con.execute(
+            "INSERT INTO state_delta "
+            "(delta_id, changeset_id, operation_kind, object_kind, object_id, revision_id, "
+            " expected_active_revision_id, envelope_ref_id, assertion_id, evidence_edge_id, "
+            " evidence_fragment_ref_id, deletion_command_id, scope_digest, reason_state) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (delta_id, changeset_id, operation_kind, object_kind, object_id, revision_id,
+             expected_active_revision_id, envelope_ref_id, assertion_id, evidence_edge_id,
+             evidence_fragment_ref_id, deletion_command_id, scope_digest, reason_state),
+        )
+
+    def insert_generation(
+        self,
+        generation_id: str,
+        workspace_id: str,
+        changeset_id: str,
+        generation_state: str,
+        binding_checkpoint_id: str | None = None,
+        created_at: str = "",
+    ) -> None:
+        self._con.execute(
+            "INSERT INTO generation "
+            "(generation_id, workspace_id, changeset_id, generation_state, "
+            " binding_checkpoint_id, created_at) VALUES (?,?,?,?,?,?)",
+            (generation_id, workspace_id, changeset_id, generation_state,
+             binding_checkpoint_id, created_at),
+        )
+
+    def get_accepted_changeset(self, changeset_id: str) -> sqlite3.Row | None:
+        self._con.row_factory = sqlite3.Row
+        return self._con.execute(
+            "SELECT * FROM accepted_changeset WHERE changeset_id=?", (changeset_id,)
+        ).fetchone()
+
+    def list_state_deltas(self, changeset_id: str) -> list[sqlite3.Row]:
+        self._con.row_factory = sqlite3.Row
+        return list(
+            self._con.execute(
+                "SELECT * FROM state_delta WHERE changeset_id=? ORDER BY delta_id",
+                (changeset_id,),
+            )
+        )
+
+    # -- Gate 3: floor_candidate / freshness_serve_gate ---------------------- #
+
+    def insert_floor_candidate(
+        self,
+        attempt_id: str,
+        workspace_id: str,
+        candidate_kind: str,
+        expected_old_floor_digest: str,
+        expected_keychain_generation: str,
+        candidate_floor_hex: str,
+        candidate_floor_digest: str,
+        challenge_sequence: str,
+        nonce_digest: str,
+        disposition_state: str,
+        reason_state: str | None = None,
+        created_at: str = "",
+    ) -> None:
+        self._con.execute(
+            "INSERT INTO floor_candidate "
+            "(attempt_id, workspace_id, candidate_kind, expected_old_floor_digest, "
+            " expected_keychain_generation, candidate_floor_hex, candidate_floor_digest, "
+            " challenge_sequence, nonce_digest, disposition_state, reason_state, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (attempt_id, workspace_id, candidate_kind, expected_old_floor_digest,
+             expected_keychain_generation, candidate_floor_hex, candidate_floor_digest,
+             challenge_sequence, nonce_digest, disposition_state, reason_state, created_at),
+        )
+
+    def get_floor_candidate(self, attempt_id: str) -> sqlite3.Row | None:
+        self._con.row_factory = sqlite3.Row
+        return self._con.execute(
+            "SELECT * FROM floor_candidate WHERE attempt_id=?", (attempt_id,)
+        ).fetchone()
+
+    def upsert_freshness_serve_gate(
+        self,
+        workspace_id: str,
+        gate_state: str,
+        stable_floor_generation: str,
+        stable_checkpoint_id: str,
+        source_candidate_digest: str,
+        reason_state: str,
+        updated_at: str,
+    ) -> None:
+        self._con.execute(
+            "INSERT INTO freshness_serve_gate "
+            "(workspace_id, gate_state, stable_floor_generation, stable_checkpoint_id, "
+            " source_candidate_digest, reason_state, updated_at) VALUES (?,?,?,?,?,?,?) "
+            "ON CONFLICT(workspace_id) DO UPDATE SET "
+            "gate_state=excluded.gate_state, "
+            "stable_floor_generation=excluded.stable_floor_generation, "
+            "stable_checkpoint_id=excluded.stable_checkpoint_id, "
+            "source_candidate_digest=excluded.source_candidate_digest, "
+            "reason_state=excluded.reason_state, updated_at=excluded.updated_at",
+            (workspace_id, gate_state, stable_floor_generation, stable_checkpoint_id,
+             source_candidate_digest, reason_state, updated_at),
+        )
+
+    def get_freshness_serve_gate(self, workspace_id: str) -> sqlite3.Row | None:
+        self._con.row_factory = sqlite3.Row
+        return self._con.execute(
+            "SELECT * FROM freshness_serve_gate WHERE workspace_id=?", (workspace_id,)
+        ).fetchone()
 
 
 @dataclass
