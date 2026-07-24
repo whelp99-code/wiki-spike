@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://wiki-spike.local/schemas/encrypted-lifecycle/freshness-serve-gate-v1.schema.json",
+  "title": "Encrypted Lifecycle Freshness Serve Gate v1 (R9-2/R10-3)",
+  "description": "FreshnessServeGateV1 durable no-serve gate. R10-3 pins exactly three legal (state,reason) pairs: (CLEAR,NONE), (FRESH_CHALLENGE_REQUIRED,ATTESTATION_EXPIRED_BEFORE_STABILIZE), (FRESH_CHALLENGE_REQUIRED,CLOCK_WINDOW_EXPIRED). Any other combination fails schema validation at write time; missing/malformed/non-CLEAR state always means no-serve at read time.",
+  "definitions": {
+    "decimalString": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$"
+    },
+    "hex64": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "opaqueId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "workspace_id",
+    "state",
+    "stable_floor_generation",
+    "stable_checkpoint_id",
+    "source_candidate_digest",
+    "reason",
+    "updated_at"
+  ],
+  "properties": {
+    "schema": {"const": "wiki-freshness-serve-gate-v1"},
+    "workspace_id": {"$ref": "#/definitions/opaqueId"},
+    "state": {"enum": ["CLEAR", "FRESH_CHALLENGE_REQUIRED"]},
+    "stable_floor_generation": {"$ref": "#/definitions/decimalString"},
+    "stable_checkpoint_id": {"$ref": "#/definitions/hex64"},
+    "source_candidate_digest": {"$ref": "#/definitions/hex64"},
+    "reason": {"enum": ["NONE", "ATTESTATION_EXPIRED_BEFORE_STABILIZE", "CLOCK_WINDOW_EXPIRED"]},
+    "updated_at": {"$ref": "#/definitions/timestamp"}
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "state": {"const": "CLEAR"},
+        "reason": {"const": "NONE"}
+      }
+    },
+    {
+      "properties": {
+        "state": {"const": "FRESH_CHALLENGE_REQUIRED"},
+        "reason": {"const": "ATTESTATION_EXPIRED_BEFORE_STABILIZE"}
+      }
+    },
+    {
+      "properties": {
+        "state": {"const": "FRESH_CHALLENGE_REQUIRED"},
+        "reason": {"const": "CLOCK_WINDOW_EXPIRED"}
+      }
+    }
+  ]
+}

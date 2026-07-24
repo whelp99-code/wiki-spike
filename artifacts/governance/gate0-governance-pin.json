@@ -1,0 +1,40 @@
+{
+  "schema": "wiki-gate0-governance-pin-v1",
+  "recorded_at": "2026-07-24T05:45:00Z",
+  "mode": "read-only-governance-evidence",
+  "repository": {
+    "remote": "whelp99-code/wiki-spike",
+    "main_head": "6de541c3b8897f608dd4752cb643109e720aa4c7",
+    "local_head_equals_origin_main": true,
+    "release_tags_pinned": ["phase3-core-v1.0.0", "phase4-runtime-v1.0.0"]
+  },
+  "phase5_bootstrap_branch": {
+    "ref": "refs/heads/phase5/p5-00-to-p5-17-application-completion",
+    "head": "6b1090cc412237320f89069c6094d6c21313bf13",
+    "merge_basis": false,
+    "product_source_diff_vs_main": "none (bootstrap workflow + payload chunks only)",
+    "workflow_expectation": ["bootstrap/p5.bin.ready", "bootstrap/p5.bin/"],
+    "branch_actual_contents": ["bootstrap/p5.ready", "bootstrap/p5.parts/part-00..11"],
+    "workflow_outcome": "NO_READY exit 0 (false-green: zero product patch applied)",
+    "governance_disposition": "excluded from implementation chain; payload-chunk + CI git-am delivery mechanism rejected; any salvage must arrive as a normal reviewable diff against main"
+  },
+  "open_draft_prs_excluded_from_chain": [
+    {"number": 28, "head": "phase5/p5-00-to-p5-17-application-completion", "title": "P5-00..P5-17: complete Application layer and signed G5 gate"},
+    {"number": 27, "head": "tmp/p5-source-export", "title": "chore: temporary exact G4 source export for Phase 5"},
+    {"number": 24, "head": "tmp/p4-rest-source-export", "title": "chore: temporary source export for remaining Phase 4/5 implementation"},
+    {"number": 18, "head": "tmp/p4-00-source-export", "title": "chore: temporary source export for P4-00 validation"}
+  ],
+  "branch_protection": {
+    "status": "external-control-plane; not provable from repository contents",
+    "note": ".github/BRANCH_PROTECTION_REQUIRED_CHECKS.md documents required checks as external state; admin evidence to be attached when API/admin access is exercised. No required check may be green when zero product patch was applied."
+  },
+  "binding_plan": {
+    "run_id": "019f8ebe-012e-7000-b140-8e9aced136fc",
+    "pending_approval_sha256": "788685b82e3ac4478589f41ad6706e089b5041e9a8b69a0197dee83f57ae5cbc",
+    "plan_set": [
+      {"artifact": "stage-08-revision.md", "sha256": "ef4ff3b275356e5c9754550c9cbfb04a65ffc6668204f3e9fa0578479146048d"},
+      {"artifact": "stage-09-revision.md", "sha256": "284cbe71af0519c79b21f7dda8cdd145a3a5366193f30540f3d54866a923a1f3"},
+      {"artifact": "stage-10-revision.md", "sha256": "2fe01ee15d6b36e3a987776aa6b974cd05f7b0410723975a608ae04313bb44a4"}
+    ]
+  }
+}

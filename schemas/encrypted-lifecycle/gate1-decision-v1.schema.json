@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://wiki-spike.local/schemas/encrypted-lifecycle/gate1-decision-v1.schema.json",
+  "title": "Encrypted Lifecycle Gate 1 Decision v1",
+  "description": "Body-free Gate 1 blocking-contract decision record: reviewing owners, bound ADR references, the pre-initialization SQLCipher-profile-A/field-AEAD-profile-B selection (no runtime fallback), the frozen advisory/MUST metric set, contract digests reviewed same-pass, and documented residual claims/limitations.",
+  "definitions": {
+    "hex64": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "decimalString": {"type": "string", "pattern": "^(0|[1-9][0-9]*)$"},
+    "opaqueId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,62}$"},
+    "timestamp": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "ownerV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor_id", "role"],
+      "properties": {
+        "actor_id": {"$ref": "#/definitions/opaqueId"},
+        "role": {"enum": ["ARCHITECT", "CRITIC", "EXECUTOR_OWNER", "PRODUCT_OWNER"]}
+      }
+    },
+    "metricFreezeV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "extraction_precision_min",
+        "extraction_recall_min",
+        "recall_p95_ms_advisory",
+        "candidate_p95_ms_advisory"
+      ],
+      "properties": {
+        "extraction_precision_min": {"$ref": "#/definitions/decimalString"},
+        "extraction_recall_min": {"$ref": "#/definitions/decimalString"},
+        "recall_p95_ms_advisory": {"$ref": "#/definitions/decimalString"},
+        "candidate_p95_ms_advisory": {"$ref": "#/definitions/decimalString"}
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "owners",
+    "adr_refs",
+    "profile_selection",
+    "metric_freeze",
+    "contract_digests",
+    "residual_claims",
+    "decided_at"
+  ],
+  "properties": {
+    "schema": {"const": "wiki-gate1-decision-v1"},
+    "owners": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/definitions/ownerV1"}
+    },
+    "adr_refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^ADR-[0-9]{4}$"}
+    },
+    "profile_selection": {"enum": ["A", "B"]},
+    "metric_freeze": {"$ref": "#/definitions/metricFreezeV1"},
+    "contract_digests": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"$ref": "#/definitions/hex64"}
+    },
+    "residual_claims": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 512}
+    },
+    "decided_at": {"$ref": "#/definitions/timestamp"}
+  }
+}

@@ -1,0 +1,97 @@
+name: encrypted-lifecycle-sqlcipher-feasibility
+
+# Gate 1 scope ONLY. This workflow never runs project-wide tests, never
+# pins sqlcipher3/pysqlcipher3 as a project dependency (workflow-local
+# install only), and treats the disposable feasibility harness as one
+# required Gate 1 input among several -- it is never its own oracle for
+# the Gate 1 decision.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/sqlcipher_feasibility_harness.py"
+      - ".github/workflows/encrypted-lifecycle-sqlcipher-feasibility.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/sqlcipher_feasibility_harness.py"
+      - ".github/workflows/encrypted-lifecycle-sqlcipher-feasibility.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: encrypted-lifecycle-sqlcipher-feasibility-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  feasibility:
+    name: SQLCipher feasibility (Gate 1)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # On pull_request, check out the PR head commit (not the synthetic
+          # merge commit) so HEAD == triggering commit == harness-recorded commit.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install optional SQLCipher driver (workflow-local, not a project dependency)
+        run: |
+          set -uo pipefail
+          python -m pip install --upgrade pip
+          pip install sqlcipher3-binary || pip install pysqlcipher3 || true
+
+      - name: Run SQLCipher feasibility harness
+        env:
+          # Record the TRIGGERING (PR head or push/dispatch) commit, not the
+          # synthetic merge commit, so recorded_commit == checked-out HEAD.
+          GITHUB_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python3 scripts/sqlcipher_feasibility_harness.py --output-dir artifacts/encrypted-lifecycle
+
+      - name: Four-way commit equality evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          triggering_sha="${{ github.event.pull_request.head.sha || github.sha }}"
+          checked_out_head="$(git rev-parse HEAD)"
+          github_sha="${GITHUB_SHA}"
+
+          harness_file="$(ls artifacts/encrypted-lifecycle/sqlcipher-feasibility-*.json | head -n1)"
+          harness_commit="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('recorded_commit') or '')" "$harness_file")"
+
+          echo "github_sha=$github_sha"
+          echo "checked_out_head=$checked_out_head"
+          echo "triggering_sha=$triggering_sha"
+          echo "harness_commit=$harness_commit"
+
+          # Anchor on the TRIGGERING commit (PR head, or push/dispatch sha), which
+          # now equals the checked-out HEAD because we checked out the head ref.
+          # On push/workflow_dispatch triggering_sha == github_sha, so this stays a
+          # four-way check; on pull_request github_sha is the synthetic merge commit
+          # and is logged for provenance but excluded from the strict equality.
+          if [ "$triggering_sha" != "$checked_out_head" ] || [ "$triggering_sha" != "$harness_commit" ]; then
+            echo "::error::commit equality failed: triggering commit / checked-out HEAD / harness-recorded commit must all match (github_sha=$github_sha logged for provenance)"
+            exit 1
+          fi
+          echo "commit equality verified on triggering commit: $triggering_sha (github_sha=$github_sha)"
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+
+      - name: Upload feasibility artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-lifecycle-sqlcipher-feasibility-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/encrypted-lifecycle/
+          if-no-files-found: error
+          retention-days: 90

@@ -1,0 +1,82 @@
+{
+  "ark_creation_crash_points": [
+    {
+      "crash_after": "intent_prepared",
+      "durable_state": "KEY_INTENT_PREPARED",
+      "resume_outcome": "resume_platform_create"
+    },
+    {
+      "crash_after": "platform_create_before_readback",
+      "durable_state": "KEY_INTENT_PREPARED",
+      "resume_outcome": "resume_platform_readback"
+    },
+    {
+      "crash_after": "platform_readback_verified",
+      "durable_state": "PLATFORM_KEY_VERIFIED",
+      "resume_outcome": "resume_recovery_create"
+    },
+    {
+      "crash_after": "recovery_create_before_readback",
+      "durable_state": "PLATFORM_KEY_VERIFIED",
+      "resume_outcome": "resume_recovery_readback"
+    },
+    {
+      "crash_after": "recovery_readback_verified",
+      "durable_state": "RECOVERY_KEY_VERIFIED",
+      "resume_outcome": "resume_cas_materialization"
+    },
+    {
+      "crash_after": "cas_materialized",
+      "durable_state": "CAS_MATERIALIZED",
+      "resume_outcome": "resume_active_election"
+    },
+    {
+      "crash_after": "active_elected",
+      "durable_state": "ACTIVE",
+      "resume_outcome": "none_terminal"
+    }
+  ],
+  "deletion_crash_points": [
+    {
+      "crash_after": "requested",
+      "durable_state": "REQUESTED",
+      "resume_outcome": "resume_api_veto"
+    },
+    {
+      "crash_after": "api_veto_active",
+      "durable_state": "API_VETO_ACTIVE",
+      "resume_outcome": "resume_tombstone"
+    },
+    {
+      "crash_after": "tombstone_active",
+      "durable_state": "TOMBSTONE_ACTIVE",
+      "resume_outcome": "resume_checkpoint_commit"
+    },
+    {
+      "crash_after": "checkpoint_committed",
+      "durable_state": "CHECKPOINT_COMMITTED",
+      "resume_outcome": "resume_revocation_keys_destroy"
+    },
+    {
+      "crash_after": "revocation_keys_destroyed",
+      "durable_state": "REVOCATION_KEYS_DESTROYED",
+      "resume_outcome": "resume_crypto_shred_complete"
+    },
+    {
+      "crash_after": "crypto_shred_complete",
+      "durable_state": "CRYPTO_SHRED_COMPLETE",
+      "resume_outcome": "resume_purge"
+    },
+    {
+      "crash_after": "purge_pending",
+      "durable_state": "PURGE_PENDING",
+      "resume_outcome": "resume_complete"
+    },
+    {
+      "crash_after": "complete",
+      "durable_state": "COMPLETE",
+      "resume_outcome": "none_terminal"
+    }
+  ],
+  "schema": "wiki-encrypted-lifecycle-crash-matrix-vectors-v1"
+}

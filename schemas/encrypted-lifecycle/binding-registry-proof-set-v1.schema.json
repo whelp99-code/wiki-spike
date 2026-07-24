@@ -1,0 +1,217 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://wiki-spike.local/schemas/encrypted-lifecycle/binding-registry-proof-set-v1.schema.json",
+  "title": "Binding Registry Proof Set v1 (R9-3)",
+  "description": "BindingRegistryProofSetV1 exactly {schema,attestation,checkpoint,checkpoint_signature,current_leaf,current_sparse_proof,predecessor_transition_leaves,history_inclusion_proofs,history_consistency_proof}. Predecessor and inclusion arrays are complete, cardinality-equal, ordered from the locally trusted state exclusive through the terminal current leaf inclusive by canonical decimal transition sequence. Validation order: strict decode/raw canonical-byte equality; attestation signature/time/nonce/counter/signer chain and request_floor_checkpoint_id equality (R10-5); checkpoint ID/signature and equality with signed roots/sizes; history consistency; every inclusion/transition; sparse membership/non-membership; binding classification; monotonic local-floor update.",
+  "definitions": {
+    "decimalString": {"type": "string", "pattern": "^(0|[1-9][0-9]*)$"},
+    "hex64": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "hex128": {"type": "string", "pattern": "^[0-9a-f]{128}$"},
+    "challengeNonceHex64": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "opaqueId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,62}$"},
+    "timestamp": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "nullableHex64": {"oneOf": [{"$ref": "#/definitions/hex64"}, {"type": "null"}]},
+    "bindingLatestReadAttestationWireV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["payload", "signature_algorithm", "signature"],
+      "properties": {
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema", "workspace_id", "request_nonce", "challenge_counter", "request_floor_checkpoint_id",
+            "checkpoint_id", "checkpoint_sha256", "checkpoint_sequence", "history_size", "history_root",
+            "current_map_size", "current_map_root", "signer_key_id", "issued_at", "expires_at"
+          ],
+          "properties": {
+            "schema": {"const": "wiki-binding-latest-read-attestation-v1"},
+            "workspace_id": {"$ref": "#/definitions/opaqueId"},
+            "request_nonce": {"$ref": "#/definitions/challengeNonceHex64"},
+            "challenge_counter": {"$ref": "#/definitions/decimalString"},
+            "request_floor_checkpoint_id": {"$ref": "#/definitions/hex64"},
+            "checkpoint_id": {"$ref": "#/definitions/hex64"},
+            "checkpoint_sha256": {"$ref": "#/definitions/hex64"},
+            "checkpoint_sequence": {"$ref": "#/definitions/decimalString"},
+            "history_size": {"$ref": "#/definitions/decimalString"},
+            "history_root": {"$ref": "#/definitions/hex64"},
+            "current_map_size": {"$ref": "#/definitions/decimalString"},
+            "current_map_root": {"$ref": "#/definitions/hex64"},
+            "signer_key_id": {"type": "string", "minLength": 1},
+            "issued_at": {"$ref": "#/definitions/timestamp"},
+            "expires_at": {"$ref": "#/definitions/timestamp"}
+          }
+        },
+        "signature_algorithm": {"const": "Ed25519"},
+        "signature": {"$ref": "#/definitions/hex128"}
+      }
+    },
+    "bindingRegistryCheckpointV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "workspace_id", "generation_id", "registry_sequence", "history_size", "history_root",
+        "current_leaf_count", "current_map_root", "veto_set_size", "veto_set_root", "transition_size",
+        "transition_root", "created_at", "prior_checkpoint_hash", "signer_key_id"
+      ],
+      "properties": {
+        "schema": {"const": "wiki-binding-registry-checkpoint-v1"},
+        "workspace_id": {"$ref": "#/definitions/opaqueId"},
+        "generation_id": {"$ref": "#/definitions/hex64"},
+        "registry_sequence": {"$ref": "#/definitions/decimalString"},
+        "history_size": {"$ref": "#/definitions/decimalString"},
+        "history_root": {"$ref": "#/definitions/hex64"},
+        "current_leaf_count": {"$ref": "#/definitions/decimalString"},
+        "current_map_root": {"$ref": "#/definitions/hex64"},
+        "veto_set_size": {"$ref": "#/definitions/decimalString"},
+        "veto_set_root": {"$ref": "#/definitions/hex64"},
+        "transition_size": {"$ref": "#/definitions/decimalString"},
+        "transition_root": {"$ref": "#/definitions/hex64"},
+        "created_at": {"$ref": "#/definitions/timestamp"},
+        "prior_checkpoint_hash": {"$ref": "#/definitions/nullableHex64"},
+        "signer_key_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "bindingRegistryCheckpointSignatureV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "algorithm", "key_id", "checkpoint_sha256", "signature"],
+      "properties": {
+        "schema": {"const": "wiki-binding-registry-checkpoint-signature-v1"},
+        "algorithm": {"const": "Ed25519"},
+        "key_id": {"type": "string", "minLength": 1},
+        "checkpoint_sha256": {"$ref": "#/definitions/hex64"},
+        "signature": {"$ref": "#/definitions/hex128"}
+      }
+    },
+    "bindingRegistryLeafV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "workspace_id", "registry_sequence", "namespace", "provider_handle", "provider_key_fingerprint",
+        "intent_id", "artifact_id", "revision_id", "semantic_digest", "metadata_digest", "status",
+        "activation_generation_id", "prior_leaf_hash"
+      ],
+      "properties": {
+        "schema": {"const": "wiki-binding-registry-leaf-v1"},
+        "workspace_id": {"$ref": "#/definitions/opaqueId"},
+        "registry_sequence": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+        "namespace": {"type": "string", "minLength": 1},
+        "provider_handle": {"type": "string", "minLength": 1},
+        "provider_key_fingerprint": {"$ref": "#/definitions/hex64"},
+        "intent_id": {"$ref": "#/definitions/hex64"},
+        "artifact_id": {"$ref": "#/definitions/hex64"},
+        "revision_id": {"$ref": "#/definitions/hex64"},
+        "semantic_digest": {"$ref": "#/definitions/hex64"},
+        "metadata_digest": {"$ref": "#/definitions/hex64"},
+        "status": {"enum": ["PREPARED", "ACTIVE", "LOSER", "EXPIRED", "DELETION_VETOED", "DESTROYED"]},
+        "activation_generation_id": {"$ref": "#/definitions/nullableHex64"},
+        "prior_leaf_hash": {"$ref": "#/definitions/nullableHex64"}
+      }
+    },
+    "signedBindingRegistryLeafV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["leaf", "leaf_signature"],
+      "properties": {
+        "leaf": {"$ref": "#/definitions/bindingRegistryLeafV1"},
+        "leaf_signature": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schema", "algorithm", "key_id", "leaf_hash", "signature"],
+          "properties": {
+            "schema": {"const": "wiki-binding-registry-leaf-signature-v1"},
+            "algorithm": {"const": "Ed25519"},
+            "key_id": {"type": "string", "minLength": 1},
+            "leaf_hash": {"$ref": "#/definitions/hex64"},
+            "signature": {"$ref": "#/definitions/hex128"}
+          }
+        }
+      }
+    },
+    "bindingHistoryInclusionProofV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "history_size", "leaf_index", "audit_path"],
+      "properties": {
+        "schema": {"const": "wiki-binding-history-inclusion-proof-v1"},
+        "history_size": {"$ref": "#/definitions/decimalString"},
+        "leaf_index": {"$ref": "#/definitions/decimalString"},
+        "audit_path": {"type": "array", "items": {"$ref": "#/definitions/hex64"}}
+      }
+    },
+    "bindingHistoryConsistencyProofV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "old_size", "new_size", "audit_path"],
+      "properties": {
+        "schema": {"const": "wiki-binding-history-consistency-proof-v1"},
+        "old_size": {"$ref": "#/definitions/decimalString"},
+        "new_size": {"$ref": "#/definitions/decimalString"},
+        "audit_path": {"type": "array", "items": {"$ref": "#/definitions/hex64"}}
+      }
+    },
+    "bindingCurrentMembershipProofV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "map_key", "signed_leaf", "siblings"],
+      "properties": {
+        "schema": {"const": "wiki-binding-current-membership-proof-v1"},
+        "map_key": {"$ref": "#/definitions/hex64"},
+        "signed_leaf": {"$ref": "#/definitions/signedBindingRegistryLeafV1"},
+        "siblings": {"type": "array", "minItems": 256, "maxItems": 256, "items": {"$ref": "#/definitions/hex64"}}
+      }
+    },
+    "bindingCurrentNonMembershipProofV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "map_key", "signed_leaf", "siblings"],
+      "properties": {
+        "schema": {"const": "wiki-binding-current-nonmembership-proof-v1"},
+        "map_key": {"$ref": "#/definitions/hex64"},
+        "signed_leaf": {"const": null},
+        "siblings": {"type": "array", "minItems": 256, "maxItems": 256, "items": {"$ref": "#/definitions/hex64"}}
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "attestation",
+    "checkpoint",
+    "checkpoint_signature",
+    "current_leaf",
+    "current_sparse_proof",
+    "predecessor_transition_leaves",
+    "history_inclusion_proofs",
+    "history_consistency_proof"
+  ],
+  "properties": {
+    "schema": {"const": "wiki-binding-registry-proof-set-v1"},
+    "attestation": {"$ref": "#/definitions/bindingLatestReadAttestationWireV1"},
+    "checkpoint": {"$ref": "#/definitions/bindingRegistryCheckpointV1"},
+    "checkpoint_signature": {"$ref": "#/definitions/bindingRegistryCheckpointSignatureV1"},
+    "current_leaf": {
+      "oneOf": [
+        {"$ref": "#/definitions/signedBindingRegistryLeafV1"},
+        {"type": "null"}
+      ]
+    },
+    "current_sparse_proof": {
+      "oneOf": [
+        {"$ref": "#/definitions/bindingCurrentMembershipProofV1"},
+        {"$ref": "#/definitions/bindingCurrentNonMembershipProofV1"}
+      ]
+    },
+    "predecessor_transition_leaves": {
+      "type": "array",
+      "items": {"$ref": "#/definitions/signedBindingRegistryLeafV1"}
+    },
+    "history_inclusion_proofs": {
+      "type": "array",
+      "items": {"$ref": "#/definitions/bindingHistoryInclusionProofV1"}
+    },
+    "history_consistency_proof": {"$ref": "#/definitions/bindingHistoryConsistencyProofV1"}
+  }
+}

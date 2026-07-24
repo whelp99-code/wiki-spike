@@ -1,0 +1,121 @@
+name: encrypted-lifecycle-conformance
+
+# Gate 8 scope. This is a PLACEHOLDER JOIN SKELETON only -- it downloads
+# and cross-verifies the three immutable Gate 1 / canary / conformance
+# artifact tuples, then STOPS with an explicit gate8_not_implemented
+# failure marker. It is impossible for this workflow to report success:
+# absence of the required dispatch inputs is itself a job failure, and
+# the terminal step always fails after import verification. There is no
+# NO_READY-style false-green outcome -- green is never a possible result
+# of this workflow until Gate 8 is actually implemented.
+
+on:
+  workflow_dispatch:
+    inputs:
+      gate1_run_id:
+        description: "Workflow run ID that produced the immutable Gate 1 decision bundle"
+        required: true
+        type: string
+      canary_run_id:
+        description: "Workflow run ID that produced the 24-hour canary bundle"
+        required: true
+        type: string
+      conformance_run_id:
+        description: "Workflow run ID that produced the pre-canary conformance bundle"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: encrypted-lifecycle-conformance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate8-join-skeleton:
+    name: Gate 8 join skeleton (NOT a delivery gate)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Fail closed if any required run id is missing
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          if [ -z "${{ inputs.gate1_run_id }}" ]; then echo "::error::gate1_run_id is required"; missing=1; fi
+          if [ -z "${{ inputs.canary_run_id }}" ]; then echo "::error::canary_run_id is required"; missing=1; fi
+          if [ -z "${{ inputs.conformance_run_id }}" ]; then echo "::error::conformance_run_id is required"; missing=1; fi
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::missing required workflow_dispatch input(s); job fails, never a silent no-op"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download Gate 1 decision bundle
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.gate1_run_id }}
+          path: gate8-import/gate1
+          merge-multiple: true
+
+      - name: Download conformance (pre-canary) bundle
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.conformance_run_id }}
+          path: gate8-import/conformance
+          merge-multiple: true
+
+      - name: Download canary (24h) bundle
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.canary_run_id }}
+          path: gate8-import/canary
+          merge-multiple: true
+
+      - name: Verify each tuple imports as a valid acyclic bundle
+        run: |
+          set -euo pipefail
+          for lane in gate1 conformance canary; do
+            if [ -d "gate8-import/$lane" ] && ls gate8-import/$lane/*.tar >/dev/null 2>&1; then
+              python3 scripts/import_encrypted_lifecycle_bundle.py \
+                --input "gate8-import/$lane" \
+                --output "gate8-import/$lane-verified"
+            else
+              echo "::error::no bundle tar found for lane $lane; import verification cannot proceed"
+              exit 1
+            fi
+          done
+
+      - name: Verify digest/commit binding across the three imported lanes
+        run: |
+          set -euo pipefail
+          python3 - <<'PYEOF'
+          import json
+          from pathlib import Path
+
+          lanes = ["gate1", "conformance", "canary"]
+          commits = set()
+          for lane in lanes:
+              envelope_path = next(Path(f"gate8-import/{lane}").glob("bundle-envelope.json"))
+              envelope = json.loads(envelope_path.read_text(encoding="utf-8"))
+              commits.add(envelope["producer_commit"])
+              print(f"{lane}: producer_commit={envelope['producer_commit']} artifact_kind={envelope['artifact_kind']}")
+
+          if len(commits) != 1:
+              raise SystemExit(f"::error::producer_commit differs across lanes: {sorted(commits)}")
+          print(f"all three lanes bound to producer_commit={commits.pop()}")
+          PYEOF
+
+      - name: Gate 8 is not implemented (explicit, unavoidable failure)
+        run: |
+          echo "::error::gate8_not_implemented: import verification succeeded, but Gate 8 conformance/canary evaluation logic does not exist yet. This workflow can never be read as green delivery."
+          exit 1

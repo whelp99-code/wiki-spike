@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://wiki-spike.local/schemas/encrypted-lifecycle/binding-latest-read-attestation-v1.schema.json",
+  "title": "Binding Latest Read Attestation v1 (R9-3, R10-2, R10-4, R10-5)",
+  "description": "BindingLatestReadAttestationPayloadV1 is the sole concrete frozen schema for every Stage 8 reference to LatestReadAttestationV1 in the binding-registry/recovery freshness path (R10-4); the Revision 5 deletion-provider veto-set attestation is a distinct type with its own domain and is unaffected. Signature input is domain `wiki.binding.latest-read-attestation.v1\\0` + canonical payload bytes (R10-2). `request_floor_checkpoint_id` must equal the stable_checkpoint_id of the local floor row read in the same transaction that reserved (request_nonce, challenge_counter); mismatch aborts with `attestation_floor_mismatch` (R10-5).",
+  "definitions": {
+    "decimalString": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$"
+    },
+    "hex64": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "hex128": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    },
+    "challengeNonceHex64": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "opaqueId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "bindingLatestReadAttestationPayloadV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "workspace_id",
+        "request_nonce",
+        "challenge_counter",
+        "request_floor_checkpoint_id",
+        "checkpoint_id",
+        "checkpoint_sha256",
+        "checkpoint_sequence",
+        "history_size",
+        "history_root",
+        "current_map_size",
+        "current_map_root",
+        "signer_key_id",
+        "issued_at",
+        "expires_at"
+      ],
+      "properties": {
+        "schema": {"const": "wiki-binding-latest-read-attestation-v1"},
+        "workspace_id": {"$ref": "#/definitions/opaqueId"},
+        "request_nonce": {"$ref": "#/definitions/challengeNonceHex64"},
+        "challenge_counter": {"$ref": "#/definitions/decimalString"},
+        "request_floor_checkpoint_id": {"$ref": "#/definitions/hex64"},
+        "checkpoint_id": {"$ref": "#/definitions/hex64"},
+        "checkpoint_sha256": {"$ref": "#/definitions/hex64"},
+        "checkpoint_sequence": {"$ref": "#/definitions/decimalString"},
+        "history_size": {"$ref": "#/definitions/decimalString"},
+        "history_root": {"$ref": "#/definitions/hex64"},
+        "current_map_size": {"$ref": "#/definitions/decimalString"},
+        "current_map_root": {"$ref": "#/definitions/hex64"},
+        "signer_key_id": {"type": "string", "minLength": 1},
+        "issued_at": {"$ref": "#/definitions/timestamp"},
+        "expires_at": {"$ref": "#/definitions/timestamp"}
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["payload", "signature_algorithm", "signature"],
+  "properties": {
+    "payload": {"$ref": "#/definitions/bindingLatestReadAttestationPayloadV1"},
+    "signature_algorithm": {"const": "Ed25519"},
+    "signature": {"$ref": "#/definitions/hex128"}
+  }
+}

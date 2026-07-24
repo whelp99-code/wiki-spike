@@ -1,0 +1,60 @@
+{
+  "adr_refs": [
+    "ADR-0026",
+    "ADR-0027"
+  ],
+  "contract_digests": {
+    "artifacts/encrypted-lifecycle/vector-validation-receipt.json": "0f31dffd35b304663a2e4868fc0f10b500ebcfd809eb44741c8662dbf0b46b5d",
+    "docs/adr/ADR-0026-encrypted-lifecycle-authority-identity.md": "f91fbafc9f9a0a4d41e93055ddc01cc8cdc644337ae59674426990e23b98f3cf",
+    "docs/adr/ADR-0027-encrypted-lifecycle-recovery-deletion.md": "45d9b7f13550adcf8c4f34c416401be56867a0bc844d4533df68d5da123e8fc3",
+    "schemas/encrypted-lifecycle/ark-key-intent-v1.schema.json": "c7bff871e86d3a5ba9a7607f6c4dcb46b1fb0bda806f224cfb4c01a026587613",
+    "schemas/encrypted-lifecycle/binding-latest-read-attestation-v1.schema.json": "85b831b941d9534ad1616adf64ad51d96f644d93ed236ec9be7309b58b815bb5",
+    "schemas/encrypted-lifecycle/binding-leaf-v1.schema.json": "c50370dd016dc3077b8a728742a3cc9d47f131a55ef6405f8b035ff29a28c885",
+    "schemas/encrypted-lifecycle/binding-registry-checkpoint-v1.schema.json": "48fd86b76cfc892e816c7877b83d105536e52168d6e2218b7d72490d36e7952a",
+    "schemas/encrypted-lifecycle/binding-registry-proof-set-v1.schema.json": "766d378194f72b1d36789ec540ae2cfeb18b1099355990e6f6a0053ab9539b70",
+    "schemas/encrypted-lifecycle/bundle-manifest-v1.schema.json": "6519d1e09ca3406d9c20ea0dfc406d2e85cdcdd3f300321916d43fbc7d12b3ab",
+    "schemas/encrypted-lifecycle/deletion-state-v1.schema.json": "6b7c74523940966b7a85f8d8988bcc80ef3133daa70c6d4e136013dc658a2c4d",
+    "schemas/encrypted-lifecycle/encrypted-accepted-changeset-v1.schema.json": "19b8bc81f7c37da87dff9211a9caeeb5550f382338672226e23966830f707a96",
+    "schemas/encrypted-lifecycle/envelope-v1.schema.json": "2d9166e196476ac93187dbc643d26457496605505c4b98e94d742c4a1bfb022a",
+    "schemas/encrypted-lifecycle/floor-state-v1.schema.json": "c4e3e10156d00021428b21a9c40af6cb230b1fbeb2bee3a4ac77141eb10e89a6",
+    "schemas/encrypted-lifecycle/freshness-serve-gate-v1.schema.json": "e8cf5dd49198b820c42aad3ae809841e54ea3240ed2d8404a39562f485b9ede8",
+    "schemas/encrypted-lifecycle/gate1-decision-v1.schema.json": "e054b02ad235d18976b2b4c87dfdb543738c31aa7e2a5f372f7594e700e7e4fc",
+    "schemas/encrypted-lifecycle/identity-message-v1.schema.json": "1dfc0469fcfaab298ee505b2921bf1d1caa174bb205f27ea5763596bdd9950b8",
+    "schemas/encrypted-lifecycle/state-delta-v1.schema.json": "5c5b7de721e631a0ce30a0c1491e538e29faacc0c174e6047d6b5854d18a3101",
+    "tests/fixtures/encrypted_lifecycle/binding-wire-vectors-v1.json": "2402fdd522690bb291218d121237419eaf2447cfd896f727cfd2beec37f7fff9",
+    "tests/fixtures/encrypted_lifecycle/bundle-one-pass-vectors-v1.json": "86400b814fe6a2f3ba3aeb1b31bcd224c6844e74b22376846afcf117723f7b29",
+    "tests/fixtures/encrypted_lifecycle/crash-matrix-vectors-v1.json": "ddc8865390d34ba808d43533ece3a85e2712ae7c91780d471dea03f3a3b182be",
+    "tests/fixtures/encrypted_lifecycle/floor-state-vectors-v1.json": "b38e15c0e813c5ff79a6a16c4e887f7560648a8ad9252f8fcfc6addf855280a8",
+    "tests/fixtures/encrypted_lifecycle/identity-vectors-v1.json": "06096593156e60007f7ed62be7d071f42b8fd9c168bb4e2943469f097600801d",
+    "tests/fixtures/encrypted_lifecycle/kdf-vectors-v1.json": "0741a8a3ae2c40c09ac0f15eefb824ceef4ee5eda791541ed6fab56dce559669",
+    "tests/fixtures/encrypted_lifecycle/new-consent-vectors-v1.json": "a9021f95fa6272d31b73053f18d00d67bb913ab1f27cee7799912f3f9d7667b3",
+    "tests/fixtures/encrypted_lifecycle/nonce-vectors-v1.json": "00629494c6b694e275b2bf2a57b5cc49fe59045b3083f29ba42459f591070a08",
+    "tests/fixtures/encrypted_lifecycle/wal-linearization-vectors-v1.json": "b16961ae635ed078c7d21c23bd79741e226a40f3682827a72a905bff2c4bb467"
+  },
+  "decided_at": "2026-07-24T12:11:10Z",
+  "metric_freeze": {
+    "candidate_p95_ms_advisory": "500",
+    "extraction_precision_min": "80",
+    "extraction_recall_min": "80",
+    "recall_p95_ms_advisory": "200"
+  },
+  "owners": [
+    {
+      "actor_id": "jmpark",
+      "role": "PRODUCT_OWNER"
+    },
+    {
+      "actor_id": "jmpark",
+      "role": "ARCHITECT"
+    },
+    {
+      "actor_id": "jmpark",
+      "role": "EXECUTOR_OWNER"
+    }
+  ],
+  "profile_selection": "B",
+  "residual_claims": [
+    "SQLCipher A/B feasibility authoritative evidence produced by ubuntu-24.04 CI; darwin-arm64 dev harness reports platform_unavailable"
+  ],
+  "schema": "wiki-gate1-decision-v1"
+}

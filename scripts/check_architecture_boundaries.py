@@ -57,6 +57,25 @@ def _resolve_relative(package: str, level: int, module: str | None) -> str:
 
 def _imports(tree: ast.AST, module: str, path: Path) -> Iterable[tuple[str, int]]:
     package = _package_for_module(module, path)
+
+    importlib_module_aliases: set[str] = {"importlib"}
+    import_module_func_aliases: set[str] = set()
+    dunder_import_aliases: set[str] = {"__import__"}
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "importlib":
+                    importlib_module_aliases.add(alias.asname or alias.name)
+        elif isinstance(node, ast.ImportFrom) and node.module == "importlib":
+            for alias in node.names:
+                if alias.name == "import_module":
+                    import_module_func_aliases.add(alias.asname or alias.name)
+        elif isinstance(node, ast.ImportFrom) and node.module == "builtins":
+            for alias in node.names:
+                if alias.name == "__import__":
+                    dunder_import_aliases.add(alias.asname or alias.name)
+
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -71,14 +90,16 @@ def _imports(tree: ast.AST, module: str, path: Path) -> Iterable[tuple[str, int]
                     yield candidate, node.lineno
         elif isinstance(node, ast.Call):
             name = None
-            if isinstance(node.func, ast.Name) and node.func.id == "__import__":
+            if isinstance(node.func, ast.Name) and node.func.id in dunder_import_aliases:
                 name = "__import__"
             elif (
                 isinstance(node.func, ast.Attribute)
                 and node.func.attr == "import_module"
                 and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "importlib"
+                and node.func.value.id in importlib_module_aliases
             ):
+                name = "importlib.import_module"
+            elif isinstance(node.func, ast.Name) and node.func.id in import_module_func_aliases:
                 name = "importlib.import_module"
             if name and node.args:
                 if isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
@@ -115,6 +136,7 @@ def lint_boundaries(repo: Path, config_path: Path) -> list[Violation]:
     scan_roots = config.get("scan_roots")
     if not isinstance(layers, dict) or not isinstance(rules, list) or not isinstance(scan_roots, list):
         raise PreflightError("malformed architecture boundary config")
+    protected_layers = {layer for rule in rules for layer in rule.get("from_layers", [])}
 
     violations: list[Violation] = []
     for scan_root in scan_roots:
@@ -134,7 +156,7 @@ def lint_boundaries(repo: Path, config_path: Path) -> list[Violation]:
                 raise PreflightError(f"cannot parse {relative}: {exc}") from exc
             module = _module_for_path(repo, path)
             for imported, line in _imports(tree, module, path):
-                if imported == "<dynamic-import>" and layer in {"core", "runtime", "application"}:
+                if imported == "<dynamic-import>" and layer in protected_layers:
                     violations.append(
                         Violation(
                             path=relative, line=line, layer=layer, imported_module=imported,
