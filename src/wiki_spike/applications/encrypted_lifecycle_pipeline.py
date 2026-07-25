@@ -10,17 +10,18 @@ Architecture-boundary contract: application layer; may import
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Mapping, Sequence
 
-from wiki_spike.infrastructure import crypto, identities
+from wiki_spike.infrastructure import crypto, floor_protocol, identities
 from wiki_spike.infrastructure.changeset import (
     build_encrypted_accepted_changeset,
     build_state_delta,
 )
-from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore
+from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore, EncryptedCASError
 from wiki_spike.infrastructure.ingestion import (
     input_content_digest,
     normalize_lifecycle_input_v1,
@@ -338,7 +339,13 @@ class EncryptedLifecyclePipeline:
         if review_state not in ("APPROVED", "REJECTED"):
             raise PipelineError("invalid_review_state", f"review_state must be APPROVED or REJECTED, got {review_state!r}")
         review_id = hashlib.sha256(
-            canonical_bytes({"artifact_id": artifact_id, "reviewer_handle": reviewer_handle, "review_state": review_state, "ts": _utcnow()})
+            canonical_bytes({
+                "domain": "wiki.candidate-review.v1",
+                "workspace_id": self.workspace_id,
+                "artifact_id": artifact_id,
+                "reviewer_handle": reviewer_handle,
+                "review_state": review_state,
+            })
         ).hexdigest()
         now = _utcnow()
         with self.db.unit_of_work() as uow:
@@ -386,7 +393,12 @@ class EncryptedLifecyclePipeline:
                 raise PipelineError("changeset_not_found", f"changeset {changeset_id} not found")
 
         generation_id = hashlib.sha256(
-            canonical_bytes({"changeset_id": changeset_id, "workspace_id": self.workspace_id, "ts": _utcnow()})
+            canonical_bytes({
+                "domain": "wiki.generation-id.v1",
+                "workspace_id": self.workspace_id,
+                "changeset_id": changeset_id,
+                "changes_root": cs_row["changes_root_digest"],
+            })
         ).hexdigest()
 
         generation_payload = {
@@ -417,12 +429,16 @@ class EncryptedLifecyclePipeline:
                     semantic_digest=dr.get("scope_digest") or cs_row["changes_root_digest"],
                     metadata_digest=cs_row["changes_root_digest"],
                     status="PREPARED",
+                    activation_generation_id=None,
+                    signing_key=signing_key,
+                    key_id=signer_key_id,
                 )
 
             checkpoint, checkpoint_sig = binding_registry.checkpoint(
-                signing_key=signing_key,
-                signer_key_id=signer_key_id,
                 generation_id=generation_id,
+                created_at=_utcnow(),
+                signing_key=signing_key,
+                key_id=signer_key_id,
             )
             binding_checkpoint_id = hashlib.sha256(canonical_bytes(checkpoint)).hexdigest()
 
@@ -446,6 +462,259 @@ class EncryptedLifecyclePipeline:
             "binding_checkpoint_id": binding_checkpoint_id,
             "payload": generation_payload,
         }
+    # ------------------------------------------------------------------
+    # Forward-only floor protocol + freshness serve gate (Gate 3 wiring)
+    # ------------------------------------------------------------------
+
+    def bootstrap_workspace(self) -> None:
+        """Idempotently initialize the workspace floor to a stable genesis
+        state (``FLOOR_STABLE``, generation "1") with a ``CLEAR``/``NONE``
+        freshness serve gate. Safe to call more than once."""
+        genesis_checkpoint_id = hashlib.sha256(
+            canonical_bytes({
+                "domain": "wiki.floor-genesis.v1",
+                "workspace_id": self.workspace_id,
+            })
+        ).hexdigest()
+        now = _utcnow()
+        with self.db.unit_of_work() as uow:
+            uow.upsert_floor_state(
+                workspace_id=self.workspace_id,
+                stable_floor_generation="1",
+                stable_checkpoint_id=genesis_checkpoint_id,
+                attempt_state=floor_protocol.FloorState.FLOOR_STABLE.value,
+                updated_at=now,
+            )
+            gate = floor_protocol.build_freshness_serve_gate(
+                workspace_id=self.workspace_id,
+                state="CLEAR",
+                stable_floor_generation="1",
+                stable_checkpoint_id=genesis_checkpoint_id,
+                source_candidate_digest=genesis_checkpoint_id,
+                reason="NONE",
+                updated_at=now,
+            )
+            uow.upsert_freshness_serve_gate(
+                workspace_id=self.workspace_id,
+                gate_state=gate["state"],
+                stable_floor_generation=gate["stable_floor_generation"],
+                stable_checkpoint_id=gate["stable_checkpoint_id"],
+                source_candidate_digest=gate["source_candidate_digest"],
+                reason_state=gate["reason"],
+                updated_at=now,
+            )
+
+    def advance_floor(
+        self,
+        *,
+        candidate_floor: Mapping,
+        counter: str,
+        nonce_digest: str,
+        simulate_readback: Mapping | None = None,
+    ) -> str:
+        """Drive one forward-only floor update through the FloorStateV1
+        machine (R9-1 exact-A CAS readback, R10-1 no adoption/supersession).
+
+        Transitions FLOOR_STABLE -> CHALLENGE_RESERVED ->
+        FLOOR_UPDATE_PREPARED, persists the candidate, then verifies the
+        committed keychain bytes (``simulate_readback`` if given, else
+        ``candidate_floor`` for the exact-A happy path). On success
+        transitions -> KEYCHAIN_COMMITTED -> FLOOR_STABLE and returns the
+        new stable checkpoint id. On readback mismatch, quarantines the
+        floor, withholds serving, and raises ``PipelineError``.
+        """
+        with self.db.unit_of_work() as uow:
+            floor_row = uow.get_floor_state(self.workspace_id)
+        if floor_row is None:
+            raise PipelineError(
+                "floor_not_bootstrapped",
+                f"workspace {self.workspace_id} floor is not bootstrapped",
+            )
+        current_state = floor_protocol.FloorState(floor_row["attempt_state"])
+        if current_state != floor_protocol.FloorState.FLOOR_STABLE:
+            raise PipelineError(
+                "floor_not_stable",
+                f"cannot advance floor from state {current_state.value}",
+            )
+
+        old_generation = floor_row["stable_floor_generation"]
+        old_checkpoint_id = floor_row["stable_checkpoint_id"]
+
+        state = floor_protocol.advance(current_state, floor_protocol.FloorState.CHALLENGE_RESERVED)
+        state = floor_protocol.advance(state, floor_protocol.FloorState.FLOOR_UPDATE_PREPARED)
+
+        attempt_id = hashlib.sha256(
+            canonical_bytes({
+                "domain": "wiki.floor-attempt-id.v1",
+                "workspace_id": self.workspace_id,
+                "counter": counter,
+                "nonce_digest": nonce_digest,
+            })
+        ).hexdigest()
+
+        candidate = floor_protocol.build_floor_candidate(
+            candidate_kind=floor_protocol.CandidateKind.VALIDATED_ADVANCE,
+            expected_old_floor_hash=old_checkpoint_id,
+            expected_keychain_generation=old_generation,
+            candidate_floor=candidate_floor,
+            attempt_id=attempt_id,
+            counter=counter,
+            nonce_digest=nonce_digest,
+            disposition=floor_protocol.CandidateDisposition.ACCEPTED_PREPARED,
+        )
+
+        prepared_now = _utcnow()
+        with self.db.unit_of_work() as uow:
+            uow.upsert_floor_state(
+                workspace_id=self.workspace_id,
+                stable_floor_generation=old_generation,
+                stable_checkpoint_id=old_checkpoint_id,
+                attempt_state=state.value,
+                updated_at=prepared_now,
+            )
+            uow.insert_floor_candidate(
+                attempt_id=attempt_id,
+                workspace_id=self.workspace_id,
+                candidate_kind=candidate["candidate_kind"],
+                expected_old_floor_digest=candidate["expected_old_floor_hash"],
+                expected_keychain_generation=candidate["expected_keychain_generation"],
+                candidate_floor_hex=canonical_bytes(candidate_floor).hex(),
+                candidate_floor_digest=candidate["candidate_floor_hash"],
+                challenge_sequence=counter,
+                nonce_digest=nonce_digest,
+                disposition_state=candidate["disposition"],
+                created_at=prepared_now,
+            )
+
+        keychain_bytes = simulate_readback if simulate_readback is not None else candidate_floor
+
+        try:
+            floor_protocol.verify_cas_readback(candidate, keychain_bytes)
+        except floor_protocol.FloorProtocolError as exc:
+            quarantine_now = _utcnow()
+            with self.db.unit_of_work() as uow:
+                uow.upsert_floor_state(
+                    workspace_id=self.workspace_id,
+                    stable_floor_generation=old_generation,
+                    stable_checkpoint_id=old_checkpoint_id,
+                    attempt_state=floor_protocol.FloorState.QUARANTINED_FLOOR_CONFLICT.value,
+                    updated_at=quarantine_now,
+                )
+                gate = floor_protocol.build_freshness_serve_gate(
+                    workspace_id=self.workspace_id,
+                    state="FRESH_CHALLENGE_REQUIRED",
+                    stable_floor_generation=old_generation,
+                    stable_checkpoint_id=old_checkpoint_id,
+                    source_candidate_digest=candidate["candidate_floor_hash"],
+                    reason="ATTESTATION_EXPIRED_BEFORE_STABILIZE",
+                    updated_at=quarantine_now,
+                )
+                uow.upsert_freshness_serve_gate(
+                    workspace_id=self.workspace_id,
+                    gate_state=gate["state"],
+                    stable_floor_generation=gate["stable_floor_generation"],
+                    stable_checkpoint_id=gate["stable_checkpoint_id"],
+                    source_candidate_digest=gate["source_candidate_digest"],
+                    reason_state=gate["reason"],
+                    updated_at=quarantine_now,
+                )
+            prev = self.db.event_chain_head()
+            self.db.append_event(prev_digest=prev, kind="FLOOR_QUARANTINED", ref_digest=attempt_id)
+            raise PipelineError("quarantined_floor_conflict", str(exc)) from exc
+
+        committed_now = _utcnow()
+        state = floor_protocol.advance(state, floor_protocol.FloorState.KEYCHAIN_COMMITTED)
+        state = floor_protocol.advance(state, floor_protocol.FloorState.FLOOR_STABLE)
+        new_generation = str(int(old_generation) + 1)
+        new_checkpoint_id = candidate["candidate_floor_hash"]
+
+        with self.db.unit_of_work() as uow:
+            uow.upsert_floor_state(
+                workspace_id=self.workspace_id,
+                stable_floor_generation=new_generation,
+                stable_checkpoint_id=new_checkpoint_id,
+                attempt_state=state.value,
+                updated_at=committed_now,
+            )
+            gate = floor_protocol.build_freshness_serve_gate(
+                workspace_id=self.workspace_id,
+                state="CLEAR",
+                stable_floor_generation=new_generation,
+                stable_checkpoint_id=new_checkpoint_id,
+                source_candidate_digest=candidate["candidate_floor_hash"],
+                reason="NONE",
+                updated_at=committed_now,
+            )
+            uow.upsert_freshness_serve_gate(
+                workspace_id=self.workspace_id,
+                gate_state=gate["state"],
+                stable_floor_generation=gate["stable_floor_generation"],
+                stable_checkpoint_id=gate["stable_checkpoint_id"],
+                source_candidate_digest=gate["source_candidate_digest"],
+                reason_state=gate["reason"],
+                updated_at=committed_now,
+            )
+
+        prev = self.db.event_chain_head()
+        self.db.append_event(prev_digest=prev, kind="FLOOR_STABILIZED", ref_digest=new_checkpoint_id)
+        return new_checkpoint_id
+
+    def can_serve(self) -> bool:
+        """True only if the freshness serve gate is CLEAR/NONE (R9-2/R10-3)."""
+        with self.db.unit_of_work() as uow:
+            gate_row = uow.get_freshness_serve_gate(self.workspace_id)
+        if gate_row is None:
+            return False
+        return floor_protocol.serve_gate_allows_serving({
+            "state": gate_row["gate_state"],
+            "reason": gate_row["reason_state"],
+        })
+
+    # ------------------------------------------------------------------
+    # Crash recovery (ADR-0027 §4)
+    # ------------------------------------------------------------------
+
+    def recover(
+        self,
+        *,
+        mode: "RecoveryMode",
+        registry: "BindingRegistry",
+        proof_set: Mapping,
+        trusted_signer_pub: "Ed25519PublicKey",
+        local_floor_checkpoint_id: str,
+        expected_namespace: str,
+        expected_provider_handle: str,
+        local_history_size: int | None = None,
+        local_history_root_hex: str | None = None,
+    ) -> "RecoveryDecision":
+        """Gate 3 crash-recovery entry point (ADR-0027 §4). Runs the
+        fail-closed DELTA_CONTINUITY / AUTHORITATIVE_SNAPSHOT recovery-proof
+        mode against the local trusted binding registry and records the
+        decision on the append-only event chain. A QUARANTINE_UNKNOWN
+        decision never releases the floor, creates a survivor key, or serves
+        plaintext; only a RECOVERED decision authorizes the caller to release
+        visibility."""
+        from wiki_spike.infrastructure import recovery
+
+        decision = recovery.recover(
+            mode=mode,
+            registry=registry,
+            proof_set=proof_set,
+            trusted_signer_pub=trusted_signer_pub,
+            local_floor_checkpoint_id=local_floor_checkpoint_id,
+            expected_namespace=expected_namespace,
+            expected_provider_handle=expected_provider_handle,
+            local_history_size=local_history_size,
+            local_history_root_hex=local_history_root_hex,
+        )
+        ref = "0" * 64
+        checkpoint_sig = proof_set.get("checkpoint_signature") if isinstance(proof_set, Mapping) else None
+        if isinstance(checkpoint_sig, Mapping) and checkpoint_sig.get("checkpoint_sha256"):
+            ref = checkpoint_sig["checkpoint_sha256"]
+        prev = self.db.event_chain_head()
+        self.db.append_event(prev_digest=prev, kind=f"RECOVERY_{decision.value}", ref_digest=ref)
+        return decision
+
 
     # ------------------------------------------------------------------
     # Activation via readback / CAS
@@ -457,13 +726,48 @@ class EncryptedLifecyclePipeline:
         artifact_id: str,
         blob_id: str,
     ) -> None:
-        """Activate a PREPARED artifact: verify CAS blob exists, transition
-        key state to ACTIVE, and append an activation event."""
-        if not self.cas.exists(blob_id):
-            raise PipelineError("blob_not_found", f"CAS blob {blob_id} not found")
+        """Activate a PREPARED/APPROVED artifact via an authenticated CAS
+        readback: read the blob back (integrity-verified against blob_id by
+        the CAS), confirm the readback envelope's workspace+revision identity
+        binds to this exact artifact, then transition custody to ACTIVE. A
+        missing blob, corrupt blob, unreadable envelope, or artifact<->blob
+        identity mismatch fails closed (no ACTIVE election)."""
+        with self.db.unit_of_work() as uow:
+            gate_row = uow.get_freshness_serve_gate(self.workspace_id)
+        if gate_row is None:
+            # Lazy bootstrap: pre-existing callers that never bootstrapped
+            # the floor still get a stable genesis + CLEAR gate.
+            self.bootstrap_workspace()
+        elif not floor_protocol.serve_gate_allows_serving({
+            "state": gate_row["gate_state"],
+            "reason": gate_row["reason_state"],
+        }):
+            raise PipelineError(
+                "serve_withheld",
+                f"freshness serve gate withholds serving for workspace {self.workspace_id}",
+            )
+        try:
+            envelope_bytes = self.cas.get(blob_id)
+        except EncryptedCASError as exc:
+            raise PipelineError("blob_readback_failed", f"CAS readback of {blob_id} failed: {exc}") from exc
+        try:
+            envelope = json.loads(envelope_bytes.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise PipelineError("envelope_unreadable", f"CAS blob {blob_id} is not a readable envelope") from exc
 
         now = _utcnow()
         with self.db.unit_of_work() as uow:
+            art = uow.get_canonical_artifact(artifact_id)
+            if art is None:
+                raise PipelineError("artifact_not_found", f"artifact {artifact_id} not found")
+            if (
+                envelope.get("workspace_id") != self.workspace_id
+                or envelope.get("revision_id") != art["revision_id"]
+            ):
+                raise PipelineError(
+                    "activation_identity_mismatch",
+                    f"CAS blob {blob_id} envelope identity does not bind artifact {artifact_id}",
+                )
             ks = uow.get_key_state(artifact_id)
             if ks is None:
                 raise PipelineError("key_state_not_found", f"no key_state for artifact {artifact_id}")

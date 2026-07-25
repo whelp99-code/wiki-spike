@@ -85,6 +85,13 @@ def _assert_transition(current: FloorState, target: FloorState) -> None:
         )
 
 
+def advance(current: FloorState, target: FloorState) -> FloorState:
+    """Public forward-only transition helper. Raises FloorProtocolError on
+    an illegal transition; otherwise returns ``target``."""
+    _assert_transition(current, target)
+    return target
+
+
 def floor_hash(floor_bytes: Mapping) -> str:
     return hashlib.sha256(canonical_bytes(floor_bytes)).hexdigest()
 

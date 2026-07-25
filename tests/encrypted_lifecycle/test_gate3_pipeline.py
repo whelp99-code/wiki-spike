@@ -203,7 +203,7 @@ def test_activate_artifact_missing_blob(pipeline):
     r = pipeline.remember(raw_body=b"no blob", project_id="proj-1")
     with pytest.raises(PipelineError) as excinfo:
         pipeline.activate_artifact(artifact_id=r.artifact_semantic_digest, blob_id="ff" * 32)
-    assert excinfo.value.code == "blob_not_found"
+    assert excinfo.value.code == "blob_readback_failed"
 
 
 # ---------------------------------------------------------------------------
