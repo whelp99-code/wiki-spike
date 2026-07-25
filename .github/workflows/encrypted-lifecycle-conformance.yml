@@ -1,13 +1,18 @@
 name: encrypted-lifecycle-conformance
 
-# Gate 8 scope. This is a PLACEHOLDER JOIN SKELETON only -- it downloads
-# and cross-verifies the three immutable Gate 1 / canary / conformance
-# artifact tuples, then STOPS with an explicit gate8_not_implemented
-# failure marker. It is impossible for this workflow to report success:
-# absence of the required dispatch inputs is itself a job failure, and
-# the terminal step always fails after import verification. There is no
-# NO_READY-style false-green outcome -- green is never a possible result
-# of this workflow until Gate 8 is actually implemented.
+# Gate 8 three-lane evidence join. Downloads and strictly imports the three
+# immutable Gate 1 / conformance (pre-canary) / canary (24h) artifact tuples,
+# requires a single producer_commit across all three lanes, then builds the
+# VERDICT-FREE pre-review manifest and the evidence join that preserves the
+# three independent import receipts (scripts/join_gate8_evidence.py).
+#
+# This workflow is NOT a delivery gate and never emits a pass/fail verdict:
+# its output manifest is deliberately verdict-free. Gate 8 delivery requires
+# the two independent ARCHITECT/CRITIC attestations and the separate review
+# receipt, produced by the review process over the emitted manifest_digest
+# (see wiki_spike.infrastructure.conformance). Absence of any required dispatch
+# input, any failed strict import, or a producer_commit mismatch is a hard job
+# failure -- there is no false-green path.
 
 on:
   workflow_dispatch:
@@ -24,6 +29,11 @@ on:
         description: "Workflow run ID that produced the pre-canary conformance bundle"
         required: true
         type: string
+      workspace_id:
+        description: "Encrypted-lifecycle workspace id recorded in the verdict-free manifest"
+        required: false
+        default: "ws-encrypted-lifecycle"
+        type: string
 
 permissions:
   contents: read
@@ -34,8 +44,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  gate8-join-skeleton:
-    name: Gate 8 join skeleton (NOT a delivery gate)
+  gate8-evidence-join:
+    name: Gate 8 three-lane evidence join (verdict-free, NOT a delivery gate)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -115,7 +125,28 @@ jobs:
           print(f"all three lanes bound to producer_commit={commits.pop()}")
           PYEOF
 
-      - name: Gate 8 is not implemented (explicit, unavoidable failure)
+      - name: Build verdict-free pre-review manifest + evidence join
         run: |
-          echo "::error::gate8_not_implemented: import verification succeeded, but Gate 8 conformance/canary evaluation logic does not exist yet. This workflow can never be read as green delivery."
-          exit 1
+          set -euo pipefail
+          python3 scripts/join_gate8_evidence.py \
+            --gate1 gate8-import/gate1 \
+            --conformance gate8-import/conformance \
+            --canary gate8-import/canary \
+            --workspace-id "${{ inputs.workspace_id }}" \
+            --output-dir gate8-join
+
+      - name: Upload Gate 8 join evidence (verdict-free)
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate8-join-evidence
+          path: gate8-join/
+          retention-days: 90
+
+      - name: Gate 8 join complete (verdict-free; review attestations pending)
+        run: |
+          echo "Gate 8 three-lane evidence join succeeded."
+          echo "Emitted verdict-free pre-review-manifest.json + evidence-join.json (uploaded as gate8-join-evidence)."
+          echo "This workflow is NOT a delivery gate and emits no pass/fail verdict."
+          echo "Gate 8 delivery requires the two independent ARCHITECT/CRITIC attestations and the"
+          echo "separate review receipt, produced by the review process over the emitted manifest_digest"
+          echo "(see wiki_spike.infrastructure.conformance)."
