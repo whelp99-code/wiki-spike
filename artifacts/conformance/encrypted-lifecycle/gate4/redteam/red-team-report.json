@@ -1,0 +1,143 @@
+{
+  "schema": "wiki-gate4-red-team-report-v1",
+  "surface": "algorithm",
+  "suite": "tests/encrypted_lifecycle/test_gate4_red_team.py",
+  "adversarial_case_count": 43,
+  "cases": [
+    {
+      "id": "a1",
+      "scenario": "12 parametrized malformed-locator variants (null required fields, +/float non-decimal, byte_range end<=start, line_range zero/reversed bounds, json_pointer bad tilde digit, missing locator_text key, whole_source all-non-null)",
+      "expected": "validate_locator raises LocatorError with the documented error code for each variant",
+      "verdict": "held"
+    },
+    {
+      "id": "a2",
+      "scenario": "JSON_POINTER locator_text exceeding 1024 UTF-8 bytes via multi-byte (\u03bb) characters, where char-length alone would not cross the boundary",
+      "expected": "rejected with locator.pointer_too_long (byte length enforced, not char length)",
+      "verdict": "held"
+    },
+    {
+      "id": "a3",
+      "scenario": "JSON_POINTER descending through a scalar value (/a/b where a is a scalar)",
+      "expected": "extract_excerpt raises locator.pointer_not_found",
+      "verdict": "held"
+    },
+    {
+      "id": "a4",
+      "scenario": "JSON_POINTER locator_text explicitly null passed straight to extract_excerpt",
+      "expected": "locator.field_required",
+      "verdict": "held"
+    },
+    {
+      "id": "a5",
+      "scenario": "BYTE_RANGE end-exclusive exactness: body ABCDE, start=1 end=3",
+      "expected": "excerpt == 'BC' and the excluded end-index byte ('D') is absent from the result",
+      "verdict": "held"
+    },
+    {
+      "id": "a6",
+      "scenario": "LINE_RANGE inclusive exactness: 3-line body, start=1 end=2 (1-based)",
+      "expected": "excerpt == 'L0\\nL1' and line 3 (end+1) is absent",
+      "verdict": "held"
+    },
+    {
+      "id": "a7",
+      "scenario": "JSON_POINTER nested resolution combining ~1 (escaped '/'), ~0 (escaped '~'), and an array index in one pointer path",
+      "expected": "resolves to the exact nested leaf value",
+      "verdict": "held"
+    },
+    {
+      "id": "b1",
+      "scenario": "correct() with a wrong expected_active_revision_id",
+      "expected": "raises correction_conflict AND leaves command/canonical_artifact/key_state/event_log row counts unchanged (zero new state on conflict)",
+      "verdict": "held"
+    },
+    {
+      "id": "b2",
+      "scenario": "Atomicity of correct(): inspect accepted_changeset + state_delta rows directly for the returned changeset_id",
+      "expected": "exactly one accepted_changeset row and exactly two state_delta rows ({RETRACT, ADD}) share the single changeset_id -- RETRACT+ADD land as one atomic changeset",
+      "verdict": "held"
+    },
+    {
+      "id": "b3",
+      "scenario": "Decrypt both the corrected envelope and the original (prior) envelope after correct()",
+      "expected": "corrected blob decrypts to 'corrected body'; prior blob is untouched and still decrypts to 'original body'",
+      "verdict": "held"
+    },
+    {
+      "id": "c1",
+      "scenario": "Same source body sealed via all four locator kinds (BYTE_RANGE, LINE_RANGE, JSON_POINTER, WHOLE_SOURCE)",
+      "expected": "all four fragment_semantic_digest values and all four locator_digest values are pairwise distinct",
+      "verdict": "held"
+    },
+    {
+      "id": "c2",
+      "scenario": "For BYTE_RANGE, LINE_RANGE, and WHOLE_SOURCE fragments, scan the raw stored CAS blob bytes for the plaintext excerpt text and for the field names 'excerpt'/'body'/'locator_text'",
+      "expected": "the plaintext excerpt and those field names are absent from the stored ciphertext blob -- encrypted-before-durability holds, no plaintext leak",
+      "verdict": "held"
+    },
+    {
+      "id": "d1",
+      "scenario": "add_evidence_edge with 7 invalid support_kind variants (lowercase, empty, near-miss spellings, trailing space)",
+      "expected": "every variant raises invalid_support_kind",
+      "verdict": "held"
+    },
+    {
+      "id": "d2",
+      "scenario": "Identical assertion/fragment/locator digests, only support_kind differs (SUPPORTS vs CONTRADICTS)",
+      "expected": "edge_semantic_digest differs between the two",
+      "verdict": "held"
+    },
+    {
+      "id": "e1",
+      "scenario": "remember_new_consent with no deletion_state row at all for prior_object_id",
+      "expected": "new_consent_prior_deletion_incomplete; zero new command/canonical_artifact/key_state/event_log rows",
+      "verdict": "held"
+    },
+    {
+      "id": "e2",
+      "scenario": "remember_new_consent with a deletion_state row whose phase_state is PENDING (not COMPLETE)",
+      "expected": "new_consent_prior_deletion_incomplete; zero new rows",
+      "verdict": "held"
+    },
+    {
+      "id": "e3",
+      "scenario": "remember_new_consent missing platform_absence_receipt, missing recovery_absence_receipt, and missing both (3 sub-cases)",
+      "expected": "new_consent_missing_absence_receipts in every sub-case; zero new rows",
+      "verdict": "held"
+    },
+    {
+      "id": "e4",
+      "scenario": "remember_new_consent with consent_epoch not strictly greater than prior_consent_epoch (equal 2==2, and reversed 3>2, 5>1)",
+      "expected": "new_consent_epoch_not_greater in every sub-case; zero new rows",
+      "verdict": "held"
+    },
+    {
+      "id": "e5",
+      "scenario": "remember_new_consent with empty raw_body",
+      "expected": "new_consent_body_required; zero new rows",
+      "verdict": "held"
+    },
+    {
+      "id": "e6",
+      "scenario": "remember_new_consent happy path: seeded COMPLETE deletion_state + both absence receipts + strictly greater epoch + fresh non-empty body",
+      "expected": "creates exactly +1 command, +1 canonical_artifact, +1 key_state row, with a fresh artifact_semantic_digest/logical_object_id distinct from the prior object",
+      "verdict": "held"
+    },
+    {
+      "id": "e7",
+      "scenario": "Wrap pipeline.cas in a call-recording spy and exercise both a failing precondition path and the happy path of remember_new_consent",
+      "expected": "the prior object's blob_id never appears in cas.get() call history in either path -- new-consent never reads/unwraps prior ciphertext",
+      "verdict": "held"
+    },
+    {
+      "id": "f1",
+      "scenario": "tombstone_object() on a REMEMBERed object, then independently call project_expected_active() on the returned changeset_id",
+      "expected": "the single matching projection row for object_id has expected_active_revision_id == null (no active revision)",
+      "verdict": "held"
+    }
+  ],
+  "pytest_redteam": "43 passed",
+  "pytest_full_encrypted_lifecycle": "357 passed, 1 xfailed",
+  "blockers": []
+}

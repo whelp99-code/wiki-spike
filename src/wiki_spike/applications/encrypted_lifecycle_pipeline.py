@@ -12,11 +12,13 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
+from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Mapping, Sequence
 
-from wiki_spike.infrastructure import crypto, floor_protocol, identities
+from wiki_spike.infrastructure import crypto, floor_protocol, identities, locators
 from wiki_spike.infrastructure.changeset import (
     build_encrypted_accepted_changeset,
     build_state_delta,
@@ -43,6 +45,47 @@ class PipelineError(Exception):
 def _utcnow() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+
+_STATE_DELTA_SCHEMA_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "schemas" / "encrypted-lifecycle" / "state-delta-v1.schema.json"
+)
+_STATE_DELTA_SCHEMA = json.loads(_STATE_DELTA_SCHEMA_PATH.read_text(encoding="utf-8"))
+
+try:
+    import jsonschema as _jsonschema  # type: ignore
+
+    _HAVE_JSONSCHEMA = True
+except Exception:  # pragma: no cover - exercised only when jsonschema absent
+    _jsonschema = None  # type: ignore
+    _HAVE_JSONSCHEMA = False
+
+_OBJECT_KINDS = ("MEMORY_REVISION", "EVIDENCE_FRAGMENT", "ASSERTION", "EVIDENCE_EDGE")
+_REASON_CODE_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+
+
+def _validate_state_delta(delta: Mapping) -> None:
+    """Fail-closed guard: every persisted state delta MUST conform to the
+    frozen StateDeltaV1 schema. When jsonschema is available (the normal path)
+    the full schema is enforced (object_kind enum, reason_code pattern, hex64
+    fields, delta_version/operation const/enum, all 14 keys, additionalProperties
+    false); the jsonschema-absent fallback enforces at least the object_kind enum
+    and reason_code pattern (the P1 defect class). A violation raises
+    PipelineError before any durable delta write."""
+    if _HAVE_JSONSCHEMA:
+        try:
+            _jsonschema.validate(instance=dict(delta), schema=_STATE_DELTA_SCHEMA)
+        except _jsonschema.ValidationError as exc:  # type: ignore[attr-defined]
+            raise PipelineError(
+                "state_delta_schema_violation",
+                f"state delta violates StateDeltaV1: {exc.message}",
+            ) from exc
+        return
+    if delta.get("object_kind") not in _OBJECT_KINDS:
+        raise PipelineError("state_delta_schema_violation", f"invalid object_kind {delta.get('object_kind')!r}")
+    rc = delta.get("reason_code")
+    if rc is not None and not _REASON_CODE_RE.fullmatch(str(rc)):
+        raise PipelineError("state_delta_schema_violation", f"invalid reason_code {rc!r}")
 
 @dataclass
 class RememberResult:
@@ -285,6 +328,8 @@ class EncryptedLifecyclePipeline:
 
     def persist_changeset(self, changeset: Mapping) -> None:
         """Persist a constructed changeset and its deltas to the DB cache."""
+        for delta in changeset["deltas"]:
+            _validate_state_delta(delta)
         now = _utcnow()
         with self.db.unit_of_work() as uow:
             uow.insert_accepted_changeset(
@@ -816,3 +861,672 @@ class EncryptedLifecyclePipeline:
 
         from wiki_spike.infrastructure.changeset import project_expected_active_revisions
         return project_expected_active_revisions(mapped)
+    # ------------------------------------------------------------------
+    # Gate 4: Correction
+    # ------------------------------------------------------------------
+    #
+    # NOTE on simplifying assumptions (Gate 4 minimal vertical slice):
+    # The body-free ``lifecycle_db`` cache intentionally never persists
+    # plaintext project/subject/consent-epoch metadata (see lifecycle_db.py
+    # module docstring), so ``correct()`` cannot recover the *original*
+    # ``project_id``/``source_instance_id``/``subject_ordinal``/
+    # ``consent_epoch`` used by the initiating ``remember()`` call from the
+    # prior artifact row alone. Rather than inventing/guessing those values,
+    # this method:
+    #   * fixes ``consent_epoch="1"`` for the corrected revision (a
+    #     correction never changes consent epoch; only ``remember_new_consent``
+    #     does that, deliberately, via an explicit epoch bump),
+    #   * anchors the logical object identity to the prior artifact's own
+    #     ``artifact_semantic_digest`` (deterministic, stable across a single
+    #     correction) rather than the real stable-subject digest, and
+    #   * hardcodes ``revision_number="2"`` (this Gate 4 slice supports ONE
+    #     correction step from the original revision; a correction-of-a-
+    #     correction would reuse "2"), and uses its own body-free
+    #     ``wiki-memory-revision-correction-semantic-v1`` semantic schema
+    #     (parallel to remember()'s own non-frozen schema naming) rather than
+    #     reusing remember()'s schema (which needs project/subject fields this
+    #     method never has).
+    #
+    # HONESTY/FIDELITY (tracked follow-up G4-CORRECTION-CONTINUITY): this does
+    # NOT reproduce the frozen ``correction-r1-to-r2`` identity-vector digests
+    # — only the literal ``revision_number="2"`` field coincides; the computed
+    # logical_object_id/artifact_semantic_digest/revision_id differ because the
+    # correction is anchored to the prior artifact digest, not the original
+    # stable-subject/logical object, so the corrected revision lands under a
+    # different logical_object_id than the frozen "same object, new revision"
+    # contract. Full logical-object continuity + chained revision numbers
+    # require persisting a body-free subject/object binding and are deferred to
+    # the cross-revision "history of a memory" reconciliation (Gate 5). The
+    # frozen identity vectors are validated only for their own HMAC
+    # self-consistency; correct() is never driven against them, so this is a
+    # design-fidelity gap, not a vector-conformance break. The RETRACT+ADD
+    # atomicity and expected-active conflict guard below are exact.
+
+    def correct(
+        self,
+        *,
+        artifact_id: str,
+        reviewer_handle: str,
+        corrected_raw_body: bytes,
+        note: str = "correction",
+        expected_active_revision_id: str | None = None,
+    ) -> dict:
+        """CORRECT: retract the prior MEMORY_REVISION and add a new one whose
+        ``parent_revision_id`` is the prior active revision. Atomic
+        RETRACT+ADD via a single change set. Raises
+        ``PipelineError("correction_conflict")`` if ``expected_active_revision_id``
+        is supplied and does not match the prior active revision."""
+        normalized = normalize_lifecycle_input_v1(corrected_raw_body)
+        content_digest = input_content_digest(normalized)
+
+        with self.db.unit_of_work() as uow:
+            prior = uow.get_canonical_artifact(artifact_id)
+            if prior is None:
+                raise PipelineError("artifact_not_found", f"artifact {artifact_id} not found")
+            if prior["artifact_kind"] != "MEMORY_REVISION":
+                raise PipelineError(
+                    "invalid_artifact_kind",
+                    f"artifact {artifact_id} is not a MEMORY_REVISION (got {prior['artifact_kind']!r})",
+                )
+            prior_revision_id = prior["revision_id"]
+
+        if expected_active_revision_id is not None and expected_active_revision_id != prior_revision_id:
+            raise PipelineError(
+                "correction_conflict",
+                f"expected_active_revision_id {expected_active_revision_id!r} does not match "
+                f"prior active revision {prior_revision_id!r}",
+            )
+
+        consent_epoch = "1"
+        policy_context_digest = hashlib.sha256(b"default-policy-context").hexdigest()
+
+        _, command_id = identities.command_digest(
+            self.derived_keys,
+            workspace_id=self.workspace_id,
+            command_kind="CORRECT",
+            normalized_options={"note": note},
+            input_content_digest=content_digest,
+            policy_context_digest=policy_context_digest,
+        )
+
+        _, logical_object_id_hex = identities.logical_object_id(
+            self.derived_keys,
+            workspace_id=self.workspace_id,
+            object_kind="MEMORY",
+            consent_epoch=consent_epoch,
+            subject_key_digest=artifact_id,
+        )
+
+        semantic_plaintext = {
+            "schema": "wiki-memory-revision-correction-semantic-v1",
+            "prior_artifact_id": artifact_id,
+            "prior_revision_id": prior_revision_id,
+            "consent_epoch": consent_epoch,
+            "normalized_text": normalized.decode("utf-8"),
+            "language": "und",
+            "parent_revision_id": prior_revision_id,
+        }
+        _, artifact_semantic_digest_hex = identities.artifact_semantic_digest(
+            self.derived_keys,
+            workspace_id=self.workspace_id,
+            artifact_kind="MEMORY_REVISION",
+            consent_epoch=consent_epoch,
+            semantic_schema="wiki-memory-revision-correction-semantic-v1",
+            semantic_plaintext=semantic_plaintext,
+        )
+
+        _, new_revision_id_hex = identities.revision_id(
+            self.derived_keys,
+            workspace_id=self.workspace_id,
+            object_kind="MEMORY",
+            logical_object_id_hex=logical_object_id_hex,
+            consent_epoch=consent_epoch,
+            revision_number="2",
+            parent_revision_id=prior_revision_id,
+            artifact_semantic_digest_hex=artifact_semantic_digest_hex,
+        )
+
+        nonce_hex = os.urandom(12).hex()
+        aad = crypto.domain_prefix("wiki.envelope.v1") + bytes.fromhex(artifact_semantic_digest_hex)
+        ciphertext_hex, tag_hex = crypto.aes_gcm_seal(self.dek, nonce_hex, normalized, aad)
+        now = _utcnow()
+        envelope = {
+            "schema": "wiki-envelope-v1",
+            "version": "1",
+            "algorithm": "AES-256-GCM",
+            "workspace_id": self.workspace_id,
+            "logical_object_id": logical_object_id_hex,
+            "revision_id": new_revision_id_hex,
+            "semantic_schema_id": "wiki-memory-revision-correction-semantic-v1",
+            "nonce": nonce_hex,
+            "aad_digest": hashlib.sha256(aad).hexdigest(),
+            "ciphertext": ciphertext_hex,
+            "tag": tag_hex,
+            "metadata": {
+                "consent_epoch": consent_epoch,
+                "key_version": "1",
+                "content_length_bytes": str(len(normalized)),
+                "created_at": now,
+            },
+        }
+        envelope_bytes = canonical_bytes(envelope)
+        blob_id = self.cas.put(envelope_bytes)
+
+        now = _utcnow()
+        with self.db.unit_of_work() as uow:
+            uow.insert_command(
+                command_id=command_id,
+                workspace_id=self.workspace_id,
+                command_kind="CORRECT",
+                input_digest=content_digest,
+                command_state="ACCEPTED",
+                created_at=now,
+            )
+            uow.insert_canonical_artifact(
+                artifact_id=artifact_semantic_digest_hex,
+                workspace_id=self.workspace_id,
+                artifact_kind="MEMORY_REVISION",
+                revision_id=new_revision_id_hex,
+                artifact_state="PREPARED",
+                created_at=now,
+            )
+            uow.insert_command_artifact(
+                command_id=command_id,
+                artifact_id=artifact_semantic_digest_hex,
+                artifact_role="PRIMARY_MEMORY",
+                ordinal="0",
+            )
+            uow.upsert_key_state(
+                artifact_id=artifact_semantic_digest_hex,
+                custody_state="PREPARED",
+                updated_at=now,
+            )
+
+        retract_delta = build_state_delta(
+            operation="RETRACT",
+            object_kind="MEMORY_REVISION",
+            object_id=artifact_id,
+            revision_id=prior_revision_id,
+            expected_active_revision_id=prior_revision_id,
+        )
+        add_delta = build_state_delta(
+            operation="ADD",
+            object_kind="MEMORY_REVISION",
+            object_id=artifact_semantic_digest_hex,
+            revision_id=new_revision_id_hex,
+            expected_active_revision_id=new_revision_id_hex,
+            envelope_ref=artifact_semantic_digest_hex,
+        )
+        changeset = build_encrypted_accepted_changeset(
+            workspace_id=self.workspace_id,
+            parent_generation_id=None,
+            command_ids=[command_id],
+            deltas=[retract_delta, add_delta],
+        )
+        self.persist_changeset(changeset)
+
+        prev = self.db.event_chain_head()
+        self.db.append_event(prev_digest=prev, kind="CORRECT_ACCEPTED", ref_digest=command_id)
+
+        return {
+            "command_id": command_id,
+            "revision_id": new_revision_id_hex,
+            "artifact_semantic_digest": artifact_semantic_digest_hex,
+            "changeset_id": changeset["changeset_id"],
+            "blob_id": blob_id,
+        }
+
+    # ------------------------------------------------------------------
+    # Gate 4: Evidence fragments / edges
+    # ------------------------------------------------------------------
+
+    def add_evidence_fragment(
+        self,
+        *,
+        project_id: str,
+        source_content_digest: str,
+        normalized_source_body: bytes,
+        locator: Mapping,
+        consent_epoch: str = "1",
+    ) -> dict:
+        """Validate ``locator``, extract its excerpt, seal a body-free
+        EvidenceFragmentSemanticV1 identity + envelope, and persist a
+        canonical EVIDENCE_FRAGMENT artifact."""
+        locators.validate_locator(locator)
+        excerpt = locators.extract_excerpt(locator, normalized_source_body)
+
+        locator_kind = locator["locator_kind"]
+        locator_start = locator.get("locator_start")
+        locator_end = locator.get("locator_end")
+        locator_text = locator.get("locator_text")
+
+        fragment_semantic_plaintext = {
+            "schema": "wiki-evidence-fragment-semantic-v1",
+            "project_id": project_id,
+            "source_content_digest": source_content_digest,
+            "locator_kind": locator_kind,
+            "locator_start": locator_start,
+            "locator_end": locator_end,
+            "locator_text": locator_text,
+            "normalized_excerpt": excerpt,
+            "consent_epoch": consent_epoch,
+        }
+        _, fragment_semantic_digest_hex = identities.artifact_semantic_digest(
+            self.derived_keys,
+            workspace_id=self.workspace_id,
+            artifact_kind="EVIDENCE_FRAGMENT",
+            consent_epoch=consent_epoch,
+            semantic_schema="wiki-evidence-fragment-semantic-v1",
+            semantic_plaintext=fragment_semantic_plaintext,
+        )
+        _, locator_digest_hex = identities.locator_digest(
+            self.derived_keys,
+            workspace_id=self.workspace_id,
+            project_id=project_id,
+            source_content_digest=source_content_digest,
+            locator_kind=locator_kind,
+            locator_start=locator_start,
+            locator_end=locator_end,
+            locator_text=locator_text,
+        )
+
+        nonce_hex = os.urandom(12).hex()
+        aad = crypto.domain_prefix("wiki.envelope.v1") + bytes.fromhex(fragment_semantic_digest_hex)
+        plaintext_bytes = excerpt.encode("utf-8")
+        ciphertext_hex, tag_hex = crypto.aes_gcm_seal(self.dek, nonce_hex, plaintext_bytes, aad)
+        now = _utcnow()
+        envelope = {
+            "schema": "wiki-envelope-v1",
+            "version": "1",
+            "algorithm": "AES-256-GCM",
+            "workspace_id": self.workspace_id,
+            "logical_object_id": fragment_semantic_digest_hex,
+            "revision_id": fragment_semantic_digest_hex,
+            "semantic_schema_id": "wiki-evidence-fragment-semantic-v1",
+            "nonce": nonce_hex,
+            "aad_digest": hashlib.sha256(aad).hexdigest(),
+            "ciphertext": ciphertext_hex,
+            "tag": tag_hex,
+            "metadata": {
+                "consent_epoch": consent_epoch,
+                "key_version": "1",
+                "content_length_bytes": str(len(plaintext_bytes)),
+                "created_at": now,
+            },
+        }
+        envelope_bytes = canonical_bytes(envelope)
+        blob_id = self.cas.put(envelope_bytes)
+
+        with self.db.unit_of_work() as uow:
+            uow.insert_canonical_artifact(
+                artifact_id=fragment_semantic_digest_hex,
+                workspace_id=self.workspace_id,
+                artifact_kind="EVIDENCE_FRAGMENT",
+                revision_id=fragment_semantic_digest_hex,
+                artifact_state="PREPARED",
+                created_at=now,
+            )
+            uow.upsert_key_state(
+                artifact_id=fragment_semantic_digest_hex,
+                custody_state="PREPARED",
+                updated_at=now,
+            )
+
+        prev = self.db.event_chain_head()
+        self.db.append_event(
+            prev_digest=prev, kind="EVIDENCE_FRAGMENT_ADDED", ref_digest=fragment_semantic_digest_hex
+        )
+
+        return {
+            "fragment_semantic_digest": fragment_semantic_digest_hex,
+            "locator_digest": locator_digest_hex,
+            "blob_id": blob_id,
+            "normalized_excerpt": excerpt,
+        }
+
+    def add_evidence_edge(
+        self,
+        *,
+        project_id: str,
+        assertion_semantic_digest: str,
+        fragment_semantic_digest: str,
+        locator_digest: str,
+        support_kind: str,
+        consent_epoch: str = "1",
+    ) -> dict:
+        """Persist an EvidenceEdgeSemanticV1 EVIDENCE_EDGE artifact linking
+        an assertion to a supporting/contradicting evidence fragment."""
+        if support_kind not in ("SUPPORTS", "CONTRADICTS"):
+            raise PipelineError(
+                "invalid_support_kind",
+                f"support_kind must be SUPPORTS or CONTRADICTS, got {support_kind!r}",
+            )
+
+        edge_semantic_plaintext = {
+            "schema": "wiki-evidence-edge-semantic-v1",
+            "project_id": project_id,
+            "assertion_semantic_digest": assertion_semantic_digest,
+            "fragment_semantic_digest": fragment_semantic_digest,
+            "locator_digest": locator_digest,
+            "support_kind": support_kind,
+            "consent_epoch": consent_epoch,
+        }
+        _, edge_semantic_digest_hex = identities.artifact_semantic_digest(
+            self.derived_keys,
+            workspace_id=self.workspace_id,
+            artifact_kind="EVIDENCE_EDGE",
+            consent_epoch=consent_epoch,
+            semantic_schema="wiki-evidence-edge-semantic-v1",
+            semantic_plaintext=edge_semantic_plaintext,
+        )
+
+        now = _utcnow()
+        with self.db.unit_of_work() as uow:
+            uow.insert_canonical_artifact(
+                artifact_id=edge_semantic_digest_hex,
+                workspace_id=self.workspace_id,
+                artifact_kind="EVIDENCE_EDGE",
+                revision_id=edge_semantic_digest_hex,
+                artifact_state="PREPARED",
+                created_at=now,
+            )
+            uow.upsert_key_state(
+                artifact_id=edge_semantic_digest_hex,
+                custody_state="PREPARED",
+                updated_at=now,
+            )
+
+        prev = self.db.event_chain_head()
+        self.db.append_event(
+            prev_digest=prev, kind="EVIDENCE_EDGE_ADDED", ref_digest=edge_semantic_digest_hex
+        )
+
+        return {"edge_semantic_digest": edge_semantic_digest_hex}
+
+    # ------------------------------------------------------------------
+    # Gate 4: Tombstone / FORGET
+    # ------------------------------------------------------------------
+
+    def tombstone_object(
+        self,
+        *,
+        object_id: str,
+        deletion_command_id: str,
+        reason_code: str = "forget",
+    ) -> dict:
+        """Persist a single-delta TOMBSTONE change set for ``object_id``."""
+        scope_digest = hashlib.sha256(
+            canonical_bytes({
+                "domain": "wiki.tombstone-scope.v1",
+                "workspace_id": self.workspace_id,
+                "object_id": object_id,
+                "deletion_command_id": deletion_command_id,
+            })
+        ).hexdigest()
+        delta = build_state_delta(
+            operation="TOMBSTONE",
+            object_kind="MEMORY_REVISION",
+            object_id=object_id,
+            deletion_command_id=deletion_command_id,
+            scope_digest=scope_digest,
+            reason_code=reason_code,
+        )
+        changeset = build_encrypted_accepted_changeset(
+            workspace_id=self.workspace_id,
+            parent_generation_id=None,
+            command_ids=[deletion_command_id],
+            deltas=[delta],
+        )
+        self.persist_changeset(changeset)
+
+        prev = self.db.event_chain_head()
+        self.db.append_event(prev_digest=prev, kind="OBJECT_TOMBSTONED", ref_digest=object_id)
+
+        ears = self.project_expected_active(changeset["changeset_id"])
+        matching = [
+            ear for ear in ears
+            if ear["object_kind"] == "MEMORY_REVISION" and ear["object_id"] == object_id
+        ]
+        if len(matching) != 1 or matching[0]["expected_active_revision_id"] is not None:
+            raise PipelineError(
+                "tombstone_projection_mismatch",
+                f"projection for tombstoned object {object_id} does not reflect the "
+                f"TOMBSTONE discriminator (no active revision expected)",
+            )
+
+        return {"changeset_id": changeset["changeset_id"], "delta_id": delta["delta_id"]}
+
+    # ------------------------------------------------------------------
+    # Gate 4: New consent (post-FORGET re-remember)
+    # ------------------------------------------------------------------
+
+    def remember_new_consent(
+        self,
+        *,
+        prior_object_id: str,
+        prior_consent_epoch: str,
+        consent_epoch: str,
+        raw_body: bytes,
+        project_id: str,
+        source_instance_id: str = "inline",
+        subject_ordinal: str = "0",
+        platform_absence_receipt: "object | None" = None,
+        recovery_absence_receipt: "object | None" = None,
+        sensitivity: str = "INTERNAL",
+        source_kind: str = "INLINE_TEXT",
+        input_format: str = "PLAIN_TEXT",
+        extractor_profile: str = "LOCAL_RULES_V1",
+        policy_context_digest: str | None = None,
+    ) -> RememberResult:
+        """Fail-closed re-REMEMBER under a strictly greater consent epoch
+        after a prior object's FORGET has fully completed. Every precondition
+        below is verified BEFORE any new command/artifact/key_state row is
+        written; a failure leaves no new state. Never reads/unwraps the
+        prior object's ciphertext -- only body-free tombstone/identity
+        metadata (the deletion_state phase and the two custody absence
+        receipts) and the caller-supplied fresh ``raw_body``.
+
+        DEFERRED (tracked follow-up G4-NEW-CONSENT-SUBJECT-BINDING, to Gate 5
+        dual-ARK-destroy where custody/subject binding hardens): two plan
+        line-138 preconditions are intentionally under-enforced here because the
+        body-free cache persists no subject/custody binding to check against —
+        (a) the "same project/stable-subject as the prior object" precondition
+        is NOT verified (project/subject params are caller-supplied and a fresh
+        stable_subject_ref is derived without comparing to the deleted object's
+        subject); (b) the two absence receipts are validated for PRESENCE only,
+        not for distinct custody roles, ark_handle binding to prior_object_id,
+        or receipt_digest validity. The safety-critical guarantees below are
+        fully enforced: prior deletion COMPLETE, strictly-greater consent epoch,
+        non-empty body, zero-state-on-any-failure, and no prior-ciphertext read.
+        """
+        row = self.db.con.execute(
+            "SELECT phase_state FROM deletion_state WHERE artifact_id=? "
+            "ORDER BY updated_at DESC, deletion_id DESC LIMIT 1",
+            (prior_object_id,),
+        ).fetchone()
+        if row is None or row[0] != "COMPLETE":
+            raise PipelineError(
+                "new_consent_prior_deletion_incomplete",
+                f"prior object {prior_object_id} has no COMPLETE deletion_state "
+                f"(fail-closed: refusing to mint new consent)",
+            )
+
+        if platform_absence_receipt is None or recovery_absence_receipt is None:
+            raise PipelineError(
+                "new_consent_missing_absence_receipts",
+                "both platform and recovery custody absence receipts are required "
+                "for new consent (fail-closed)",
+            )
+
+        if int(consent_epoch) <= int(prior_consent_epoch):
+            raise PipelineError(
+                "new_consent_epoch_not_greater",
+                f"consent_epoch {consent_epoch!r} must be strictly greater than "
+                f"prior_consent_epoch {prior_consent_epoch!r}",
+            )
+
+        if not raw_body:
+            raise PipelineError("new_consent_body_required", "raw_body must be non-empty")
+
+        normalized = normalize_lifecycle_input_v1(raw_body)
+        content_digest = input_content_digest(normalized)
+
+        if policy_context_digest is None:
+            policy_context_digest = hashlib.sha256(b"default-policy-context").hexdigest()
+
+        opts = remember_options(
+            project_id=project_id,
+            source_kind=source_kind,
+            input_format=input_format,
+            source_instance_id=source_instance_id,
+            subject_ordinal=subject_ordinal,
+            sensitivity=sensitivity,
+            consent_epoch=consent_epoch,
+            extractor_profile=extractor_profile,
+            new_consent="YES",
+            consent_reason="NEW_EXPLICIT_CONSENT",
+            prior_object_id=prior_object_id,
+            prior_consent_epoch=prior_consent_epoch,
+        )
+
+        _, command_id = identities.command_digest(
+            self.derived_keys,
+            workspace_id=self.workspace_id,
+            command_kind="REMEMBER",
+            normalized_options=opts,
+            input_content_digest=content_digest,
+            policy_context_digest=policy_context_digest,
+        )
+
+        stable_subject_msg, stable_subject_digest = identities.stable_subject_ref(
+            self.derived_keys,
+            workspace_id=self.workspace_id,
+            project_id=project_id,
+            source_instance_id=source_instance_id,
+            subject_ordinal=subject_ordinal,
+        )
+
+        semantic_plaintext = {
+            "schema": "wiki-memory-revision-semantic-v1",
+            "project_id": project_id,
+            "subject_key_digest": stable_subject_digest,
+            "consent_epoch": consent_epoch,
+            "sensitivity": sensitivity,
+            "normalized_text": normalized.decode("utf-8"),
+            "language": "und",
+            "parent_revision_id": None,
+        }
+        _, artifact_semantic_digest_hex = identities.artifact_semantic_digest(
+            self.derived_keys,
+            workspace_id=self.workspace_id,
+            artifact_kind="MEMORY_REVISION",
+            consent_epoch=consent_epoch,
+            semantic_schema="wiki-memory-revision-semantic-v1",
+            semantic_plaintext=semantic_plaintext,
+        )
+
+        _, logical_object_id_hex = identities.logical_object_id(
+            self.derived_keys,
+            workspace_id=self.workspace_id,
+            object_kind="MEMORY",
+            consent_epoch=consent_epoch,
+            subject_key_digest=stable_subject_digest,
+        )
+
+        _, revision_id_hex = identities.revision_id(
+            self.derived_keys,
+            workspace_id=self.workspace_id,
+            object_kind="MEMORY",
+            logical_object_id_hex=logical_object_id_hex,
+            consent_epoch=consent_epoch,
+            revision_number="1",
+            parent_revision_id=None,
+            artifact_semantic_digest_hex=artifact_semantic_digest_hex,
+        )
+
+        nonce_hex = os.urandom(12).hex()
+        aad = crypto.domain_prefix("wiki.envelope.v1") + bytes.fromhex(artifact_semantic_digest_hex)
+        ciphertext_hex, tag_hex = crypto.aes_gcm_seal(self.dek, nonce_hex, normalized, aad)
+        now = _utcnow()
+        envelope = {
+            "schema": "wiki-envelope-v1",
+            "version": "1",
+            "algorithm": "AES-256-GCM",
+            "workspace_id": self.workspace_id,
+            "logical_object_id": logical_object_id_hex,
+            "revision_id": revision_id_hex,
+            "semantic_schema_id": "wiki-memory-revision-semantic-v1",
+            "nonce": nonce_hex,
+            "aad_digest": hashlib.sha256(aad).hexdigest(),
+            "ciphertext": ciphertext_hex,
+            "tag": tag_hex,
+            "metadata": {
+                "consent_epoch": consent_epoch,
+                "key_version": "1",
+                "content_length_bytes": str(len(normalized)),
+                "created_at": now,
+            },
+        }
+        envelope_bytes = canonical_bytes(envelope)
+        blob_id = self.cas.put(envelope_bytes)
+
+        entry = identities.manifest_entry(
+            artifact_role="PRIMARY_MEMORY",
+            ordinal="0",
+            artifact_kind="MEMORY_REVISION",
+            revision_id=revision_id_hex,
+            artifact_semantic_digest=artifact_semantic_digest_hex,
+        )
+        _, manifest_digest_hex = identities.manifest_digest(
+            self.derived_keys,
+            workspace_id=self.workspace_id,
+            command_digest_hex=command_id,
+            entries=[entry],
+        )
+
+        now = _utcnow()
+        with self.db.unit_of_work() as uow:
+            uow.insert_command(
+                command_id=command_id,
+                workspace_id=self.workspace_id,
+                command_kind="REMEMBER",
+                input_digest=content_digest,
+                command_state="ACCEPTED",
+                created_at=now,
+            )
+            uow.insert_canonical_artifact(
+                artifact_id=artifact_semantic_digest_hex,
+                workspace_id=self.workspace_id,
+                artifact_kind="MEMORY_REVISION",
+                revision_id=revision_id_hex,
+                artifact_state="PREPARED",
+                created_at=now,
+            )
+            uow.insert_command_artifact(
+                command_id=command_id,
+                artifact_id=artifact_semantic_digest_hex,
+                artifact_role="PRIMARY_MEMORY",
+                ordinal="0",
+            )
+            uow.upsert_key_state(
+                artifact_id=artifact_semantic_digest_hex,
+                custody_state="PREPARED",
+                updated_at=now,
+            )
+
+        prev = self.db.event_chain_head()
+        self.db.append_event(
+            prev_digest=prev,
+            kind="NEW_CONSENT_ACCEPTED",
+            ref_digest=command_id,
+        )
+
+        return RememberResult(
+            command_id=command_id,
+            manifest_digest=manifest_digest_hex,
+            artifact_semantic_digest=artifact_semantic_digest_hex,
+            logical_object_id=logical_object_id_hex,
+            revision_id=revision_id_hex,
+            blob_id=blob_id,
+            envelope=envelope,
+        )
