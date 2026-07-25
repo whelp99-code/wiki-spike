@@ -1705,12 +1705,31 @@ class EncryptedLifecyclePipeline:
         self._set_deletion_phase(command_id, phase, now)
         self._append_deletion_event("DELETION_COMPLETE", command_id)
 
+        # DeletionStateV1 report: three independent surface tiers. FORGET
+        # completes the LIVE corpus tier now; the 30-day BACKUP residual and the
+        # EGRESS ledger tiers complete independently later (owner decisions 2/3).
+        deletion_report = deletion.set_report_tier(
+            deletion.initial_report(),
+            "live",
+            status=deletion.ReportTierStatus.COMPLETE.value,
+            verified_at=now,
+            evidence_digest=deletion_checkpoint_id,
+        )
+        deletion_state_v1 = deletion.build_deletion_state(
+            workspace_id=self.workspace_id,
+            deletion_command_id=command_id,
+            phase=phase,
+            report=deletion_report,
+            updated_at=now,
+        )
+
         return {
             "deletion_command_id": command_id,
             "phase": phase.value,
             "deletion_checkpoint_id": deletion_checkpoint_id,
             "platform_absence_receipt": platform_receipt.to_mapping(),
             "recovery_absence_receipt": recovery_receipt.to_mapping(),
+            "deletion_state": deletion_state_v1,
         }
 
     def restore(
@@ -1784,3 +1803,48 @@ class EncryptedLifecyclePipeline:
             uow.upsert_key_state(artifact_id=artifact_id, custody_state="ACTIVE", updated_at=now_ts)
         self._append_deletion_event("ARTIFACT_RESTORED", artifact_id)
         return {"artifact_id": artifact_id, "decision": decision.value, "restored": True}
+
+    def resume_deletion(self, *, deletion_command_id: str, artifact_id: str, blob_id: str) -> dict:
+        """Crash-recovery resume of an interrupted FORGET (crash recovery at
+        every transaction boundary, ADR-0027). Reads the last durably-committed
+        deletion phase and idempotently re-drives the forward-only machine to
+        COMPLETE: re-tombstone (only if not already tombstoned), re-destroy both
+        ARKs (keystore.destroy is idempotent on an already-destroyed handle), and
+        advance each remaining phase. Every step is idempotent, so a crash at any
+        boundary resumes safely without recreating keys or re-serving. A veto is
+        never lifted; an already-COMPLETE deletion is a no-op."""
+        row = self.db.con.execute(
+            "SELECT phase_state FROM deletion_state WHERE deletion_id=?",
+            (deletion_command_id,),
+        ).fetchone()
+        if row is None:
+            raise PipelineError("resume_deletion_not_found", f"no deletion_state for {deletion_command_id}")
+        current = deletion.DeletionPhase(row[0])
+        if current is deletion.DeletionPhase.COMPLETE:
+            return {"deletion_command_id": deletion_command_id, "phase": "COMPLETE", "resumed": False}
+        if self.platform_keystore is None or self.recovery_keystore is None:
+            raise PipelineError(
+                "forget_requires_dual_custody",
+                "resume_deletion requires platform + recovery keystores for dual ARK destroy",
+            )
+
+        now = _utcnow()
+        if not self.cas.is_tombstoned(blob_id):
+            self.cas.tombstone(blob_id, reason="forget")
+        order = list(deletion.DeletionPhase)
+        for target in order[order.index(current) + 1:]:
+            if target is deletion.DeletionPhase.REVOCATION_KEYS_DESTROYED:
+                # Idempotent on an already-destroyed handle; fail-closed on a
+                # genuinely-missing custody entry (never advance past shred).
+                try:
+                    self.platform_keystore.destroy(self.workspace_id, artifact_id)
+                    self.recovery_keystore.destroy(self.workspace_id, artifact_id)
+                except KeyStoreError as exc:
+                    raise PipelineError(
+                        "forget_ark_destroy_failed",
+                        f"resume dual ARK destroy failed for {artifact_id}; held at CHECKPOINT_COMMITTED: {exc}",
+                    ) from exc
+            current = deletion.advance(current, target)
+            self._set_deletion_phase(deletion_command_id, current, now)
+        self._append_deletion_event("DELETION_RESUMED_COMPLETE", deletion_command_id)
+        return {"deletion_command_id": deletion_command_id, "phase": current.value, "resumed": True}
