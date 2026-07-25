@@ -81,7 +81,16 @@ COLUMN_KIND_ALLOWLIST: tuple[str, ...] = (
     "_sequence",
 )
 # A small number of columns are exact-name matches rather than suffix matches.
-COLUMN_KIND_EXACT_ALLOWLIST: tuple[str, ...] = ("ordinal",)
+# Each is a body-free closed value: ``ordinal`` is a manifest ordinal;
+# ``consent_epoch`` and ``revision_number`` are canonical decimal-string
+# counters; ``sensitivity`` is a closed enum (PUBLIC/INTERNAL/CONFIDENTIAL/
+# RESTRICTED). None carries plaintext.
+COLUMN_KIND_EXACT_ALLOWLIST: tuple[str, ...] = (
+    "ordinal",
+    "consent_epoch",
+    "revision_number",
+    "sensitivity",
+)
 
 
 def is_allowed_column_name(name: str) -> bool:
@@ -111,6 +120,24 @@ CREATE TABLE IF NOT EXISTS canonical_artifact (
   artifact_state TEXT NOT NULL,
   created_at TEXT NOT NULL,
   UNIQUE (workspace_id, artifact_kind, revision_id)
+);
+-- Body-free subject/object identity binding (G4-CORRECTION-CONTINUITY).
+-- Persists the digest-only identity needed to keep a correction under the
+-- SAME logical object as its parent (logical-object continuity) and to
+-- verify same-subject new consent -- without ever storing plaintext.
+CREATE TABLE IF NOT EXISTS object_binding (
+  artifact_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  logical_object_id TEXT NOT NULL,
+  revision_id TEXT NOT NULL,
+  subject_key_digest TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  object_kind TEXT NOT NULL,
+  consent_epoch TEXT NOT NULL,
+  revision_number TEXT NOT NULL,
+  sensitivity TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (artifact_id) REFERENCES canonical_artifact(artifact_id)
 );
 CREATE TABLE IF NOT EXISTS command_artifact (
   command_id TEXT NOT NULL,
@@ -261,6 +288,7 @@ CREATE TABLE IF NOT EXISTS freshness_serve_gate (
 TABLE_NAMES: tuple[str, ...] = (
     "command",
     "canonical_artifact",
+    "object_binding",
     "command_artifact",
     "ark_key_intent",
     "wrapped_key",
@@ -377,6 +405,37 @@ class UnitOfWork:
                 (command_id,),
             )
         )
+
+    # -- body-free subject/object identity binding (continuity) ------------- #
+
+    def insert_object_binding(
+        self,
+        artifact_id: str,
+        workspace_id: str,
+        logical_object_id: str,
+        revision_id: str,
+        subject_key_digest: str,
+        project_id: str,
+        object_kind: str,
+        consent_epoch: str,
+        revision_number: str,
+        sensitivity: str,
+        created_at: str,
+    ) -> None:
+        self._con.execute(
+            "INSERT INTO object_binding "
+            "(artifact_id, workspace_id, logical_object_id, revision_id, subject_key_digest, "
+            " project_id, object_kind, consent_epoch, revision_number, sensitivity, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (artifact_id, workspace_id, logical_object_id, revision_id, subject_key_digest,
+             project_id, object_kind, consent_epoch, revision_number, sensitivity, created_at),
+        )
+
+    def get_object_binding(self, artifact_id: str) -> sqlite3.Row | None:
+        self._con.row_factory = sqlite3.Row
+        return self._con.execute(
+            "SELECT * FROM object_binding WHERE artifact_id=?", (artifact_id,)
+        ).fetchone()
 
     # -- ARK custody: ark_key_intent / wrapped_key / key_state -------------- #
 

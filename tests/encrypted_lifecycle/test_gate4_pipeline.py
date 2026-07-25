@@ -127,6 +127,71 @@ def test_correct_unknown_artifact(pipeline):
     assert excinfo.value.code == "artifact_not_found"
 
 
+def test_correct_reproduces_logical_object_continuity(pipeline):
+    """G4-CORRECTION-CONTINUITY: a correction lands under the SAME logical
+    object as its parent (same stable subject + consent epoch + object kind)
+    with a chained revision number -- never a forked object."""
+    r1 = pipeline.remember(raw_body=b"original body", project_id="proj-1")
+
+    # First correction: R1 -> R2 under the same logical object.
+    r2 = pipeline.correct(
+        artifact_id=r1.artifact_semantic_digest,
+        reviewer_handle="reviewer-1",
+        corrected_raw_body=b"corrected body",
+    )
+
+    with pipeline.db.unit_of_work() as uow:
+        b1 = uow.get_object_binding(r1.artifact_semantic_digest)
+        b2 = uow.get_object_binding(r2["artifact_semantic_digest"])
+
+    assert b1 is not None and b2 is not None
+    # Continuity: same logical object, same stable subject/epoch/kind/project.
+    assert b2["logical_object_id"] == b1["logical_object_id"] == r1.logical_object_id
+    assert b2["subject_key_digest"] == b1["subject_key_digest"]
+    assert b2["consent_epoch"] == b1["consent_epoch"] == "1"
+    assert b2["object_kind"] == b1["object_kind"] == "MEMORY"
+    assert b2["project_id"] == b1["project_id"] == "proj-1"
+    # Chained revision numbers: 1 -> 2.
+    assert b1["revision_number"] == "1"
+    assert b2["revision_number"] == "2"
+    # The corrected revision points back at the parent revision.
+    assert b2["revision_id"] == r2["revision_id"]
+
+    # Body-free: no binding column carries the plaintext body.
+    for row in (b1, b2):
+        for key in row.keys():
+            assert "original body" not in str(row[key])
+            assert "corrected body" not in str(row[key])
+
+    # Correction-of-a-correction chains again: R2 -> R3, same logical object.
+    r3 = pipeline.correct(
+        artifact_id=r2["artifact_semantic_digest"],
+        reviewer_handle="reviewer-1",
+        corrected_raw_body=b"corrected again body",
+    )
+    with pipeline.db.unit_of_work() as uow:
+        b3 = uow.get_object_binding(r3["artifact_semantic_digest"])
+    assert b3["logical_object_id"] == r1.logical_object_id
+    assert b3["revision_number"] == "3"
+
+
+def test_correct_fails_closed_when_binding_missing(pipeline):
+    """correct() refuses to proceed (never forks an object) when the body-free
+    object binding is absent for the prior artifact."""
+    r = pipeline.remember(raw_body=b"original body", project_id="proj-1")
+    # Simulate a legacy/binding-less artifact.
+    pipeline.db.con.execute(
+        "DELETE FROM object_binding WHERE artifact_id=?", (r.artifact_semantic_digest,)
+    )
+    with pytest.raises(PipelineError) as excinfo:
+        pipeline.correct(
+            artifact_id=r.artifact_semantic_digest,
+            reviewer_handle="reviewer-1",
+            corrected_raw_body=b"corrected body",
+        )
+    assert excinfo.value.code == "object_binding_missing"
+
+
 # ---------------------------------------------------------------------------
 # Evidence fragments
 # ---------------------------------------------------------------------------

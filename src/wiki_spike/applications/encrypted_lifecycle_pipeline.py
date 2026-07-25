@@ -276,6 +276,19 @@ class EncryptedLifecyclePipeline:
                 custody_state="PREPARED",
                 updated_at=now,
             )
+            uow.insert_object_binding(
+                artifact_id=artifact_semantic_digest_hex,
+                workspace_id=self.workspace_id,
+                logical_object_id=logical_object_id_hex,
+                revision_id=revision_id_hex,
+                subject_key_digest=stable_subject_digest,
+                project_id=project_id,
+                object_kind="MEMORY",
+                consent_epoch=consent_epoch,
+                revision_number="1",
+                sensitivity=sensitivity,
+                created_at=now,
+            )
 
         self._register_artifact_ark(artifact_semantic_digest_hex, art_dek)
         prev = self.db.event_chain_head()
@@ -884,42 +897,32 @@ class EncryptedLifecyclePipeline:
     # Gate 4: Correction
     # ------------------------------------------------------------------
     #
-    # NOTE on simplifying assumptions (Gate 4 minimal vertical slice):
-    # The body-free ``lifecycle_db`` cache intentionally never persists
-    # plaintext project/subject/consent-epoch metadata (see lifecycle_db.py
-    # module docstring), so ``correct()`` cannot recover the *original*
-    # ``project_id``/``source_instance_id``/``subject_ordinal``/
-    # ``consent_epoch`` used by the initiating ``remember()`` call from the
-    # prior artifact row alone. Rather than inventing/guessing those values,
-    # this method:
-    #   * fixes ``consent_epoch="1"`` for the corrected revision (a
-    #     correction never changes consent epoch; only ``remember_new_consent``
-    #     does that, deliberately, via an explicit epoch bump),
-    #   * anchors the logical object identity to the prior artifact's own
-    #     ``artifact_semantic_digest`` (deterministic, stable across a single
-    #     correction) rather than the real stable-subject digest, and
-    #   * hardcodes ``revision_number="2"`` (this Gate 4 slice supports ONE
-    #     correction step from the original revision; a correction-of-a-
-    #     correction would reuse "2"), and uses its own body-free
-    #     ``wiki-memory-revision-correction-semantic-v1`` semantic schema
-    #     (parallel to remember()'s own non-frozen schema naming) rather than
-    #     reusing remember()'s schema (which needs project/subject fields this
-    #     method never has).
+    # G4-CORRECTION-CONTINUITY (closed, Gate 8): ``remember()`` persists a
+    # body-free ``object_binding`` row carrying the digest-only stable identity
+    # of the revision (subject_key_digest, consent_epoch, object_kind,
+    # project_id, sensitivity, logical_object_id, revision_number). ``correct()``
+    # reads the parent's binding and reproduces logical-object continuity:
+    #   * the corrected revision derives its logical_object_id from the SAME
+    #     stable subject + consent epoch + object kind as the parent, so it
+    #     lands under the SAME logical object (never a fork);
+    #   * ``revision_number`` chains (parent N -> corrected N+1), supporting
+    #     correction-of-a-correction;
+    #   * ``parent_revision_id`` is the prior active revision;
+    #   * the corrected revision uses the production
+    #     ``wiki-memory-revision-semantic-v1`` semantic shape (same as
+    #     remember()), with parent_revision_id set to the prior revision.
+    # No plaintext is persisted: the binding columns are digests/ids/closed
+    # enums/canonical decimal strings only (see lifecycle_db.py allowlist).
     #
-    # HONESTY/FIDELITY (tracked follow-up G4-CORRECTION-CONTINUITY): this does
-    # NOT reproduce the frozen ``correction-r1-to-r2`` identity-vector digests
-    # — only the literal ``revision_number="2"`` field coincides; the computed
-    # logical_object_id/artifact_semantic_digest/revision_id differ because the
-    # correction is anchored to the prior artifact digest, not the original
-    # stable-subject/logical object, so the corrected revision lands under a
-    # different logical_object_id than the frozen "same object, new revision"
-    # contract. Full logical-object continuity + chained revision numbers
-    # require persisting a body-free subject/object binding and are deferred to
-    # the cross-revision "history of a memory" reconciliation (Gate 5). The
-    # frozen identity vectors are validated only for their own HMAC
-    # self-consistency; correct() is never driven against them, so this is a
-    # design-fidelity gap, not a vector-conformance break. The RETRACT+ADD
-    # atomicity and expected-active conflict guard below are exact.
+    # Relationship to the frozen ``correction-r1-to-r2`` identity vector: the
+    # fixture validates the identity BUILDERS' HMAC self-consistency using a
+    # simplified ``{body, locator_text}`` semantic placeholder, so its concrete
+    # digests are not the production digests. ``correct()`` reproduces the
+    # continuity CONTRACT that vector demonstrates -- same logical_object_id
+    # derivation from a stable subject, chained revision_number, parent linkage
+    # -- with production semantics; the pipeline-level continuity test asserts
+    # this property directly. The RETRACT+ADD atomicity and expected-active
+    # conflict guard below are exact.
 
     def correct(
         self,
@@ -948,6 +951,7 @@ class EncryptedLifecyclePipeline:
                     f"artifact {artifact_id} is not a MEMORY_REVISION (got {prior['artifact_kind']!r})",
                 )
             prior_revision_id = prior["revision_id"]
+            prior_binding = uow.get_object_binding(artifact_id)
 
         if expected_active_revision_id is not None and expected_active_revision_id != prior_revision_id:
             raise PipelineError(
@@ -956,7 +960,23 @@ class EncryptedLifecyclePipeline:
                 f"prior active revision {prior_revision_id!r}",
             )
 
-        consent_epoch = "1"
+        if prior_binding is None:
+            raise PipelineError(
+                "object_binding_missing",
+                f"artifact {artifact_id} has no body-free object binding; "
+                f"cannot establish logical-object continuity (fail-closed)",
+            )
+
+        # G4-CORRECTION-CONTINUITY: recover the parent's stable identity from
+        # the body-free binding so the corrected revision lands under the SAME
+        # logical object (same stable subject + consent epoch + object kind)
+        # with a chained revision number, instead of forking a new object.
+        consent_epoch = prior_binding["consent_epoch"]
+        subject_key_digest = prior_binding["subject_key_digest"]
+        object_kind = prior_binding["object_kind"]
+        project_id = prior_binding["project_id"]
+        sensitivity = prior_binding["sensitivity"]
+        new_revision_number = str(int(prior_binding["revision_number"]) + 1)
         policy_context_digest = hashlib.sha256(b"default-policy-context").hexdigest()
 
         _, command_id = identities.command_digest(
@@ -968,19 +988,22 @@ class EncryptedLifecyclePipeline:
             policy_context_digest=policy_context_digest,
         )
 
+        # Same stable subject + consent epoch + object kind => same logical
+        # object id as the parent revision (logical-object continuity).
         _, logical_object_id_hex = identities.logical_object_id(
             self.derived_keys,
             workspace_id=self.workspace_id,
-            object_kind="MEMORY",
+            object_kind=object_kind,
             consent_epoch=consent_epoch,
-            subject_key_digest=artifact_id,
+            subject_key_digest=subject_key_digest,
         )
 
         semantic_plaintext = {
-            "schema": "wiki-memory-revision-correction-semantic-v1",
-            "prior_artifact_id": artifact_id,
-            "prior_revision_id": prior_revision_id,
+            "schema": "wiki-memory-revision-semantic-v1",
+            "project_id": project_id,
+            "subject_key_digest": subject_key_digest,
             "consent_epoch": consent_epoch,
+            "sensitivity": sensitivity,
             "normalized_text": normalized.decode("utf-8"),
             "language": "und",
             "parent_revision_id": prior_revision_id,
@@ -990,17 +1013,17 @@ class EncryptedLifecyclePipeline:
             workspace_id=self.workspace_id,
             artifact_kind="MEMORY_REVISION",
             consent_epoch=consent_epoch,
-            semantic_schema="wiki-memory-revision-correction-semantic-v1",
+            semantic_schema="wiki-memory-revision-semantic-v1",
             semantic_plaintext=semantic_plaintext,
         )
 
         _, new_revision_id_hex = identities.revision_id(
             self.derived_keys,
             workspace_id=self.workspace_id,
-            object_kind="MEMORY",
+            object_kind=object_kind,
             logical_object_id_hex=logical_object_id_hex,
             consent_epoch=consent_epoch,
-            revision_number="2",
+            revision_number=new_revision_number,
             parent_revision_id=prior_revision_id,
             artifact_semantic_digest_hex=artifact_semantic_digest_hex,
         )
@@ -1016,7 +1039,7 @@ class EncryptedLifecyclePipeline:
             "workspace_id": self.workspace_id,
             "logical_object_id": logical_object_id_hex,
             "revision_id": new_revision_id_hex,
-            "semantic_schema_id": "wiki-memory-revision-correction-semantic-v1",
+            "semantic_schema_id": "wiki-memory-revision-semantic-v1",
             "nonce": nonce_hex,
             "aad_digest": hashlib.sha256(aad).hexdigest(),
             "ciphertext": ciphertext_hex,
@@ -1059,6 +1082,19 @@ class EncryptedLifecyclePipeline:
                 artifact_id=artifact_semantic_digest_hex,
                 custody_state="PREPARED",
                 updated_at=now,
+            )
+            uow.insert_object_binding(
+                artifact_id=artifact_semantic_digest_hex,
+                workspace_id=self.workspace_id,
+                logical_object_id=logical_object_id_hex,
+                revision_id=new_revision_id_hex,
+                subject_key_digest=subject_key_digest,
+                project_id=project_id,
+                object_kind=object_kind,
+                consent_epoch=consent_epoch,
+                revision_number=new_revision_number,
+                sensitivity=sensitivity,
+                created_at=now,
             )
 
         retract_delta = build_state_delta(
@@ -1531,6 +1567,19 @@ class EncryptedLifecyclePipeline:
                 artifact_id=artifact_semantic_digest_hex,
                 custody_state="PREPARED",
                 updated_at=now,
+            )
+            uow.insert_object_binding(
+                artifact_id=artifact_semantic_digest_hex,
+                workspace_id=self.workspace_id,
+                logical_object_id=logical_object_id_hex,
+                revision_id=revision_id_hex,
+                subject_key_digest=stable_subject_digest,
+                project_id=project_id,
+                object_kind="MEMORY",
+                consent_epoch=consent_epoch,
+                revision_number="1",
+                sensitivity=sensitivity,
+                created_at=now,
             )
 
         prev = self.db.event_chain_head()
