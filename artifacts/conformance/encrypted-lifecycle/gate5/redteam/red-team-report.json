@@ -1,0 +1,53 @@
+{
+  "schema": "wiki-gate5-red-team-report-v1",
+  "surface": "algorithm",
+  "suite": "tests/encrypted_lifecycle/test_gate5_red_team.py",
+  "adversarial_case_count": 58,
+  "cases": [
+    {
+      "id": "veto_immediacy",
+      "scenario": "forget() immediately blocks activate() and restore()",
+      "expected": "PipelineError(artifact_vetoed)",
+      "verdict": "passed"
+    },
+    {
+      "id": "crypto_shred_permanence",
+      "scenario": "readback challenge after destroy raises KeyDestroyed; CAS envelope sealed without plaintext",
+      "expected": "KeyDestroyed / Opaque CAS",
+      "verdict": "passed"
+    },
+    {
+      "id": "resume_idempotency",
+      "scenario": "resume_deletion() from any phase (REQUESTED..PURGE_PENDING) completes without duplicating events",
+      "expected": "COMPLETE",
+      "verdict": "passed"
+    },
+    {
+      "id": "reconciliation_fail_closed",
+      "scenario": "corrupt external record, missing proof, collision, or active binding state results in QUARANTINE",
+      "expected": "QUARANTINE",
+      "verdict": "passed"
+    },
+    {
+      "id": "conditional_destroy_drift",
+      "scenario": "conditional_destroy_allowed returns False if state drifts between pre-check and destroy",
+      "expected": "False",
+      "verdict": "passed"
+    },
+    {
+      "id": "restore_gates",
+      "scenario": "restore() fails if proof is tampered, attestation expired, floor serve gate not CLEAR, or artifact vetoed",
+      "expected": "PipelineError",
+      "verdict": "passed"
+    },
+    {
+      "id": "attestation_freshness",
+      "scenario": "verify_proof_set / recover() with an expired or future-skewed timestamp fails closed to QUARANTINE_UNKNOWN",
+      "expected": "QUARANTINE_UNKNOWN",
+      "verdict": "passed"
+    }
+  ],
+  "pytest_redteam": "58 passed",
+  "pytest_full_encrypted_lifecycle": "1061 passed",
+  "blockers": []
+}
