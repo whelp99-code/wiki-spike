@@ -290,13 +290,43 @@ class McpServer:
 
     def _memory_source(self, params: dict) -> dict:
         source_content_digest = params.get("source_content_digest", "")
+        blob_id = params.get("blob_id", "")
         if not source_content_digest:
             raise McpToolError(
                 "missing_params",
                 "source_content_digest is required",
             )
 
-        # Query canonical_artifact to verify the source exists.
+        # 1. Deletion veto check.
+        cursor = self._db.con.execute(
+            "SELECT phase_state FROM deletion_state WHERE artifact_id=? "
+            "ORDER BY updated_at DESC, deletion_id DESC LIMIT 1",
+            (source_content_digest,),
+        )
+        deletion_row = cursor.fetchone()
+        if deletion_row is not None:
+            if deletion.is_vetoed(deletion_row[0]):
+                raise McpToolError(
+                    "artifact_vetoed",
+                    f"source {source_content_digest} is under deletion veto",
+                )
+
+        # 2. Serve gate check.
+        cursor = self._db.con.execute(
+            "SELECT gate_state, reason_state FROM freshness_serve_gate WHERE workspace_id=?",
+            (self._workspace_id,),
+        )
+        gate_row = cursor.fetchone()
+        if gate_row is not None and not floor_protocol.serve_gate_allows_serving({
+            "state": gate_row[0],
+            "reason": gate_row[1],
+        }):
+            raise McpToolError(
+                "serve_withheld",
+                f"freshness serve gate withholds serving for workspace {self._workspace_id}",
+            )
+
+        # 3. Verify the source artifact exists.
         cursor = self._db.con.execute(
             "SELECT artifact_state FROM canonical_artifact WHERE artifact_id=?",
             (source_content_digest,),
@@ -309,7 +339,6 @@ class McpServer:
             )
 
         # Look up the blob_id: check params first, then fall back to state_delta.
-        blob_id = params.get("blob_id", "")
         if not blob_id:
             delta_cursor = self._db.con.execute(
                 "SELECT envelope_ref_id FROM state_delta WHERE object_id=? AND envelope_ref_id IS NOT NULL "
