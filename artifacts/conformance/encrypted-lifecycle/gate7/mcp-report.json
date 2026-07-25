@@ -1,0 +1,1 @@
+{"schema":"wiki-gate7-mcp-report-v1","surface":"api","suite":"tests/encrypted_lifecycle/test_gate7_mcp.py","adversarial_case_count":13,"pytest_gate7":"13 passed","pytest_full":"1117 passed","blockers":[]}
