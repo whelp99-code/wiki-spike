@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Mapping, Sequence
 
-from wiki_spike.infrastructure import crypto, floor_protocol, identities, locators
+from wiki_spike.infrastructure import crypto, deletion, floor_protocol, identities, locators
 from wiki_spike.infrastructure.changeset import (
     build_encrypted_accepted_changeset,
     build_state_delta,
@@ -29,7 +29,7 @@ from wiki_spike.infrastructure.ingestion import (
     normalize_lifecycle_input_v1,
     remember_options,
 )
-from wiki_spike.infrastructure.keystore import CreateOnlyKeyStore
+from wiki_spike.infrastructure.keystore import CreateOnlyKeyStore, KeyStoreError
 from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase, UnitOfWork
 from wiki_spike.memory_core.contracts import canonical_bytes
 
@@ -112,6 +112,8 @@ class EncryptedLifecyclePipeline:
     db: LifecycleDatabase
     cas: EncryptedContentStore
     dek: bytes  # AES-256-GCM data encryption key (32 bytes)
+    platform_keystore: "CreateOnlyKeyStore | None" = None
+    recovery_keystore: "CreateOnlyKeyStore | None" = None
 
     def remember(
         self,
@@ -202,7 +204,12 @@ class EncryptedLifecyclePipeline:
 
         nonce_hex = os.urandom(12).hex()
         aad = crypto.domain_prefix("wiki.envelope.v1") + bytes.fromhex(artifact_semantic_digest_hex)
-        ciphertext_hex, tag_hex = crypto.aes_gcm_seal(self.dek, nonce_hex, normalized, aad)
+        art_dek = (
+            os.urandom(32)
+            if self.platform_keystore is not None and self.recovery_keystore is not None
+            else self.dek
+        )
+        ciphertext_hex, tag_hex = crypto.aes_gcm_seal(art_dek, nonce_hex, normalized, aad)
         now = _utcnow()
         envelope = {
             "schema": "wiki-envelope-v1",
@@ -270,6 +277,7 @@ class EncryptedLifecyclePipeline:
                 updated_at=now,
             )
 
+        self._register_artifact_ark(artifact_semantic_digest_hex, art_dek)
         prev = self.db.event_chain_head()
         self.db.append_event(
             prev_digest=prev,
@@ -783,6 +791,11 @@ class EncryptedLifecyclePipeline:
         binds to this exact artifact, then transition custody to ACTIVE. A
         missing blob, corrupt blob, unreadable envelope, or artifact<->blob
         identity mismatch fails closed (no ACTIVE election)."""
+        if self.is_object_vetoed(artifact_id):
+            raise PipelineError(
+                "artifact_vetoed",
+                f"artifact {artifact_id} is under an active deletion veto and cannot be activated/served",
+            )
         with self.db.unit_of_work() as uow:
             gate_row = uow.get_freshness_serve_gate(self.workspace_id)
         if gate_row is None:
@@ -1536,3 +1549,166 @@ class EncryptedLifecyclePipeline:
             blob_id=blob_id,
             envelope=envelope,
         )
+
+    # ------------------------------------------------------------------
+    # Gate 5: dual-custody ARK + FORGET deletion workflow
+    # ------------------------------------------------------------------
+
+    def _register_artifact_ark(self, artifact_digest_hex: str, dek: bytes) -> None:
+        """Owner decisions 4/5: an independent per-artifact-revision ARK held in
+        create-only DUAL custody (platform + recovery keystores). FORGET later
+        destroys BOTH copies (crypto-shred) so the artifact's random DEK becomes
+        unrecoverable. No-op for Gate 3/4 single-DEK callers (no keystores)."""
+        if self.platform_keystore is None or self.recovery_keystore is None:
+            return
+        self.platform_keystore.create_only(self.workspace_id, artifact_digest_hex, dek.hex(), artifact_digest_hex)
+        self.recovery_keystore.create_only(self.workspace_id, artifact_digest_hex, dek.hex(), artifact_digest_hex)
+
+    def _set_deletion_phase(self, deletion_id: str, phase: "deletion.DeletionPhase", now: str) -> None:
+        with self.db.unit_of_work() as uow:
+            uow.update_deletion_phase(deletion_id=deletion_id, phase_state=phase.value, updated_at=now)
+
+    def _append_deletion_event(self, kind: str, ref: str) -> None:
+        prev = self.db.event_chain_head()
+        self.db.append_event(prev_digest=prev, kind=kind, ref_digest=ref)
+
+    def is_object_vetoed(self, artifact_id: str) -> bool:
+        """True once a deletion_state row exists for the artifact in ANY phase:
+        current deletion truth vetoes history, cache, restore, and in-flight
+        reads (deletion.is_vetoed)."""
+        row = self.db.con.execute(
+            "SELECT phase_state FROM deletion_state WHERE artifact_id=? "
+            "ORDER BY updated_at DESC, deletion_id DESC LIMIT 1",
+            (artifact_id,),
+        ).fetchone()
+        return row is not None and deletion.is_vetoed(row[0])
+
+    def forget(
+        self,
+        *,
+        artifact_id: str,
+        blob_id: str,
+        selector_kind: str = "MEMORY",
+        selector_value: str | None = None,
+        revision_id: str | None = None,
+        reason_code: str = "forget",
+        wait_seconds: str = "0",
+    ) -> dict:
+        """FORGET: immediate live-API veto through dual-custody crypto-shred.
+
+        Drives the forward-only deletion phase machine REQUESTED ->
+        API_VETO_ACTIVE -> TOMBSTONE_ACTIVE -> CHECKPOINT_COMMITTED ->
+        REVOCATION_KEYS_DESTROYED -> CRYPTO_SHRED_COMPLETE -> PURGE_PENDING ->
+        COMPLETE. The veto is live from REQUESTED; cryptographic undecryptability
+        is claimed only once BOTH custody copies of the artifact's ARK are
+        destroyed. Fail-closed: if either ARK destroy fails the deletion stops
+        before CRYPTO_SHRED_COMPLETE (API denial holds, no false shred claim)."""
+        if self.platform_keystore is None or self.recovery_keystore is None:
+            raise PipelineError(
+                "forget_requires_dual_custody",
+                "FORGET requires platform + recovery keystores for dual ARK destroy",
+            )
+        if not (0 <= int(wait_seconds) <= 300):
+            raise PipelineError("forget_wait_out_of_range", "wait_seconds must be 0..300")
+
+        if selector_value is None:
+            selector_value = artifact_id
+        if self.is_object_vetoed(artifact_id):
+            raise PipelineError(
+                "already_under_deletion",
+                f"artifact {artifact_id} already has an active deletion_state (idempotent FORGET rejected)",
+            )
+        empty_digest = hashlib.sha256(b"").hexdigest()
+        forget_opts = {
+            "schema": "wiki-forget-options-v1",
+            "command_kind": "FORGET",
+            "selector_kind": selector_kind,
+            "selector_value": selector_value,
+            "revision_id": revision_id,
+            "reason_code": reason_code,
+            "wait_seconds": wait_seconds,
+        }
+        policy_context_digest = hashlib.sha256(b"default-policy-context").hexdigest()
+        _, command_id = identities.command_digest(
+            self.derived_keys,
+            workspace_id=self.workspace_id,
+            command_kind="FORGET",
+            normalized_options=forget_opts,
+            input_content_digest=empty_digest,
+            policy_context_digest=policy_context_digest,
+        )
+        now = _utcnow()
+        phase = deletion.DeletionPhase.REQUESTED
+        with self.db.unit_of_work() as uow:
+            uow.insert_command(
+                command_id=command_id,
+                workspace_id=self.workspace_id,
+                command_kind="FORGET",
+                input_digest=empty_digest,
+                command_state="ACCEPTED",
+                created_at=now,
+            )
+            uow.insert_deletion_state(
+                deletion_id=command_id,
+                artifact_id=artifact_id,
+                phase_state=phase.value,
+                updated_at=now,
+            )
+        self._append_deletion_event("FORGET_REQUESTED", command_id)
+
+        # Immediate live-API veto.
+        phase = deletion.advance(phase, deletion.DeletionPhase.API_VETO_ACTIVE)
+        self._set_deletion_phase(command_id, phase, now)
+        self._append_deletion_event("DELETION_API_VETO_ACTIVE", artifact_id)
+
+        # Tombstone the CAS blob (retained bytes, not servable).
+        phase = deletion.advance(phase, deletion.DeletionPhase.TOMBSTONE_ACTIVE)
+        self.cas.tombstone(blob_id, reason=reason_code)
+        self._set_deletion_phase(command_id, phase, now)
+        self._append_deletion_event("DELETION_TOMBSTONED", artifact_id)
+
+        # Body-free deletion checkpoint.
+        deletion_checkpoint_id = hashlib.sha256(
+            canonical_bytes({
+                "domain": "wiki.deletion-checkpoint.v1",
+                "workspace_id": self.workspace_id,
+                "deletion_command_id": command_id,
+                "artifact_id": artifact_id,
+                "blob_id": blob_id,
+            })
+        ).hexdigest()
+        phase = deletion.advance(phase, deletion.DeletionPhase.CHECKPOINT_COMMITTED)
+        self._set_deletion_phase(command_id, phase, now)
+        self._append_deletion_event("DELETION_CHECKPOINT_COMMITTED", deletion_checkpoint_id)
+
+        # Dual ARK destroy (platform + recovery), fail-closed.
+        try:
+            platform_receipt = self.platform_keystore.destroy(self.workspace_id, artifact_id)
+            recovery_receipt = self.recovery_keystore.destroy(self.workspace_id, artifact_id)
+        except KeyStoreError as exc:
+            raise PipelineError(
+                "forget_ark_destroy_failed",
+                f"dual ARK destroy failed for {artifact_id}; deletion held at CHECKPOINT_COMMITTED: {exc}",
+            ) from exc
+        phase = deletion.advance(phase, deletion.DeletionPhase.REVOCATION_KEYS_DESTROYED)
+        self._set_deletion_phase(command_id, phase, now)
+        self._append_deletion_event("DELETION_ARK_DESTROYED", artifact_id)
+
+        # Both wraps gone -> cryptographic undecryptability.
+        phase = deletion.advance(phase, deletion.DeletionPhase.CRYPTO_SHRED_COMPLETE)
+        self._set_deletion_phase(command_id, phase, now)
+        self._append_deletion_event("DELETION_CRYPTO_SHRED_COMPLETE", artifact_id)
+
+        phase = deletion.advance(phase, deletion.DeletionPhase.PURGE_PENDING)
+        self._set_deletion_phase(command_id, phase, now)
+        phase = deletion.advance(phase, deletion.DeletionPhase.COMPLETE)
+        self._set_deletion_phase(command_id, phase, now)
+        self._append_deletion_event("DELETION_COMPLETE", command_id)
+
+        return {
+            "deletion_command_id": command_id,
+            "phase": phase.value,
+            "deletion_checkpoint_id": deletion_checkpoint_id,
+            "platform_absence_receipt": platform_receipt.to_mapping(),
+            "recovery_absence_receipt": recovery_receipt.to_mapping(),
+        }

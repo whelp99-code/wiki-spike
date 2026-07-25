@@ -464,6 +464,20 @@ class UnitOfWork:
             (deletion_id, artifact_id, phase_state, updated_at),
         )
 
+    def update_deletion_phase(self, deletion_id: str, phase_state: str, updated_at: str) -> None:
+        self._con.execute(
+            "UPDATE deletion_state SET phase_state=?, updated_at=? WHERE deletion_id=?",
+            (phase_state, updated_at, deletion_id),
+        )
+
+    def get_deletion_state_by_artifact(self, artifact_id: str) -> "sqlite3.Row | None":
+        self._con.row_factory = sqlite3.Row
+        return self._con.execute(
+            "SELECT * FROM deletion_state WHERE artifact_id=? "
+            "ORDER BY updated_at DESC, deletion_id DESC LIMIT 1",
+            (artifact_id,),
+        ).fetchone()
+
     # -- binding cache (SQLite is a cache only; see module docstring) ------- #
 
     def insert_binding_leaf(
