@@ -73,12 +73,24 @@ def pipeline(tmp_path: Path) -> EncryptedLifecyclePipeline:
 
 
 def _absence_receipt(namespace: str, ark_handle: str) -> AbsenceReceipt:
+    from wiki_spike.memory_core.contracts import canonical_bytes
+
+    receipt_digest = hashlib.sha256(
+        canonical_bytes(
+            {
+                "namespace": namespace,
+                "ark_handle": ark_handle,
+                "prior_metadata_digest": "ab" * 32,
+                "destroyed_at": "2026-01-01T00:00:00Z",
+            }
+        )
+    ).hexdigest()
     return AbsenceReceipt(
         namespace=namespace,
         ark_handle=ark_handle,
         prior_metadata_digest="ab" * 32,
         destroyed_at="2026-01-01T00:00:00Z",
-        receipt_digest="cd" * 32,
+        receipt_digest=receipt_digest,
     )
 
 
@@ -408,8 +420,8 @@ def test_red_team_new_consent_missing_deletion_state_blocks_and_writes_nothing(p
             consent_epoch="2",
             raw_body=b"fresh body",
             project_id="proj-1",
-            platform_absence_receipt=_absence_receipt("platform", r.artifact_semantic_digest),
-            recovery_absence_receipt=_absence_receipt("recovery", r.artifact_semantic_digest),
+            platform_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
+            recovery_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
         )
     assert excinfo.value.code == "new_consent_prior_deletion_incomplete"
     assert _row_counts(pipeline) == before
@@ -432,8 +444,8 @@ def test_red_team_new_consent_incomplete_deletion_phase_blocks_and_writes_nothin
             consent_epoch="2",
             raw_body=b"fresh body",
             project_id="proj-1",
-            platform_absence_receipt=_absence_receipt("platform", r.artifact_semantic_digest),
-            recovery_absence_receipt=_absence_receipt("recovery", r.artifact_semantic_digest),
+            platform_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
+            recovery_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
         )
     assert excinfo.value.code == "new_consent_prior_deletion_incomplete"
     assert _row_counts(pipeline) == before
@@ -445,8 +457,8 @@ def test_red_team_new_consent_missing_either_absence_receipt_blocks_and_writes_n
     _seed_complete_deletion(pipeline, r.artifact_semantic_digest)
     before = _row_counts(pipeline)
 
-    platform = None if missing in ("platform", "both") else _absence_receipt("platform", r.artifact_semantic_digest)
-    recovery = None if missing in ("recovery", "both") else _absence_receipt("recovery", r.artifact_semantic_digest)
+    platform = None if missing in ("platform", "both") else _absence_receipt("ws-test-1", r.artifact_semantic_digest)
+    recovery = None if missing in ("recovery", "both") else _absence_receipt("ws-test-1", r.artifact_semantic_digest)
 
     with pytest.raises(PipelineError) as excinfo:
         pipeline.remember_new_consent(
@@ -474,8 +486,8 @@ def test_red_team_new_consent_epoch_not_strictly_greater_blocks_and_writes_nothi
             consent_epoch=new_epoch,
             raw_body=b"fresh body",
             project_id="proj-1",
-            platform_absence_receipt=_absence_receipt("platform", r.artifact_semantic_digest),
-            recovery_absence_receipt=_absence_receipt("recovery", r.artifact_semantic_digest),
+            platform_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
+            recovery_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
         )
     assert excinfo.value.code == "new_consent_epoch_not_greater"
     assert _row_counts(pipeline) == before
@@ -492,8 +504,8 @@ def test_red_team_new_consent_empty_body_blocks_and_writes_nothing(pipeline):
             consent_epoch="2",
             raw_body=b"",
             project_id="proj-1",
-            platform_absence_receipt=_absence_receipt("platform", r.artifact_semantic_digest),
-            recovery_absence_receipt=_absence_receipt("recovery", r.artifact_semantic_digest),
+            platform_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
+            recovery_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
         )
     assert excinfo.value.code == "new_consent_body_required"
     assert _row_counts(pipeline) == before
@@ -510,8 +522,8 @@ def test_red_team_new_consent_happy_path_creates_new_state_with_new_consent_opti
         consent_epoch="2",
         raw_body=b"fresh consented body",
         project_id="proj-1",
-        platform_absence_receipt=_absence_receipt("platform", r.artifact_semantic_digest),
-        recovery_absence_receipt=_absence_receipt("recovery", r.artifact_semantic_digest),
+        platform_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
+        recovery_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
     )
 
     after = _row_counts(pipeline)
@@ -540,8 +552,8 @@ def test_red_team_new_consent_never_reads_prior_ciphertext(pipeline, tmp_path):
             consent_epoch="2",
             raw_body=b"fresh body",
             project_id="proj-1",
-            platform_absence_receipt=_absence_receipt("platform", r.artifact_semantic_digest),
-            recovery_absence_receipt=_absence_receipt("recovery", r.artifact_semantic_digest),
+            platform_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
+            recovery_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
         )
     assert r.blob_id not in spy.get_calls
 
@@ -552,8 +564,8 @@ def test_red_team_new_consent_never_reads_prior_ciphertext(pipeline, tmp_path):
         consent_epoch="2",
         raw_body=b"fresh consented body",
         project_id="proj-1",
-        platform_absence_receipt=_absence_receipt("platform", r.artifact_semantic_digest),
-        recovery_absence_receipt=_absence_receipt("recovery", r.artifact_semantic_digest),
+        platform_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
+        recovery_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
     )
     assert r.blob_id not in spy.get_calls  # happy path must not unwrap prior ciphertext either
 

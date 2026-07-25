@@ -41,13 +41,35 @@ def pipeline(tmp_path: Path) -> EncryptedLifecyclePipeline:
     )
 
 
-def _absence_receipt(namespace: str, ark_handle: str) -> AbsenceReceipt:
+def _absence_receipt(
+    workspace_id: str,
+    ark_handle: str,
+    prior_metadata_digest: str = "ab" * 32,
+    destroyed_at: str = "2026-01-01T00:00:00Z",
+    receipt_digest: str | None = None,
+) -> AbsenceReceipt:
+    """Build an absence receipt whose receipt_digest recomputes from its fields
+    (matching CreateOnlyKeyStore.destroy), unless an explicit digest is supplied
+    to forge/tamper a negative case."""
+    from wiki_spike.memory_core.contracts import canonical_bytes
+
+    if receipt_digest is None:
+        receipt_digest = hashlib.sha256(
+            canonical_bytes(
+                {
+                    "namespace": workspace_id,
+                    "ark_handle": ark_handle,
+                    "prior_metadata_digest": prior_metadata_digest,
+                    "destroyed_at": destroyed_at,
+                }
+            )
+        ).hexdigest()
     return AbsenceReceipt(
-        namespace=namespace,
+        namespace=workspace_id,
         ark_handle=ark_handle,
-        prior_metadata_digest="ab" * 32,
-        destroyed_at="2026-01-01T00:00:00Z",
-        receipt_digest="cd" * 32,
+        prior_metadata_digest=prior_metadata_digest,
+        destroyed_at=destroyed_at,
+        receipt_digest=receipt_digest,
     )
 
 
@@ -384,8 +406,8 @@ def test_new_consent_fails_without_deletion_state(pipeline):
             consent_epoch="2",
             raw_body=b"fresh body",
             project_id="proj-1",
-            platform_absence_receipt=_absence_receipt("platform", r.artifact_semantic_digest),
-            recovery_absence_receipt=_absence_receipt("recovery", r.artifact_semantic_digest),
+            platform_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
+            recovery_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
         )
     assert excinfo.value.code == "new_consent_prior_deletion_incomplete"
     assert _row_counts(pipeline) == before
@@ -408,8 +430,8 @@ def test_new_consent_fails_when_deletion_incomplete(pipeline):
             consent_epoch="2",
             raw_body=b"fresh body",
             project_id="proj-1",
-            platform_absence_receipt=_absence_receipt("platform", r.artifact_semantic_digest),
-            recovery_absence_receipt=_absence_receipt("recovery", r.artifact_semantic_digest),
+            platform_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
+            recovery_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
         )
     assert excinfo.value.code == "new_consent_prior_deletion_incomplete"
     assert _row_counts(pipeline) == before
@@ -438,7 +460,7 @@ def test_new_consent_fails_without_absence_receipts(pipeline):
             raw_body=b"fresh body",
             project_id="proj-1",
             platform_absence_receipt=None,
-            recovery_absence_receipt=_absence_receipt("recovery", r.artifact_semantic_digest),
+            recovery_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
         )
     assert excinfo.value.code == "new_consent_missing_absence_receipts"
     assert _row_counts(pipeline) == before
@@ -450,7 +472,7 @@ def test_new_consent_fails_without_absence_receipts(pipeline):
             consent_epoch="2",
             raw_body=b"fresh body",
             project_id="proj-1",
-            platform_absence_receipt=_absence_receipt("platform", r.artifact_semantic_digest),
+            platform_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
             recovery_absence_receipt=None,
         )
     assert excinfo2.value.code == "new_consent_missing_absence_receipts"
@@ -469,8 +491,8 @@ def test_new_consent_fails_when_epoch_not_greater(pipeline):
             consent_epoch="2",
             raw_body=b"fresh body",
             project_id="proj-1",
-            platform_absence_receipt=_absence_receipt("platform", r.artifact_semantic_digest),
-            recovery_absence_receipt=_absence_receipt("recovery", r.artifact_semantic_digest),
+            platform_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
+            recovery_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
         )
     assert excinfo.value.code == "new_consent_epoch_not_greater"
     assert _row_counts(pipeline) == before
@@ -488,8 +510,8 @@ def test_new_consent_fails_when_body_empty(pipeline):
             consent_epoch="2",
             raw_body=b"",
             project_id="proj-1",
-            platform_absence_receipt=_absence_receipt("platform", r.artifact_semantic_digest),
-            recovery_absence_receipt=_absence_receipt("recovery", r.artifact_semantic_digest),
+            platform_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
+            recovery_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
         )
     assert excinfo.value.code == "new_consent_body_required"
     assert _row_counts(pipeline) == before
@@ -506,8 +528,8 @@ def test_new_consent_happy_path(pipeline):
         consent_epoch="2",
         raw_body=b"fresh consented body",
         project_id="proj-1",
-        platform_absence_receipt=_absence_receipt("platform", r.artifact_semantic_digest),
-        recovery_absence_receipt=_absence_receipt("recovery", r.artifact_semantic_digest),
+        platform_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
+        recovery_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
     )
 
     assert len(result.command_id) == 64
@@ -536,6 +558,127 @@ def test_new_consent_happy_path(pipeline):
     rows = pipeline.db.event_log_rows()
     kinds = [row["event_kind"] for row in rows]
     assert "NEW_CONSENT_ACCEPTED" in kinds
+
+
+# ---------------------------------------------------------------------------
+# G4-NEW-CONSENT-SUBJECT-BINDING: deep receipt validation + same-subject check
+# ---------------------------------------------------------------------------
+
+
+def test_new_consent_fails_when_receipt_ark_mismatch(pipeline):
+    r = pipeline.remember(raw_body=b"original", project_id="proj-1")
+    _seed_complete_deletion(pipeline, r.artifact_semantic_digest)
+    before = _row_counts(pipeline)
+    with pytest.raises(PipelineError) as excinfo:
+        pipeline.remember_new_consent(
+            prior_object_id=r.artifact_semantic_digest,
+            prior_consent_epoch="1",
+            consent_epoch="2",
+            raw_body=b"fresh body",
+            project_id="proj-1",
+            platform_absence_receipt=_absence_receipt("ws-test-1", "ff" * 32),
+            recovery_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
+        )
+    assert excinfo.value.code == "new_consent_receipt_ark_mismatch"
+    assert _row_counts(pipeline) == before
+
+
+def test_new_consent_fails_when_receipt_namespace_mismatch(pipeline):
+    r = pipeline.remember(raw_body=b"original", project_id="proj-1")
+    _seed_complete_deletion(pipeline, r.artifact_semantic_digest)
+    before = _row_counts(pipeline)
+    with pytest.raises(PipelineError) as excinfo:
+        pipeline.remember_new_consent(
+            prior_object_id=r.artifact_semantic_digest,
+            prior_consent_epoch="1",
+            consent_epoch="2",
+            raw_body=b"fresh body",
+            project_id="proj-1",
+            platform_absence_receipt=_absence_receipt("other-ws", r.artifact_semantic_digest),
+            recovery_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
+        )
+    assert excinfo.value.code == "new_consent_receipt_namespace_mismatch"
+    assert _row_counts(pipeline) == before
+
+
+def test_new_consent_fails_when_receipt_digest_invalid(pipeline):
+    r = pipeline.remember(raw_body=b"original", project_id="proj-1")
+    _seed_complete_deletion(pipeline, r.artifact_semantic_digest)
+    before = _row_counts(pipeline)
+    with pytest.raises(PipelineError) as excinfo:
+        pipeline.remember_new_consent(
+            prior_object_id=r.artifact_semantic_digest,
+            prior_consent_epoch="1",
+            consent_epoch="2",
+            raw_body=b"fresh body",
+            project_id="proj-1",
+            platform_absence_receipt=_absence_receipt(
+                "ws-test-1", r.artifact_semantic_digest, receipt_digest="cd" * 32
+            ),
+            recovery_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
+        )
+    assert excinfo.value.code == "new_consent_receipt_digest_invalid"
+    assert _row_counts(pipeline) == before
+
+
+def test_new_consent_fails_when_receipts_not_distinct(pipeline):
+    r = pipeline.remember(raw_body=b"original", project_id="proj-1")
+    _seed_complete_deletion(pipeline, r.artifact_semantic_digest)
+    before = _row_counts(pipeline)
+    same_receipt = _absence_receipt("ws-test-1", r.artifact_semantic_digest)
+    with pytest.raises(PipelineError) as excinfo:
+        pipeline.remember_new_consent(
+            prior_object_id=r.artifact_semantic_digest,
+            prior_consent_epoch="1",
+            consent_epoch="2",
+            raw_body=b"fresh body",
+            project_id="proj-1",
+            platform_absence_receipt=same_receipt,
+            recovery_absence_receipt=same_receipt,
+        )
+    assert excinfo.value.code == "new_consent_receipts_not_distinct"
+    assert _row_counts(pipeline) == before
+
+
+def test_new_consent_fails_when_subject_mismatch(pipeline):
+    r = pipeline.remember(raw_body=b"original", project_id="proj-1")
+    _seed_complete_deletion(pipeline, r.artifact_semantic_digest)
+    before = _row_counts(pipeline)
+    with pytest.raises(PipelineError) as excinfo:
+        pipeline.remember_new_consent(
+            prior_object_id=r.artifact_semantic_digest,
+            prior_consent_epoch="1",
+            consent_epoch="2",
+            raw_body=b"fresh body",
+            project_id="proj-1",
+            source_instance_id="a-different-source",
+            platform_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
+            recovery_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
+        )
+    assert excinfo.value.code == "new_consent_subject_mismatch"
+    assert _row_counts(pipeline) == before
+
+
+def test_new_consent_fails_when_prior_binding_missing(pipeline):
+    r = pipeline.remember(raw_body=b"original", project_id="proj-1")
+    _seed_complete_deletion(pipeline, r.artifact_semantic_digest)
+    pipeline.db.con.execute(
+        "DELETE FROM object_binding WHERE artifact_id=?", (r.artifact_semantic_digest,)
+    )
+    before = _row_counts(pipeline)
+    with pytest.raises(PipelineError) as excinfo:
+        pipeline.remember_new_consent(
+            prior_object_id=r.artifact_semantic_digest,
+            prior_consent_epoch="1",
+            consent_epoch="2",
+            raw_body=b"fresh body",
+            project_id="proj-1",
+            platform_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
+            recovery_absence_receipt=_absence_receipt("ws-test-1", r.artifact_semantic_digest),
+        )
+    assert excinfo.value.code == "new_consent_prior_binding_missing"
+    assert _row_counts(pipeline) == before
+
 
 # ---------------------------------------------------------------------------
 # persist_changeset delta-conformance guard (must fail-closed on the exact

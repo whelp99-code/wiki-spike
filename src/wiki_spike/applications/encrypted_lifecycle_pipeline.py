@@ -1355,6 +1355,94 @@ class EncryptedLifecyclePipeline:
     # Gate 4: New consent (post-FORGET re-remember)
     # ------------------------------------------------------------------
 
+    def _validate_new_consent_receipts(
+        self,
+        *,
+        prior_object_id: str,
+        platform_absence_receipt: "object",
+        recovery_absence_receipt: "object",
+    ) -> None:
+        """Fail-closed deep validation of the dual-custody absence receipts.
+
+        Each receipt must be bound to this workspace and to ``prior_object_id``,
+        and its ``receipt_digest`` must recompute from its own fields (authentic,
+        unforged). The two receipts must be distinct objects. The frozen
+        ``AbsenceReceipt`` format (keystore.py is a never-edit authority) carries
+        no explicit custody-role field, so distinct custody is assured by the
+        dual-keystore topology (``forget()`` destroys both custodians) plus both
+        receipts independently validating; the object-distinctness guard prevents
+        one receipt being passed as both."""
+        if platform_absence_receipt is recovery_absence_receipt:
+            raise PipelineError(
+                "new_consent_receipts_not_distinct",
+                "platform and recovery absence receipts must be distinct custody proofs",
+            )
+        for role, receipt in (
+            ("platform", platform_absence_receipt),
+            ("recovery", recovery_absence_receipt),
+        ):
+            if receipt.ark_handle != prior_object_id:
+                raise PipelineError(
+                    "new_consent_receipt_ark_mismatch",
+                    f"{role} absence receipt ark_handle {receipt.ark_handle!r} does not "
+                    f"bind prior object {prior_object_id!r}",
+                )
+            if receipt.namespace != self.workspace_id:
+                raise PipelineError(
+                    "new_consent_receipt_namespace_mismatch",
+                    f"{role} absence receipt namespace {receipt.namespace!r} does not "
+                    f"bind workspace {self.workspace_id!r}",
+                )
+            expected_digest = hashlib.sha256(
+                canonical_bytes(
+                    {
+                        "namespace": receipt.namespace,
+                        "ark_handle": receipt.ark_handle,
+                        "prior_metadata_digest": receipt.prior_metadata_digest,
+                        "destroyed_at": receipt.destroyed_at,
+                    }
+                )
+            ).hexdigest()
+            if expected_digest != receipt.receipt_digest:
+                raise PipelineError(
+                    "new_consent_receipt_digest_invalid",
+                    f"{role} absence receipt digest does not recompute (forged/tampered)",
+                )
+
+    def _validate_new_consent_same_subject(
+        self,
+        *,
+        prior_object_id: str,
+        project_id: str,
+        source_instance_id: str,
+        subject_ordinal: str,
+    ) -> None:
+        """Fail-closed: the new consent must reproduce the prior object's stable
+        subject (which binds project + source-instance + ordinal), read body-free
+        from the retained object binding. A missing binding or a differing stable
+        subject refuses to mint new consent."""
+        with self.db.unit_of_work() as uow:
+            prior_binding = uow.get_object_binding(prior_object_id)
+        if prior_binding is None:
+            raise PipelineError(
+                "new_consent_prior_binding_missing",
+                f"prior object {prior_object_id} has no body-free object binding; "
+                f"cannot verify same-subject new consent (fail-closed)",
+            )
+        _, new_subject_digest = identities.stable_subject_ref(
+            self.derived_keys,
+            workspace_id=self.workspace_id,
+            project_id=project_id,
+            source_instance_id=source_instance_id,
+            subject_ordinal=subject_ordinal,
+        )
+        if new_subject_digest != prior_binding["subject_key_digest"]:
+            raise PipelineError(
+                "new_consent_subject_mismatch",
+                "new consent stable-subject does not reproduce the prior object's "
+                "stable subject (fail-closed)",
+            )
+
     def remember_new_consent(
         self,
         *,
@@ -1378,21 +1466,25 @@ class EncryptedLifecyclePipeline:
         below is verified BEFORE any new command/artifact/key_state row is
         written; a failure leaves no new state. Never reads/unwraps the
         prior object's ciphertext -- only body-free tombstone/identity
-        metadata (the deletion_state phase and the two custody absence
-        receipts) and the caller-supplied fresh ``raw_body``.
+        metadata (the deletion_state phase, the retained body-free object
+        binding, and the two custody absence receipts) and the caller-supplied
+        fresh ``raw_body``.
 
-        DEFERRED (tracked follow-up G4-NEW-CONSENT-SUBJECT-BINDING, to Gate 5
-        dual-ARK-destroy where custody/subject binding hardens): two plan
-        line-138 preconditions are intentionally under-enforced here because the
-        body-free cache persists no subject/custody binding to check against —
-        (a) the "same project/stable-subject as the prior object" precondition
-        is NOT verified (project/subject params are caller-supplied and a fresh
-        stable_subject_ref is derived without comparing to the deleted object's
-        subject); (b) the two absence receipts are validated for PRESENCE only,
-        not for distinct custody roles, ark_handle binding to prior_object_id,
-        or receipt_digest validity. The safety-critical guarantees below are
-        fully enforced: prior deletion COMPLETE, strictly-greater consent epoch,
-        non-empty body, zero-state-on-any-failure, and no prior-ciphertext read.
+        G4-NEW-CONSENT-SUBJECT-BINDING (closed, Gate 8): in addition to prior
+        deletion COMPLETE, strictly-greater consent epoch, non-empty body,
+        zero-state-on-any-failure, and no prior-ciphertext read, this now
+        enforces:
+        (a) same subject -- the caller-supplied project/source-instance/ordinal
+            must reproduce the prior object's stable subject (read body-free
+            from the retained object binding); a different subject or a missing
+            binding fails closed;
+        (b) deep receipt validation -- BOTH custody absence receipts must be
+            distinct objects, bound to this workspace and to prior_object_id,
+            with a receipt_digest that recomputes (authentic/unforged). The
+            frozen AbsenceReceipt format (keystore.py is a never-edit authority)
+            carries no explicit custody-role field, so distinct custody is
+            assured by the dual-keystore topology (forget() destroys both
+            custodians) plus both receipts independently validating.
         """
         row = self.db.con.execute(
             "SELECT phase_state FROM deletion_state WHERE artifact_id=? "
@@ -1422,6 +1514,21 @@ class EncryptedLifecyclePipeline:
 
         if not raw_body:
             raise PipelineError("new_consent_body_required", "raw_body must be non-empty")
+
+        # G4-NEW-CONSENT-SUBJECT-BINDING: deep-validate both custody receipts
+        # and verify same-subject against the retained body-free binding, all
+        # BEFORE any new state is written (fail-closed, zero-state-on-failure).
+        self._validate_new_consent_receipts(
+            prior_object_id=prior_object_id,
+            platform_absence_receipt=platform_absence_receipt,
+            recovery_absence_receipt=recovery_absence_receipt,
+        )
+        self._validate_new_consent_same_subject(
+            prior_object_id=prior_object_id,
+            project_id=project_id,
+            source_instance_id=source_instance_id,
+            subject_ordinal=subject_ordinal,
+        )
 
         normalized = normalize_lifecycle_input_v1(raw_body)
         content_digest = input_content_digest(normalized)
