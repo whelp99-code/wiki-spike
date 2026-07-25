@@ -1712,3 +1712,75 @@ class EncryptedLifecyclePipeline:
             "platform_absence_receipt": platform_receipt.to_mapping(),
             "recovery_absence_receipt": recovery_receipt.to_mapping(),
         }
+
+    def restore(
+        self,
+        *,
+        artifact_id: str,
+        mode: "RecoveryMode",
+        registry: "BindingRegistry",
+        proof_set: Mapping,
+        trusted_signer_pub: "Ed25519PublicKey",
+        local_floor_checkpoint_id: str,
+        expected_namespace: str,
+        expected_provider_handle: str,
+        now: str,
+        local_history_size: int | None = None,
+        local_history_root_hex: str | None = None,
+    ) -> dict:
+        """Selective restore (ADR-0027): re-enable visibility of an artifact ONLY
+        after a valid recovery proof AND an immutable/stable floor + binding
+        proofs, and ONLY if the artifact is not under a current deletion veto.
+
+        Fail-closed gates run BEFORE any serve/key work: (1) a forgotten
+        (deletion_state) artifact is never restorable — the veto dominates
+        rollback; (2) the recovery proof set must RECOVER (both modes;
+        replay/expiry/fork/omission/stale-floor/invalid-signer/outage/incomplete-
+        binding all fail closed to QUARANTINE_UNKNOWN via ``recover``, injecting
+        the trusted clock ``now``); (3) the freshness serve gate must be CLEAR
+        (floor stable) before visibility. This never recreates a destroyed ARK,
+        lowers the floor/counter, or serves plaintext under an incomplete proof."""
+        from wiki_spike.infrastructure.recovery import RecoveryDecision
+
+        # 1. Current-veto gate: a forgotten artifact is never restorable.
+        if self.is_object_vetoed(artifact_id):
+            raise PipelineError(
+                "restore_vetoed",
+                f"artifact {artifact_id} is under an active deletion veto and is not restorable",
+            )
+
+        # 2. Recovery-proof gate (both modes; fail-closed to QUARANTINE_UNKNOWN).
+        decision = self.recover(
+            mode=mode,
+            registry=registry,
+            proof_set=proof_set,
+            trusted_signer_pub=trusted_signer_pub,
+            local_floor_checkpoint_id=local_floor_checkpoint_id,
+            expected_namespace=expected_namespace,
+            expected_provider_handle=expected_provider_handle,
+            now=now,
+            local_history_size=local_history_size,
+            local_history_root_hex=local_history_root_hex,
+        )
+        if decision is not RecoveryDecision.RECOVERED:
+            raise PipelineError(
+                "restore_quarantined",
+                f"recovery proof did not RECOVER ({decision.value}); no restore before visibility",
+            )
+
+        # 3. Immutable/stable floor + CLEAR freshness serve gate before visibility.
+        if not self.can_serve():
+            raise PipelineError(
+                "restore_serve_withheld",
+                "floor/freshness serve gate is not CLEAR; restore withheld until the floor stabilizes",
+            )
+
+        # 4. Release visibility (never recreates a destroyed ARK).
+        now_ts = _utcnow()
+        with self.db.unit_of_work() as uow:
+            art = uow.get_canonical_artifact(artifact_id)
+            if art is None:
+                raise PipelineError("restore_artifact_not_found", f"artifact {artifact_id} not found")
+            uow.upsert_key_state(artifact_id=artifact_id, custody_state="ACTIVE", updated_at=now_ts)
+        self._append_deletion_event("ARTIFACT_RESTORED", artifact_id)
+        return {"artifact_id": artifact_id, "decision": decision.value, "restored": True}
