@@ -497,6 +497,11 @@ class ReconciliationOutcome(str, Enum):
     DESTROY_UNBOUND = "DESTROY_UNBOUND"
     RESUME_EXACT = "RESUME_EXACT"
     QUARANTINE_UNKNOWN = "QUARANTINE_UNKNOWN"
+    # Gate 5 full ADR-0027 §3 classification adds these disjoint outcomes:
+    DESTROY_LOSER = "DESTROY_LOSER"
+    DESTROY_EXPIRED = "DESTROY_EXPIRED"
+    QUARANTINE_ACTIVE = "QUARANTINE_ACTIVE"
+    QUARANTINE_COLLISION = "QUARANTINE_COLLISION"
 
 
 _DESTROYABLE_STATUSES = frozenset(
@@ -564,3 +569,104 @@ def reconcile(
         )
         for handle in sorted(all_handles)
     }
+
+# ---------------------------------------------------------------------------
+# Gate 5 full ADR-0027 §3 binding-proof reconciliation (7 disjoint outcomes)
+# and the pre-destroy re-read / zero-call-on-change conditional-destroy guard.
+# ---------------------------------------------------------------------------
+
+_DESTROY_OUTCOMES = frozenset(
+    {
+        ReconciliationOutcome.DESTROY_UNBOUND,
+        ReconciliationOutcome.DESTROY_LOSER,
+        ReconciliationOutcome.DESTROY_EXPIRED,
+    }
+)
+
+
+@dataclass(frozen=True)
+class ReconciliationInputs:
+    """Inputs to the full ADR-0027 §3 reconciliation classifier for one key
+    handle. Every proof/inventory flag is True ONLY when independently verified
+    against a fresh signed binding-registry checkpoint + proof set (see
+    ``binding_registry.verify_proof_set``); a False flag means "not proven",
+    which fails closed to quarantine, never to a destroy."""
+
+    binding_status: Optional[BindingStatus]  # DB-known binding status; None = no DB row
+    external: Optional[ExternalKeyRecord]  # observed custody inventory row
+    membership_verified: bool = False  # signed current-map MEMBERSHIP proof for this handle
+    non_membership_verified: bool = False  # signed current-map NON-membership proof
+    inventories_complete: bool = False  # DB/staging/CAS/provider inventory joins complete
+    collision: bool = False  # handle/identity/fingerprint disagreement across sources
+    historical_active_without_terminal: bool = False  # a historical ACTIVE lacking later VETOED/DESTROYED
+    metadata_matches: bool = False  # external.metadata_digest == DB binding metadata_digest
+    never_active: bool = False  # the intent chain was never ACTIVE (PREPARED -> EXPIRED)
+
+
+def classify_binding_reconciliation(inputs: ReconciliationInputs) -> ReconciliationOutcome:
+    """Full ADR-0027 §3 classification of one key handle into exactly one of the
+    seven disjoint outcomes, fail-closed to ``QUARANTINE_UNKNOWN``. Destruction
+    is emitted ONLY with the exact required membership/non-membership proof and
+    complete inventories; anything ACTIVE (current or historical-without-terminal),
+    any identity/fingerprint collision, and any missing/corrupt/stale/unproven
+    input quarantines. Never destroys an ACTIVE-bound, mismatched, or unproven
+    key."""
+    ext = inputs.external
+    # 1. Missing / corrupt / metadata-less custody row is never destroyable.
+    if ext is None or ext.corrupt or ext.metadata_digest is None:
+        return ReconciliationOutcome.QUARANTINE_UNKNOWN
+
+    # 2. Any identity/handle/fingerprint disagreement is a collision.
+    if inputs.collision:
+        return ReconciliationOutcome.QUARANTINE_COLLISION
+
+    # 3. Current ACTIVE, or a historical ACTIVE without a later valid
+    #    VETOED/DESTROYED, is never destroyable.
+    if inputs.binding_status is BindingStatus.ACTIVE or inputs.historical_active_without_terminal:
+        return ReconciliationOutcome.QUARANTINE_ACTIVE
+
+    # 4. No DB binding (unbound): DESTROY_UNBOUND requires exact current-map
+    #    NON-membership proof AND complete inventories.
+    if inputs.binding_status is None or inputs.binding_status is BindingStatus.UNBOUND:
+        if inputs.non_membership_verified and inputs.inventories_complete:
+            return ReconciliationOutcome.DESTROY_UNBOUND
+        return ReconciliationOutcome.QUARANTINE_UNKNOWN
+
+    # 5. LOSER: DESTROY_LOSER requires exact current membership + complete
+    #    non-collision joins + exact metadata.
+    if inputs.binding_status is BindingStatus.LOSER:
+        if inputs.membership_verified and inputs.inventories_complete and inputs.metadata_matches:
+            return ReconciliationOutcome.DESTROY_LOSER
+        return ReconciliationOutcome.QUARANTINE_UNKNOWN
+
+    # 6. EXPIRED: DESTROY_EXPIRED with membership+inventories+metadata; a
+    #    never-ACTIVE PREPARED->EXPIRED intent with membership+inventories is
+    #    the DESTROY_UNBOUND branch.
+    if inputs.binding_status is BindingStatus.EXPIRED:
+        if inputs.membership_verified and inputs.inventories_complete and inputs.metadata_matches:
+            return ReconciliationOutcome.DESTROY_EXPIRED
+        if inputs.never_active and inputs.membership_verified and inputs.inventories_complete:
+            return ReconciliationOutcome.DESTROY_UNBOUND
+        return ReconciliationOutcome.QUARANTINE_UNKNOWN
+
+    # 7. PREPARED: RESUME_EXACT with current membership + exact non-ACTIVE metadata.
+    if inputs.binding_status is BindingStatus.PREPARED:
+        if inputs.membership_verified and inputs.metadata_matches:
+            return ReconciliationOutcome.RESUME_EXACT
+        return ReconciliationOutcome.QUARANTINE_UNKNOWN
+
+    # 8. Anything else fails closed.
+    return ReconciliationOutcome.QUARANTINE_UNKNOWN
+
+
+def conditional_destroy_allowed(
+    pre_outcome: ReconciliationOutcome, reread_inputs: ReconciliationInputs
+) -> bool:
+    """Zero-call-on-change guard (ADR-0027 §3): before each provider destroy,
+    re-classify against a FRESH re-read of DB winner/ACTIVE/staging/providers/CAS
+    under lease. Destroy is permitted ONLY if the pre-classification was a
+    destroy outcome AND the re-read yields the byte-identical same outcome; any
+    change (status/proof/snapshot/fingerprint drift) yields zero further destroy."""
+    if pre_outcome not in _DESTROY_OUTCOMES:
+        return False
+    return classify_binding_reconciliation(reread_inputs) is pre_outcome
