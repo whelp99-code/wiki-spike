@@ -16,16 +16,16 @@ root/floor mismatch, or identity mismatch resolves to
 :class:`RecoveryDecision.QUARANTINE_UNKNOWN`, never ``RECOVERED``. An
 incomplete proof can never be treated as an implicit pass (ADR-0027 §4).
 
-NOTE (Gate-5 deferral, ``G5-ATTESTATION-TIME-CHECK``): clock-window/skew
-freshness enforcement of the attestation's ``issued_at``/``expires_at`` is
-NOT performed here or in ``verify_proof_set``. It is deferred to the Gate 5
-deletion/crash runtime, which must inject a trusted clock + skew policy
-under the Escalation/Risk Gate. Within the Gate 3 deterministic vertical the
-staleness guards are the R10-5 ``request_floor_checkpoint_id`` binding, the
-in-registry nonce/counter replay guard, and the signature/root/consistency
-binding — NOT time. A validly-signed but time-expired attestation is
-therefore currently accepted by this recovery path; Gate 5 must add the
-issued_at/expires_at/skew check to close that fail-open-on-time dimension.
+NOTE (``G5-ATTESTATION-TIME-CHECK``, delivered in Gate 5): clock-window/skew
+freshness enforcement of the attestation's ``issued_at``/``expires_at`` IS now
+performed by ``verify_proof_set`` (and thus by ``recover``) whenever a trusted
+clock ``now`` (ISO-8601 UTC) is injected, with a default 300-second freshness
+window and ±60-second skew. A validly-signed but stale/expired/not-yet-valid
+attestation then fails closed to ``QUARANTINE_UNKNOWN``. When ``now`` is omitted
+(e.g. Gate-3 callers with no trusted clock) the staleness guards are the R10-5
+``request_floor_checkpoint_id`` binding, the in-registry nonce/counter replay
+guard, and the signature/root/consistency binding; a Gate-5 deletion/restore
+caller MUST inject ``now`` so time freshness is enforced before visibility.
 """
 from __future__ import annotations
 
@@ -66,6 +66,9 @@ def recover(
     expected_provider_handle: str,
     local_history_size: int | None = None,
     local_history_root_hex: str | None = None,
+    now: str | None = None,
+    freshness_seconds: int = 300,
+    skew_seconds: int = 60,
 ) -> RecoveryDecision:
     """Evaluates ``proof_set`` under ``mode`` and returns a
     :class:`RecoveryDecision`.
@@ -76,8 +79,10 @@ def recover(
     leaf, sparse membership/non-membership, and the queried-identity
     binding). Any failure there — tampered, replayed, omitted, forked,
     gapped, root-mismatched, or floor-mismatched — is caught here and mapped
-    to ``QUARANTINE_UNKNOWN``. (Attestation clock-window/skew expiry is NOT
-    enforced here — deferred to Gate 5, see the module docstring.)
+    to ``QUARANTINE_UNKNOWN``. When a trusted clock ``now`` (ISO-8601 UTC) is
+    injected, the attestation's ``issued_at``/``expires_at``/skew freshness is
+    also enforced (G5-ATTESTATION-TIME-CHECK): a stale/expired/not-yet-valid
+    attestation likewise maps to ``QUARANTINE_UNKNOWN``.
 
     ``DELTA_CONTINUITY`` additionally requires the proof's history
     consistency segment to continue the caller's locally trusted
@@ -98,6 +103,9 @@ def recover(
             local_floor_checkpoint_id=local_floor_checkpoint_id,
             expected_namespace=expected_namespace,
             expected_provider_handle=expected_provider_handle,
+            now=now,
+            freshness_seconds=freshness_seconds,
+            skew_seconds=skew_seconds,
         )
 
         if mode == RecoveryMode.DELTA_CONTINUITY:

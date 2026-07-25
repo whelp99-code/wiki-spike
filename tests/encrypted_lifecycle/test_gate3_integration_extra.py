@@ -368,19 +368,10 @@ def _build_expired_proof_set(registry: BindingRegistry, *, nonce_seed: bytes) ->
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "G5-ATTESTATION-TIME-CHECK: attestation issued_at/expires_at/skew "
-        "freshness is NOT enforced by verify_proof_set/recover() in the Gate 3 "
-        "deterministic vertical, so a validly-signed but time-expired "
-        "attestation currently returns RECOVERED (fail-open on time). "
-        "Enforcement is deferred to the Gate 5 deletion/crash runtime (requires "
-        "an injected clock + skew policy under the Escalation/Risk Gate). This "
-        "asserts the required Gate-5 behavior and will pass once the check lands."
-    ),
-)
-def test_expired_attestation_recovery_should_quarantine_gate5_gap(pipeline):
+def test_expired_attestation_recovery_quarantines_when_clock_injected(pipeline):
+    """G5-ATTESTATION-TIME-CHECK (delivered Gate 5): with a trusted clock
+    injected, a validly-signed but time-expired attestation fails closed to
+    QUARANTINE_UNKNOWN."""
     registry = _build_registry()
     proof_set = _build_expired_proof_set(registry, nonce_seed=b"gate3-extra-nonce-expired")
     decision = pipeline.recover(
@@ -391,6 +382,55 @@ def test_expired_attestation_recovery_should_quarantine_gate5_gap(pipeline):
         local_floor_checkpoint_id=FLOOR_CHECKPOINT_ID,
         expected_namespace=REGISTRY_NAMESPACE,
         expected_provider_handle="provider-b",
+        now="2020-01-01T01:00:00Z",  # long after expires_at
     )
-    # REQUIRED Gate-5 behavior: an expired attestation must fail closed.
     assert decision == RecoveryDecision.QUARANTINE_UNKNOWN
+
+
+def _build_fresh_proof_set(
+    registry: BindingRegistry, *, nonce_seed: bytes, issued_at: str, expires_at: str
+) -> dict:
+    checkpoint, checkpoint_signature = _build_checkpoint(registry)
+    attestation = registry.attest(
+        request_nonce=sha256_hex(nonce_seed),
+        challenge_counter="1",
+        request_floor_checkpoint_id=FLOOR_CHECKPOINT_ID,
+        signer_key_id=SIGNER_KEY_ID_1,
+        issued_at=issued_at,
+        expires_at=expires_at,
+        signing_key=SIGNING_KEY_1,
+        checkpoint=checkpoint,
+    )
+    return registry.build_proof_set(
+        attestation=attestation,
+        checkpoint=checkpoint,
+        checkpoint_signature=checkpoint_signature,
+        namespace=REGISTRY_NAMESPACE,
+        provider_handle="provider-b",
+        old_size=2,
+        inclusion_indices=[1],
+        predecessor_leaf_indices=[],
+    )
+
+
+def test_fresh_attestation_recovers_when_clock_injected(pipeline):
+    """G5-ATTESTATION-TIME-CHECK: a within-window attestation with an injected
+    trusted clock inside the freshness window recovers normally."""
+    registry = _build_registry()
+    proof_set = _build_fresh_proof_set(
+        registry,
+        nonce_seed=b"gate3-extra-nonce-fresh",
+        issued_at="2026-07-24T00:00:00Z",
+        expires_at="2026-07-24T00:05:00Z",
+    )
+    decision = pipeline.recover(
+        mode=RecoveryMode.AUTHORITATIVE_SNAPSHOT,
+        registry=registry,
+        proof_set=proof_set,
+        trusted_signer_pub=SIGNING_KEY_1.public_key(),
+        local_floor_checkpoint_id=FLOOR_CHECKPOINT_ID,
+        expected_namespace=REGISTRY_NAMESPACE,
+        expected_provider_handle="provider-b",
+        now="2026-07-24T00:02:00Z",  # within the freshness window
+    )
+    assert decision == RecoveryDecision.RECOVERED

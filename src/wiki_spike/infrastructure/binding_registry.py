@@ -32,6 +32,7 @@ always the sole binding authority for classification decisions.
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Mapping, Sequence
 
 from cryptography.exceptions import InvalidSignature
@@ -42,6 +43,55 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 
 from wiki_spike.infrastructure import crypto
 from wiki_spike.memory_core.contracts import canonical_bytes
+
+_ATTESTATION_TIME_FMT = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def _parse_utc(value: str) -> datetime:
+    return datetime.strptime(value, _ATTESTATION_TIME_FMT).replace(tzinfo=timezone.utc)
+
+
+def _assert_attestation_fresh(
+    payload: Mapping, now_iso: str, freshness_seconds: int, skew_seconds: int
+) -> None:
+    """R9-3 'attestation ... time' step (ADR-0027 §7, G5-ATTESTATION-TIME-CHECK):
+    the attestation must be issued no more than ``freshness_seconds`` before
+    trusted ``now``, its validity window (expires_at - issued_at) must not exceed
+    ``freshness_seconds``, and it must not be expired, all within +/-
+    ``skew_seconds``. Fail-closed: a stale/expired/not-yet-valid/malformed-time
+    attestation raises BindingRegistryError (recovery maps it to
+    QUARANTINE_UNKNOWN)."""
+    try:
+        issued = _parse_utc(payload["issued_at"])
+        expires = _parse_utc(payload["expires_at"])
+        now = _parse_utc(now_iso)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise BindingRegistryError(
+            "attestation_time_invalid",
+            "attestation issued_at/expires_at or trusted now is not a valid UTC timestamp",
+        ) from exc
+    skew = timedelta(seconds=skew_seconds)
+    window = timedelta(seconds=freshness_seconds)
+    if expires < issued or (expires - issued) > window:
+        raise BindingRegistryError(
+            "attestation_expiry_window_invalid",
+            "attestation validity window exceeds the allowed freshness window",
+        )
+    if now < issued - skew:
+        raise BindingRegistryError(
+            "attestation_not_yet_valid",
+            "attestation issued_at is in the future beyond allowed skew",
+        )
+    if now - issued > window + skew:
+        raise BindingRegistryError(
+            "attestation_stale",
+            "attestation was issued more than the freshness window before trusted now",
+        )
+    if now > expires + skew:
+        raise BindingRegistryError(
+            "attestation_expired",
+            "attestation is expired relative to trusted now",
+        )
 
 if TYPE_CHECKING:  # pragma: no cover
     from wiki_spike.infrastructure.lifecycle_db import UnitOfWork
@@ -581,6 +631,9 @@ class BindingRegistry:
         expected_provider_handle: str | None = None,
         trusted_old_size: int | None = None,
         trusted_old_root_hex: str | None = None,
+        now: str | None = None,
+        freshness_seconds: int = 300,
+        skew_seconds: int = 60,
     ) -> None:
         """Ordered validation pipeline (ADR-0027 R9-3/R10-5): strict
         decode/raw canonical-byte equality; attestation signature/nonce/
@@ -621,6 +674,11 @@ class BindingRegistry:
         if not crypto.is_challenge_nonce_hex64(str(payload.get("request_nonce", ""))):
             raise BindingRegistryError("nonce_invalid", "request_nonce is not a well-formed challenge nonce")
         _verify_signature(trusted_signer_pub, DOMAIN_ATTESTATION, payload, attestation["signature"])
+        # 1b. attestation clock-window/skew freshness (R9-3 "time" step;
+        # G5-ATTESTATION-TIME-CHECK). Enforced only when a trusted clock `now`
+        # is injected; a stale/expired/not-yet-valid attestation fails closed.
+        if now is not None:
+            _assert_attestation_fresh(payload, now, freshness_seconds, skew_seconds)
         nonce_key = (payload["request_nonce"], payload["challenge_counter"])
         if nonce_key in self._consumed_nonces:
             raise BindingRegistryError("nonce_replay", "request_nonce/challenge_counter already consumed")

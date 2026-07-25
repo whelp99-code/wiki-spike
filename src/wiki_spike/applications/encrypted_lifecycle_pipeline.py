@@ -731,6 +731,9 @@ class EncryptedLifecyclePipeline:
         expected_provider_handle: str,
         local_history_size: int | None = None,
         local_history_root_hex: str | None = None,
+        now: str | None = None,
+        freshness_seconds: int = 300,
+        skew_seconds: int = 60,
     ) -> "RecoveryDecision":
         """Gate 3 crash-recovery entry point (ADR-0027 §4). Runs the
         fail-closed DELTA_CONTINUITY / AUTHORITATIVE_SNAPSHOT recovery-proof
@@ -751,6 +754,9 @@ class EncryptedLifecyclePipeline:
             expected_provider_handle=expected_provider_handle,
             local_history_size=local_history_size,
             local_history_root_hex=local_history_root_hex,
+            now=now,
+            freshness_seconds=freshness_seconds,
+            skew_seconds=skew_seconds,
         )
         ref = "0" * 64
         checkpoint_sig = proof_set.get("checkpoint_signature") if isinstance(proof_set, Mapping) else None
