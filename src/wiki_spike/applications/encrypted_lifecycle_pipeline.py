@@ -289,14 +289,16 @@ class EncryptedLifecyclePipeline:
                 sensitivity=sensitivity,
                 created_at=now,
             )
+            # F5: append the audit event in the SAME transaction so it commits
+            # atomically with the state it records.
+            prev = uow.event_chain_head()
+            uow.append_event(
+                prev_digest=prev,
+                kind="REMEMBER_ACCEPTED",
+                ref_digest=command_id,
+            )
 
         self._register_artifact_ark(artifact_semantic_digest_hex, art_dek)
-        prev = self.db.event_chain_head()
-        self.db.append_event(
-            prev_digest=prev,
-            kind="REMEMBER_ACCEPTED",
-            ref_digest=command_id,
-        )
 
         return RememberResult(
             command_id=command_id,
@@ -347,8 +349,18 @@ class EncryptedLifecyclePipeline:
             deltas=deltas,
         )
 
-    def persist_changeset(self, changeset: Mapping) -> None:
-        """Persist a constructed changeset and its deltas to the DB cache."""
+    def persist_changeset(
+        self,
+        changeset: Mapping,
+        trailing_events: Sequence[tuple[str, str]] = (),
+    ) -> None:
+        """Persist a constructed changeset and its deltas to the DB cache.
+
+        ``trailing_events`` is an optional list of ``(event_kind, ref_digest)``
+        audit events appended AFTER ``CHANGESET_ACCEPTED`` within the SAME
+        transaction (F5), so a caller's command-acceptance event (e.g.
+        CORRECT_ACCEPTED, OBJECT_TOMBSTONED) commits atomically with the
+        changeset it produced and in a stable order."""
         for delta in changeset["deltas"]:
             _validate_state_delta(delta)
         now = _utcnow()
@@ -378,13 +390,18 @@ class EncryptedLifecyclePipeline:
                     scope_digest=delta.get("scope_digest"),
                     reason_state=delta.get("reason_code"),
                 )
-
-        prev = self.db.event_chain_head()
-        self.db.append_event(
-            prev_digest=prev,
-            kind="CHANGESET_ACCEPTED",
-            ref_digest=changeset["changeset_id"],
-        )
+            # F5: append the audit event atomically with the changeset state.
+            prev = uow.event_chain_head()
+            uow.append_event(
+                prev_digest=prev,
+                kind="CHANGESET_ACCEPTED",
+                ref_digest=changeset["changeset_id"],
+            )
+            # F5: append any caller command-acceptance events in the SAME
+            # transaction, chained after CHANGESET_ACCEPTED (stable order).
+            for event_kind, ref_digest in trailing_events:
+                prev = uow.event_chain_head()
+                uow.append_event(prev_digest=prev, kind=event_kind, ref_digest=ref_digest)
 
     # ------------------------------------------------------------------
     # APPROVE / REJECT candidate review
@@ -427,9 +444,9 @@ class EncryptedLifecyclePipeline:
             )
             if review_state == "APPROVED":
                 uow.upsert_key_state(artifact_id=artifact_id, custody_state="APPROVED", updated_at=now)
-
-        prev = self.db.event_chain_head()
-        self.db.append_event(prev_digest=prev, kind=f"CANDIDATE_{review_state}", ref_digest=artifact_id)
+            # F5: append the audit event atomically with the review state.
+            prev = uow.event_chain_head()
+            uow.append_event(prev_digest=prev, kind=f"CANDIDATE_{review_state}", ref_digest=artifact_id)
         return review_id
 
     # ------------------------------------------------------------------
@@ -518,9 +535,9 @@ class EncryptedLifecyclePipeline:
                 binding_checkpoint_id=binding_checkpoint_id,
                 created_at=now,
             )
-
-        prev = self.db.event_chain_head()
-        self.db.append_event(prev_digest=prev, kind="GENERATION_SIGNED", ref_digest=generation_id)
+            # F5: append the audit event atomically with the generation state.
+            prev = uow.event_chain_head()
+            uow.append_event(prev_digest=prev, kind="GENERATION_SIGNED", ref_digest=generation_id)
 
         return {
             "generation_id": generation_id,
@@ -684,8 +701,9 @@ class EncryptedLifecyclePipeline:
                     reason_state=gate["reason"],
                     updated_at=quarantine_now,
                 )
-            prev = self.db.event_chain_head()
-            self.db.append_event(prev_digest=prev, kind="FLOOR_QUARANTINED", ref_digest=attempt_id)
+                # F5: append the audit event atomically with the quarantine state.
+                prev = uow.event_chain_head()
+                uow.append_event(prev_digest=prev, kind="FLOOR_QUARANTINED", ref_digest=attempt_id)
             raise PipelineError("quarantined_floor_conflict", str(exc)) from exc
 
         committed_now = _utcnow()
@@ -720,9 +738,9 @@ class EncryptedLifecyclePipeline:
                 reason_state=gate["reason"],
                 updated_at=committed_now,
             )
-
-        prev = self.db.event_chain_head()
-        self.db.append_event(prev_digest=prev, kind="FLOOR_STABILIZED", ref_digest=new_checkpoint_id)
+            # F5: append the audit event atomically with the stabilized floor.
+            prev = uow.event_chain_head()
+            uow.append_event(prev_digest=prev, kind="FLOOR_STABILIZED", ref_digest=new_checkpoint_id)
         return new_checkpoint_id
 
     def can_serve(self) -> bool:
@@ -854,9 +872,9 @@ class EncryptedLifecyclePipeline:
                     f"cannot activate from custody_state={ks['custody_state']!r}",
                 )
             uow.upsert_key_state(artifact_id=artifact_id, custody_state="ACTIVE", updated_at=now)
-
-        prev = self.db.event_chain_head()
-        self.db.append_event(prev_digest=prev, kind="ARTIFACT_ACTIVATED", ref_digest=artifact_id)
+            # F5: append the audit event atomically with the activation state.
+            prev = uow.event_chain_head()
+            uow.append_event(prev_digest=prev, kind="ARTIFACT_ACTIVATED", ref_digest=artifact_id)
 
     # ------------------------------------------------------------------
     # Opaque projection
@@ -1118,10 +1136,11 @@ class EncryptedLifecyclePipeline:
             command_ids=[command_id],
             deltas=[retract_delta, add_delta],
         )
-        self.persist_changeset(changeset)
-
-        prev = self.db.event_chain_head()
-        self.db.append_event(prev_digest=prev, kind="CORRECT_ACCEPTED", ref_digest=command_id)
+        # F5: CORRECT_ACCEPTED is appended atomically with the changeset (and
+        # after CHANGESET_ACCEPTED) via persist_changeset's trailing_events.
+        self.persist_changeset(
+            changeset, trailing_events=[("CORRECT_ACCEPTED", command_id)]
+        )
 
         return {
             "command_id": command_id,
@@ -1226,11 +1245,11 @@ class EncryptedLifecyclePipeline:
                 custody_state="PREPARED",
                 updated_at=now,
             )
-
-        prev = self.db.event_chain_head()
-        self.db.append_event(
-            prev_digest=prev, kind="EVIDENCE_FRAGMENT_ADDED", ref_digest=fragment_semantic_digest_hex
-        )
+            # F5: append the audit event atomically with the fragment state.
+            prev = uow.event_chain_head()
+            uow.append_event(
+                prev_digest=prev, kind="EVIDENCE_FRAGMENT_ADDED", ref_digest=fragment_semantic_digest_hex
+            )
 
         return {
             "fragment_semantic_digest": fragment_semantic_digest_hex,
@@ -1290,11 +1309,11 @@ class EncryptedLifecyclePipeline:
                 custody_state="PREPARED",
                 updated_at=now,
             )
-
-        prev = self.db.event_chain_head()
-        self.db.append_event(
-            prev_digest=prev, kind="EVIDENCE_EDGE_ADDED", ref_digest=edge_semantic_digest_hex
-        )
+            # F5: append the audit event atomically with the edge state.
+            prev = uow.event_chain_head()
+            uow.append_event(
+                prev_digest=prev, kind="EVIDENCE_EDGE_ADDED", ref_digest=edge_semantic_digest_hex
+            )
 
         return {"edge_semantic_digest": edge_semantic_digest_hex}
 
@@ -1332,10 +1351,11 @@ class EncryptedLifecyclePipeline:
             command_ids=[deletion_command_id],
             deltas=[delta],
         )
-        self.persist_changeset(changeset)
-
-        prev = self.db.event_chain_head()
-        self.db.append_event(prev_digest=prev, kind="OBJECT_TOMBSTONED", ref_digest=object_id)
+        # F5: OBJECT_TOMBSTONED is appended atomically with the changeset (and
+        # after CHANGESET_ACCEPTED) via persist_changeset's trailing_events.
+        self.persist_changeset(
+            changeset, trailing_events=[("OBJECT_TOMBSTONED", object_id)]
+        )
 
         ears = self.project_expected_active(changeset["changeset_id"])
         matching = [
@@ -1688,13 +1708,13 @@ class EncryptedLifecyclePipeline:
                 sensitivity=sensitivity,
                 created_at=now,
             )
-
-        prev = self.db.event_chain_head()
-        self.db.append_event(
-            prev_digest=prev,
-            kind="NEW_CONSENT_ACCEPTED",
-            ref_digest=command_id,
-        )
+            # F5: append the audit event atomically with the new-consent state.
+            prev = uow.event_chain_head()
+            uow.append_event(
+                prev_digest=prev,
+                kind="NEW_CONSENT_ACCEPTED",
+                ref_digest=command_id,
+            )
 
         return RememberResult(
             command_id=command_id,
@@ -1724,9 +1744,22 @@ class EncryptedLifecyclePipeline:
         with self.db.unit_of_work() as uow:
             uow.update_deletion_phase(deletion_id=deletion_id, phase_state=phase.value, updated_at=now)
 
-    def _append_deletion_event(self, kind: str, ref: str) -> None:
-        prev = self.db.event_chain_head()
-        self.db.append_event(prev_digest=prev, kind=kind, ref_digest=ref)
+    def _advance_deletion_phase(
+        self,
+        deletion_id: str,
+        phase: "deletion.DeletionPhase",
+        now: str,
+        event_kind: str,
+        event_ref: str,
+    ) -> None:
+        """Advance the deletion phase AND append its audit event in ONE
+        transaction (F5), so a crash can never leave a phase advance without its
+        event or vice versa. Used for every phase transition that carries an
+        event; intermediate event-less phases use :meth:`_set_deletion_phase`."""
+        with self.db.unit_of_work() as uow:
+            uow.update_deletion_phase(deletion_id=deletion_id, phase_state=phase.value, updated_at=now)
+            prev = uow.event_chain_head()
+            uow.append_event(prev_digest=prev, kind=event_kind, ref_digest=event_ref)
 
     def is_object_vetoed(self, artifact_id: str) -> bool:
         """True once a deletion_state row exists for the artifact in ANY phase:
@@ -1810,18 +1843,18 @@ class EncryptedLifecyclePipeline:
                 phase_state=phase.value,
                 updated_at=now,
             )
-        self._append_deletion_event("FORGET_REQUESTED", command_id)
+            # F5: FORGET_REQUESTED commits atomically with command+deletion_state.
+            prev = uow.event_chain_head()
+            uow.append_event(prev_digest=prev, kind="FORGET_REQUESTED", ref_digest=command_id)
 
         # Immediate live-API veto.
         phase = deletion.advance(phase, deletion.DeletionPhase.API_VETO_ACTIVE)
-        self._set_deletion_phase(command_id, phase, now)
-        self._append_deletion_event("DELETION_API_VETO_ACTIVE", artifact_id)
+        self._advance_deletion_phase(command_id, phase, now, "DELETION_API_VETO_ACTIVE", artifact_id)
 
         # Tombstone the CAS blob (retained bytes, not servable).
         phase = deletion.advance(phase, deletion.DeletionPhase.TOMBSTONE_ACTIVE)
         self.cas.tombstone(blob_id, reason=reason_code)
-        self._set_deletion_phase(command_id, phase, now)
-        self._append_deletion_event("DELETION_TOMBSTONED", artifact_id)
+        self._advance_deletion_phase(command_id, phase, now, "DELETION_TOMBSTONED", artifact_id)
 
         # Body-free deletion checkpoint.
         deletion_checkpoint_id = hashlib.sha256(
@@ -1834,8 +1867,7 @@ class EncryptedLifecyclePipeline:
             })
         ).hexdigest()
         phase = deletion.advance(phase, deletion.DeletionPhase.CHECKPOINT_COMMITTED)
-        self._set_deletion_phase(command_id, phase, now)
-        self._append_deletion_event("DELETION_CHECKPOINT_COMMITTED", deletion_checkpoint_id)
+        self._advance_deletion_phase(command_id, phase, now, "DELETION_CHECKPOINT_COMMITTED", deletion_checkpoint_id)
 
         # Dual ARK destroy (platform + recovery), fail-closed.
         try:
@@ -1847,19 +1879,17 @@ class EncryptedLifecyclePipeline:
                 f"dual ARK destroy failed for {artifact_id}; deletion held at CHECKPOINT_COMMITTED: {exc}",
             ) from exc
         phase = deletion.advance(phase, deletion.DeletionPhase.REVOCATION_KEYS_DESTROYED)
-        self._set_deletion_phase(command_id, phase, now)
-        self._append_deletion_event("DELETION_ARK_DESTROYED", artifact_id)
+        self._advance_deletion_phase(command_id, phase, now, "DELETION_ARK_DESTROYED", artifact_id)
 
         # Both wraps gone -> cryptographic undecryptability.
         phase = deletion.advance(phase, deletion.DeletionPhase.CRYPTO_SHRED_COMPLETE)
-        self._set_deletion_phase(command_id, phase, now)
-        self._append_deletion_event("DELETION_CRYPTO_SHRED_COMPLETE", artifact_id)
+        self._advance_deletion_phase(command_id, phase, now, "DELETION_CRYPTO_SHRED_COMPLETE", artifact_id)
 
+        # PURGE_PENDING is an intermediate phase with no audit event.
         phase = deletion.advance(phase, deletion.DeletionPhase.PURGE_PENDING)
         self._set_deletion_phase(command_id, phase, now)
         phase = deletion.advance(phase, deletion.DeletionPhase.COMPLETE)
-        self._set_deletion_phase(command_id, phase, now)
-        self._append_deletion_event("DELETION_COMPLETE", command_id)
+        self._advance_deletion_phase(command_id, phase, now, "DELETION_COMPLETE", command_id)
 
         # DeletionStateV1 report: three independent surface tiers. FORGET
         # completes the LIVE corpus tier now; the 30-day BACKUP residual and the
@@ -1957,7 +1987,9 @@ class EncryptedLifecyclePipeline:
             if art is None:
                 raise PipelineError("restore_artifact_not_found", f"artifact {artifact_id} not found")
             uow.upsert_key_state(artifact_id=artifact_id, custody_state="ACTIVE", updated_at=now_ts)
-        self._append_deletion_event("ARTIFACT_RESTORED", artifact_id)
+            # F5: ARTIFACT_RESTORED commits atomically with the visibility release.
+            prev = uow.event_chain_head()
+            uow.append_event(prev_digest=prev, kind="ARTIFACT_RESTORED", ref_digest=artifact_id)
         return {"artifact_id": artifact_id, "decision": decision.value, "restored": True}
 
     def resume_deletion(self, *, deletion_command_id: str, artifact_id: str, blob_id: str) -> dict:
@@ -1988,7 +2020,8 @@ class EncryptedLifecyclePipeline:
         if not self.cas.is_tombstoned(blob_id):
             self.cas.tombstone(blob_id, reason="forget")
         order = list(deletion.DeletionPhase)
-        for target in order[order.index(current) + 1:]:
+        targets = order[order.index(current) + 1:]
+        for i, target in enumerate(targets):
             if target is deletion.DeletionPhase.REVOCATION_KEYS_DESTROYED:
                 # Idempotent on an already-destroyed handle; fail-closed on a
                 # genuinely-missing custody entry (never advance past shred).
@@ -2001,6 +2034,13 @@ class EncryptedLifecyclePipeline:
                         f"resume dual ARK destroy failed for {artifact_id}; held at CHECKPOINT_COMMITTED: {exc}",
                     ) from exc
             current = deletion.advance(current, target)
-            self._set_deletion_phase(deletion_command_id, current, now)
-        self._append_deletion_event("DELETION_RESUMED_COMPLETE", deletion_command_id)
+            if i == len(targets) - 1:
+                # F5: the final phase advance commits atomically with the
+                # DELETION_RESUMED_COMPLETE event.
+                self._advance_deletion_phase(
+                    deletion_command_id, current, now,
+                    "DELETION_RESUMED_COMPLETE", deletion_command_id,
+                )
+            else:
+                self._set_deletion_phase(deletion_command_id, current, now)
         return {"deletion_command_id": deletion_command_id, "phase": current.value, "resumed": True}

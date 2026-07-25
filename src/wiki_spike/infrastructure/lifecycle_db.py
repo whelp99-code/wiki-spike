@@ -749,6 +749,49 @@ class UnitOfWork:
             "SELECT * FROM freshness_serve_gate WHERE workspace_id=?", (workspace_id,)
         ).fetchone()
 
+    # -- body-free hash-chained event log (in-transaction; F5 atomicity) ----- #
+
+    def event_chain_head(self) -> str | None:
+        """Return the current event-chain head ``event_digest`` as seen WITHIN
+        this unit of work's transaction (``None`` if the chain is empty)."""
+        row = self._con.execute(
+            "SELECT event_digest FROM event_log ORDER BY event_id DESC LIMIT 1"
+        ).fetchone()
+        return row[0] if row else None
+
+    def append_event(self, prev_digest: str | None, kind: str, ref_digest: str) -> str:
+        """Append one body-free hash-chained event WITHIN this unit of work's
+        transaction (F5), so the event commits atomically with the state change
+        it records -- a crash can never leave state without its event or vice
+        versa. ``prev_digest`` must equal the current chain head read inside this
+        transaction; a mismatch raises :class:`EventChainError` without writing.
+        The payload carries only refs/digests (never a body), so
+        ``event_digest = SHA-256(domain-prefixed canonical_bytes({schema,
+        prev_digest, event_kind, ref_digest}))``. Returns the new digest."""
+        current_head = self._con.execute(
+            "SELECT event_digest FROM event_log ORDER BY event_id DESC LIMIT 1"
+        ).fetchone()
+        actual_prev = current_head[0] if current_head else None
+        if actual_prev != prev_digest:
+            raise EventChainError(
+                f"stale prev_digest: expected {actual_prev!r}, got {prev_digest!r}"
+            )
+        payload = {
+            "schema": "wiki-lifecycle-event-v1",
+            "prev_digest": prev_digest or "",
+            "event_kind": kind,
+            "ref_digest": ref_digest,
+        }
+        message = EVENT_LOG_DOMAIN.encode("ascii") + b"\x00" + canonical_bytes(payload)
+        event_digest = hashlib.sha256(message).hexdigest()
+        created_at = "1970-01-01T00:00:00Z"
+        self._con.execute(
+            "INSERT INTO event_log (prev_digest, event_kind, ref_digest, event_digest, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (prev_digest, kind, ref_digest, event_digest, created_at),
+        )
+        return event_digest
+
 
 @dataclass
 class LifecycleDatabase:

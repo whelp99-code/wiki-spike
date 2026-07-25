@@ -523,3 +523,67 @@ def test_serve_snapshot_is_isolated_from_concurrent_forget(tmp_path):
         assert fresh.deletion_phase_state == "REQUESTED"
     finally:
         db.close()
+
+
+# --------------------------------------------------------------------------- #
+# F5: in-transaction event append is atomic with the state it records
+# --------------------------------------------------------------------------- #
+
+
+def test_uow_append_event_commits_atomically_with_state(tmp_path):
+    """F5: an event appended inside a unit of work commits atomically with the
+    state change it records -- both persist on commit, and a failure rolls back
+    BOTH (no state-without-event, no event-without-state)."""
+    db = make_db(tmp_path)
+    try:
+        # Commit path: state + event land together.
+        with db.unit_of_work() as uow:
+            uow.insert_canonical_artifact("art-1", "ws-1", "MEMORY_REVISION", "rev-1", "PREPARED", "t0")
+            prev = uow.event_chain_head()
+            assert prev is None
+            uow.append_event(prev_digest=prev, kind="ARTIFACT_PREPARED", ref_digest="art-1")
+        assert db.event_chain_head() is not None
+        assert len(db.event_log_rows()) == 1
+        with db.unit_of_work() as uow:
+            assert uow.get_canonical_artifact("art-1") is not None
+
+        # Rollback path: a failure after the in-tx event append rolls back BOTH
+        # the state and the event.
+        head_before = db.event_chain_head()
+        with pytest.raises(RuntimeError):
+            with db.unit_of_work() as uow:
+                uow.insert_canonical_artifact("art-2", "ws-1", "MEMORY_REVISION", "rev-2", "PREPARED", "t1")
+                prev = uow.event_chain_head()
+                uow.append_event(prev_digest=prev, kind="ARTIFACT_PREPARED", ref_digest="art-2")
+                raise RuntimeError("simulated crash before commit")
+        with db.unit_of_work() as uow:
+            assert uow.get_canonical_artifact("art-2") is None
+        assert db.event_chain_head() == head_before
+        assert len(db.event_log_rows()) == 1  # only the committed event remains
+
+        # The chain still validates forward from the committed event.
+        with db.unit_of_work() as uow:
+            uow.insert_canonical_artifact("art-3", "ws-1", "MEMORY_REVISION", "rev-3", "PREPARED", "t2")
+            prev = uow.event_chain_head()
+            uow.append_event(prev_digest=prev, kind="ARTIFACT_PREPARED", ref_digest="art-3")
+        assert len(db.event_log_rows()) == 2
+    finally:
+        db.close()
+
+
+def test_uow_append_event_rejects_stale_prev_and_rolls_back(tmp_path):
+    """F5: an in-transaction append with a stale prev_digest raises
+    EventChainError and rolls back the whole unit of work (state included)."""
+    db = make_db(tmp_path)
+    try:
+        d1 = db.append_event(None, "first", "ref-1")
+        with pytest.raises(EventChainError):
+            with db.unit_of_work() as uow:
+                uow.insert_canonical_artifact("art-1", "ws-1", "MEMORY_REVISION", "rev-1", "PREPARED", "t0")
+                uow.append_event(prev_digest="stale" * 8, kind="BAD", ref_digest="art-1")
+        # The artifact inserted before the bad append also rolled back.
+        with db.unit_of_work() as uow:
+            assert uow.get_canonical_artifact("art-1") is None
+        assert db.event_chain_head() == d1
+    finally:
+        db.close()
