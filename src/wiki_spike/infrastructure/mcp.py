@@ -240,45 +240,32 @@ class McpServer:
         if not artifact_id or not blob_id:
             raise McpToolError("missing_params", "artifact_id and blob_id are required")
 
-        # 1. Checked snapshot read.
-        snapshot = self._db.checked_snapshot_read(artifact_id)
-        if snapshot is None or snapshot.artifact_state is None:
+        # Sole linearization point (ADR-0027 §9): capture ALL serve-gating state
+        # atomically at one WAL checked-snapshot point and decide visibility
+        # entirely from it, so a concurrent FORGET/serve-gate write that commits
+        # after this acquisition can never retroactively change the decision.
+        snapshot = self._db.checked_serve_snapshot_read(artifact_id, self._workspace_id)
+        if snapshot.artifact_state is None:
             raise McpToolError(
                 "artifact_not_found",
                 f"artifact {artifact_id} not found",
             )
-
-        # 2. Deletion veto check — direct SQL (no UnitOfWork method on LifecycleDatabase).
-        cursor = self._db.con.execute(
-            "SELECT phase_state FROM deletion_state WHERE artifact_id=? "
-            "ORDER BY updated_at DESC, deletion_id DESC LIMIT 1",
-            (artifact_id,),
-        )
-        deletion_row = cursor.fetchone()
-        if deletion_row is not None:
-            if deletion.is_vetoed(deletion_row[0]):
-                raise McpToolError(
-                    "artifact_vetoed",
-                    f"artifact {artifact_id} is under deletion veto",
-                )
-
-        # 3. Serve gate check.
-        # 3. Serve gate check — direct SQL.
-        cursor = self._db.con.execute(
-            "SELECT gate_state, reason_state FROM freshness_serve_gate WHERE workspace_id=?",
-            (self._workspace_id,),
-        )
-        gate_row = cursor.fetchone()
-        if gate_row is not None and not floor_protocol.serve_gate_allows_serving({
-            "state": gate_row[0],
-            "reason": gate_row[1],
-        }):
+        if snapshot.deletion_phase_state is not None and deletion.is_vetoed(
+            snapshot.deletion_phase_state
+        ):
+            raise McpToolError(
+                "artifact_vetoed",
+                f"artifact {artifact_id} is under deletion veto",
+            )
+        if snapshot.serve_gate_state is not None and not floor_protocol.serve_gate_allows_serving(
+            {"state": snapshot.serve_gate_state, "reason": snapshot.serve_gate_reason}
+        ):
             raise McpToolError(
                 "serve_withheld",
                 f"freshness serve gate withholds serving for workspace {self._workspace_id}",
             )
 
-        # 4. Decrypt and return.
+        # Decrypt and return.
         content, metadata, truncated = self._decrypt_cas_blob(artifact_id, blob_id)
         result: dict[str, Any] = {
             "artifact_id": artifact_id,
@@ -297,48 +284,37 @@ class McpServer:
                 "source_content_digest is required",
             )
 
-        # 1. Deletion veto check.
-        cursor = self._db.con.execute(
-            "SELECT phase_state FROM deletion_state WHERE artifact_id=? "
-            "ORDER BY updated_at DESC, deletion_id DESC LIMIT 1",
-            (source_content_digest,),
+        # Sole linearization point (ADR-0027 §9): capture ALL serve-gating state
+        # atomically at one WAL checked-snapshot point and decide visibility
+        # entirely from it (previously these were separate direct-SQL reads with
+        # no shared linearization point).
+        snapshot = self._db.checked_serve_snapshot_read(
+            source_content_digest, self._workspace_id
         )
-        deletion_row = cursor.fetchone()
-        if deletion_row is not None:
-            if deletion.is_vetoed(deletion_row[0]):
-                raise McpToolError(
-                    "artifact_vetoed",
-                    f"source {source_content_digest} is under deletion veto",
-                )
-
-        # 2. Serve gate check.
-        cursor = self._db.con.execute(
-            "SELECT gate_state, reason_state FROM freshness_serve_gate WHERE workspace_id=?",
-            (self._workspace_id,),
-        )
-        gate_row = cursor.fetchone()
-        if gate_row is not None and not floor_protocol.serve_gate_allows_serving({
-            "state": gate_row[0],
-            "reason": gate_row[1],
-        }):
+        if snapshot.deletion_phase_state is not None and deletion.is_vetoed(
+            snapshot.deletion_phase_state
+        ):
+            raise McpToolError(
+                "artifact_vetoed",
+                f"source {source_content_digest} is under deletion veto",
+            )
+        if snapshot.serve_gate_state is not None and not floor_protocol.serve_gate_allows_serving(
+            {"state": snapshot.serve_gate_state, "reason": snapshot.serve_gate_reason}
+        ):
             raise McpToolError(
                 "serve_withheld",
                 f"freshness serve gate withholds serving for workspace {self._workspace_id}",
             )
-
-        # 3. Verify the source artifact exists.
-        cursor = self._db.con.execute(
-            "SELECT artifact_state FROM canonical_artifact WHERE artifact_id=?",
-            (source_content_digest,),
-        )
-        row = cursor.fetchone()
-        if row is None:
+        if snapshot.artifact_state is None:
             raise McpToolError(
                 "source_not_found",
                 f"source artifact {source_content_digest} not found",
             )
 
-        # Look up the blob_id: check params first, then fall back to state_delta.
+        # Content-addressing blob lookup (params first, then state_delta). This
+        # resolves WHICH blob to decrypt; it is not a visibility decision (those
+        # are already linearized at the snapshot above). state_delta envelope refs
+        # are append-only/stable for an existing object.
         if not blob_id:
             delta_cursor = self._db.con.execute(
                 "SELECT envelope_ref_id FROM state_delta WHERE object_id=? AND envelope_ref_id IS NOT NULL "

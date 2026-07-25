@@ -424,3 +424,102 @@ def test_checked_snapshot_is_isolated_from_concurrent_second_connection_write(tm
         assert fresh.event_chain_head_digest == "digest-from-b"
     finally:
         db.close()
+
+
+def test_checked_serve_snapshot_read_captures_all_serve_state(tmp_path):
+    """F4 (ADR-0027 §9): the serve snapshot captures artifact, custody, deletion
+    phase, freshness serve gate, and event head in one atomic acquisition."""
+    db = make_db(tmp_path)
+    try:
+        with db.unit_of_work() as uow:
+            uow.insert_canonical_artifact("art-1", "ws-1", "MEMORY_REVISION", "rev-1", "ACTIVE", "t0")
+            uow.upsert_key_state("art-1", "ACTIVE", "t0")
+            uow.insert_deletion_state("del-1", "art-1", "REQUESTED", "t0")
+            uow.upsert_freshness_serve_gate(
+                workspace_id="ws-1",
+                gate_state="SERVE_ALLOWED",
+                stable_floor_generation="3",
+                stable_checkpoint_id="cp-1",
+                source_candidate_digest="ab" * 32,
+                reason_state="fresh",
+                updated_at="t0",
+            )
+        d1 = db.append_event(None, "artifact_active", "art-1")
+
+        snap = db.checked_serve_snapshot_read("art-1", "ws-1")
+        assert snap.artifact_state == "ACTIVE"
+        assert snap.custody_state == "ACTIVE"
+        assert snap.deletion_phase_state == "REQUESTED"
+        assert snap.serve_gate_state == "SERVE_ALLOWED"
+        assert snap.serve_gate_reason == "fresh"
+        assert snap.event_chain_head_digest == d1
+
+        # A missing artifact yields None states (no row), never an error.
+        missing = db.checked_serve_snapshot_read("nope", "ws-1")
+        assert missing.artifact_state is None
+        assert missing.custody_state is None
+        assert missing.deletion_phase_state is None
+        # The workspace serve gate is still captured for a missing artifact.
+        assert missing.serve_gate_state == "SERVE_ALLOWED"
+    finally:
+        db.close()
+
+
+def test_serve_snapshot_is_isolated_from_concurrent_forget(tmp_path):
+    """F4 (ADR-0027 §9): a serve snapshot's veto visibility is linearized at its
+    acquisition. A concurrent FORGET committing a deletion veto on an independent
+    connection while the serve-snapshot transaction is open is NOT observed by
+    that already-acquired snapshot, but IS observed by a fresh one."""
+    path = tmp_path / "serve-barrier.sqlite3"
+    db = LifecycleDatabase(db_path=path)
+    db.initialize()
+    try:
+        with db.unit_of_work() as uow:
+            uow.insert_canonical_artifact("art-1", "ws-1", "MEMORY_REVISION", "rev-1", "ACTIVE", "t0")
+            uow.upsert_key_state("art-1", "ACTIVE", "t0")
+
+        baseline = db.checked_serve_snapshot_read("art-1", "ws-1")
+        assert baseline.artifact_state == "ACTIVE"
+        assert baseline.deletion_phase_state is None
+
+        con_a = db.con
+        con_a.row_factory = sqlite3.Row
+        con_a.execute("BEGIN")
+        try:
+            del_during_a = con_a.execute(
+                "SELECT phase_state FROM deletion_state WHERE artifact_id=? "
+                "ORDER BY updated_at DESC, deletion_id DESC LIMIT 1",
+                ("art-1",),
+            ).fetchone()
+            # First read establishes A's WAL snapshot at the pre-FORGET point.
+            assert del_during_a is None
+
+            # Connection B commits a FORGET veto while A's snapshot is open.
+            con_b = sqlite3.connect(str(path), isolation_level=None)
+            con_b.execute("PRAGMA busy_timeout=5000")
+            try:
+                con_b.execute("BEGIN IMMEDIATE")
+                con_b.execute(
+                    "INSERT INTO deletion_state "
+                    "(deletion_id, artifact_id, phase_state, updated_at) VALUES (?,?,?,?)",
+                    ("del-1", "art-1", "REQUESTED", "t1"),
+                )
+                con_b.execute("COMMIT")
+            finally:
+                con_b.close()
+
+            # A's still-open snapshot must NOT observe B's veto commit.
+            del_after_b = con_a.execute(
+                "SELECT phase_state FROM deletion_state WHERE artifact_id=? "
+                "ORDER BY updated_at DESC, deletion_id DESC LIMIT 1",
+                ("art-1",),
+            ).fetchone()
+            assert del_after_b is None
+        finally:
+            con_a.execute("COMMIT")
+
+        # A fresh serve snapshot now DOES observe the committed veto.
+        fresh = db.checked_serve_snapshot_read("art-1", "ws-1")
+        assert fresh.deletion_phase_state == "REQUESTED"
+    finally:
+        db.close()

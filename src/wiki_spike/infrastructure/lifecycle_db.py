@@ -332,6 +332,26 @@ class SnapshotResult:
     event_chain_head_digest: str | None
 
 
+@dataclass(frozen=True)
+class ServeSnapshotResult:
+    """An atomic as-of read of ALL serve-gating state for one artifact, captured
+    at a single WAL checked-snapshot point (ADR-0027 §9). A serve path (e.g. MCP
+    ``memory_recall``/``memory_source``) makes its entire visibility decision --
+    artifact present, custody state, deletion veto, freshness serve gate -- from
+    this one snapshot, so a concurrent writer (e.g. a FORGET committing a veto)
+    that lands after this acquisition can never retroactively change the
+    decision; the response is a legitimate pre-linearized one.
+    """
+
+    artifact_id: str
+    artifact_state: str | None
+    custody_state: str | None
+    deletion_phase_state: str | None
+    serve_gate_state: str | None
+    serve_gate_reason: str | None
+    event_chain_head_digest: str | None
+
+
 class UnitOfWork:
     """Typed insert/read helpers bound to one open ``BEGIN IMMEDIATE`` transaction.
 
@@ -823,6 +843,56 @@ class LifecycleDatabase:
             artifact_id=artifact_id,
             artifact_state=artifact_row["artifact_state"] if artifact_row else None,
             custody_state=key_row["custody_state"] if key_row else None,
+            event_chain_head_digest=head_row["event_digest"] if head_row else None,
+        )
+
+    def checked_serve_snapshot_read(
+        self, artifact_id: str, workspace_id: str
+    ) -> ServeSnapshotResult:
+        """Atomically capture ALL serve-gating state for ``artifact_id`` --
+        canonical_artifact state, key_state custody, the latest deletion phase,
+        the workspace freshness serve gate, and the event-chain head -- as of one
+        consistent WAL point. This acquisition (not any later commit) is the serve
+        path's sole linearization point (ADR-0027 §9): a concurrent writer that
+        commits a veto/gate change after this snapshot can never retroactively
+        invalidate the visibility decision made from the returned values."""
+        assert self.con is not None, "initialize() not called"
+        con = self.con
+        con.row_factory = sqlite3.Row
+        con.execute("BEGIN")
+        try:
+            artifact_row = con.execute(
+                "SELECT artifact_state FROM canonical_artifact WHERE artifact_id=?",
+                (artifact_id,),
+            ).fetchone()
+            key_row = con.execute(
+                "SELECT custody_state FROM key_state WHERE artifact_id=?",
+                (artifact_id,),
+            ).fetchone()
+            deletion_row = con.execute(
+                "SELECT phase_state FROM deletion_state WHERE artifact_id=? "
+                "ORDER BY updated_at DESC, deletion_id DESC LIMIT 1",
+                (artifact_id,),
+            ).fetchone()
+            gate_row = con.execute(
+                "SELECT gate_state, reason_state FROM freshness_serve_gate WHERE workspace_id=?",
+                (workspace_id,),
+            ).fetchone()
+            head_row = con.execute(
+                "SELECT event_digest FROM event_log ORDER BY event_id DESC LIMIT 1"
+            ).fetchone()
+        except BaseException:
+            con.execute("ROLLBACK")
+            raise
+        else:
+            con.execute("COMMIT")
+        return ServeSnapshotResult(
+            artifact_id=artifact_id,
+            artifact_state=artifact_row["artifact_state"] if artifact_row else None,
+            custody_state=key_row["custody_state"] if key_row else None,
+            deletion_phase_state=deletion_row["phase_state"] if deletion_row else None,
+            serve_gate_state=gate_row["gate_state"] if gate_row else None,
+            serve_gate_reason=gate_row["reason_state"] if gate_row else None,
             event_chain_head_digest=head_row["event_digest"] if head_row else None,
         )
 
