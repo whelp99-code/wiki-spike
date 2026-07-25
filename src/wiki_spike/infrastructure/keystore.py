@@ -397,6 +397,18 @@ class CreateOnlyKeyStore:
             )
         return entries
 
+    def get_ark_dek(self, namespace: str, ark_handle: str) -> bytes:
+        """Retrieve the stored per-artifact DEK for the given (namespace, ark_handle).
+        Raises KeyNotFound if no entry exists, KeyDestroyed if it was destroyed."""
+        record = self._load(namespace, ark_handle)
+        if record is None:
+            raise KeyNotFound(f"no ARK at namespace={namespace!r} ark_handle={ark_handle!r}")
+        if record["destroyed"]:
+            raise KeyDestroyed(
+                f"ARK at namespace={namespace!r} ark_handle={ark_handle!r} was destroyed; DEK unavailable"
+            )
+        return bytes.fromhex(record["wrapped_dek_hex"])
+
     def destroy(self, namespace: str, ark_handle: str) -> AbsenceReceipt:
         record = self._load(namespace, ark_handle)
         if record is None:
