@@ -1,0 +1,94 @@
+name: encrypted-lifecycle-canary-24h
+
+# Gate 8 CANARY_24H lane. Runs the encrypted-lifecycle canary continuously for
+# EXACTLY 24 hours on a self-hosted macOS 15 / arm64 runner, exercising a full
+# remember -> decrypt -> forget/veto round-trip on a fresh disposable workspace
+# every 15 minutes, then wraps the canary report into an immutable CANARY_24H
+# bundle for the Gate 8 three-lane join.
+#
+# This is a long-running production canary, not a PR gate: it is triggered
+# manually (workflow_dispatch) against an immutable commit. The four-way commit
+# equality evidence anchors the bundle to the checked-out HEAD. A single failed
+# probe marks the canary unhealthy and the job fails closed (no bundle is
+# emitted by an unhealthy run).
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration_seconds:
+        description: "Canary duration in seconds (production: 86400 = exactly 24h)"
+        required: false
+        default: "86400"
+        type: string
+      interval_seconds:
+        description: "Seconds between probes (production: 900 = 15 minutes)"
+        required: false
+        default: "900"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: encrypted-lifecycle-canary-24h-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  canary-24h:
+    name: Encrypted-lifecycle 24h canary (self-hosted macOS)
+    # Self-hosted macOS 15 / arm64 canary workstation (Gate 8 producer platform).
+    runs-on: [self-hosted, macOS, ARM64]
+    # 24h canary + headroom.
+    timeout-minutes: 1600
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run 24h encrypted-lifecycle canary + build CANARY_24H bundle
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 scripts/run_encrypted_lifecycle_canary_24h.py \
+            --duration-seconds "${{ inputs.duration_seconds }}" \
+            --interval-seconds "${{ inputs.interval_seconds }}" \
+            --output-dir artifacts/encrypted-lifecycle/canary \
+            --bundle-output-dir artifacts/encrypted-lifecycle/canary \
+            --repository wiki-spike \
+            --workflow-run-id "${{ github.run_id }}" \
+            --workflow-run-attempt "${{ github.run_attempt }}" \
+            --platform "self-hosted/macos-15/arm64/wiki-canary-workstation"
+
+      - name: Four-way commit equality evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          triggering_sha="${{ github.sha }}"
+          checked_out_head="$(git rev-parse HEAD)"
+          github_sha="${GITHUB_SHA}"
+          echo "github_sha=$github_sha"
+          echo "checked_out_head=$checked_out_head"
+          echo "triggering_sha=$triggering_sha"
+          if [ "$triggering_sha" != "$checked_out_head" ]; then
+            echo "::error::commit equality failed: triggering commit must equal checked-out HEAD"
+            exit 1
+          fi
+          echo "commit equality verified on triggering commit: $triggering_sha"
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+
+      - name: Upload CANARY_24H bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-lifecycle-canary-24h-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/encrypted-lifecycle/canary/
+          if-no-files-found: error
+          retention-days: 90
