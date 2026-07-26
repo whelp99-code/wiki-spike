@@ -218,7 +218,10 @@ def _validate_binding(binding: object) -> dict[str, str]:
 
 def _require_secure_directory(path: Path, *, create: bool = False) -> None:
     if create:
-        path.mkdir(mode=0o700)
+        try:
+            path.mkdir(mode=0o700)
+        except FileExistsError:
+            pass
     info = path.lstat()
     if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
         raise ValueError(f"CANARY_24H durable state path is not a directory: {path}")
