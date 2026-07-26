@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://wiki-spike.local/schemas/encrypted-lifecycle/bundle-manifest-v1.schema.json",
   "title": "Encrypted Lifecycle Cross-Run Bundle Envelope + Manifest v1 (Stage 8 canonical one-pass bundle contract)",
-  "description": "Digest projection rule (frozen, acyclic): ProjectEnvelopeForBundleDigestV1 replaces BOTH self-fields with fixed JSON empty strings before any digest is computed — `artifact_name:\"\"` and `bundle_sha256:\"\"` — and no other field or byte-level value changes; null is invalid for either field. `bundle_sha256 = SHA-256(canonical manifest bytes)`; `artifact_name` is then derived as `encrypted-lifecycle-<lower-kind>-<run>-<attempt>-<first16(bundle_sha256)>` and both are written back into the stored envelope only after the manifest/digest are fixed. `stored_size_bytes` records the exact stored (non-projected) envelope byte length, which import must never compare to the manifest's projected-envelope size/hash entry.",
+  "description": "Digest projection rule (frozen, acyclic): ProjectEnvelopeForBundleDigestV1 replaces BOTH self-fields with fixed JSON empty strings before any digest is computed — `artifact_name:\"\"` and `bundle_sha256:\"\"` — and no other field or byte-level value changes; null is invalid for either field. `bundle_sha256 = SHA-256(canonical manifest bytes)`; `artifact_name` is then derived as `encrypted-lifecycle-<lower-kind>-<run>-<attempt>-<first16(bundle_sha256)>` and both are written back into the stored envelope only after the manifest/digest are fixed. The manifest envelope entry records the projected canonical envelope byte length, never the stored envelope length.",
   "definitions": {
     "decimalString": {"type": "string", "pattern": "^(0|[1-9][0-9]*)$"},
     "hex64": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
@@ -16,7 +16,7 @@
         "schema", "artifact_kind", "repository", "producer_commit", "contract_digest",
         "toolchain_lock_digest", "workflow_file_digest", "workflow_run_id", "workflow_run_attempt",
         "platform", "artifact_name", "payload_paths", "payload_sha256", "bundle_sha256",
-        "stored_size_bytes", "produced_at"
+        "produced_at"
       ],
       "properties": {
         "schema": {"const": "wiki-artifact-bundle-envelope-v1"},
@@ -59,7 +59,6 @@
             {"$ref": "#/definitions/hex64"}
           ]
         },
-        "stored_size_bytes": {"$ref": "#/definitions/decimalString"},
         "produced_at": {"$ref": "#/definitions/timestamp"}
       }
     },

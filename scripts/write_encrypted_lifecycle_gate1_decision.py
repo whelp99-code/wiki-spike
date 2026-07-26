@@ -27,6 +27,7 @@ import argparse
 import hashlib
 import json
 import sys
+import re
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
@@ -123,6 +124,7 @@ def resolve_profile(feasibility_results: list[dict[str, Any]]) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--feasibility", action="append", default=[], help="path to a sqlcipher-feasibility JSON (repeatable)")
+    parser.add_argument("--expected-producer-commit", default=None, help="required commit recorded by every imported feasibility result")
     parser.add_argument("--vector-validation", required=True, help="path to the independent vector validator receipt")
     parser.add_argument("--adr", action="append", required=True, help="ADR markdown path (repeatable, e.g. docs/adr/ADR-0026-*.md)")
     parser.add_argument("--schemas-dir", required=True, help="directory of encrypted-lifecycle JSON schemas")
@@ -142,9 +144,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        if args.expected_producer_commit is not None and not re.fullmatch(r"[0-9a-f]{40}", args.expected_producer_commit):
+            raise DecisionRefused("EXPECTED_COMMIT_INVALID", "expected producer commit must be 40 lowercase hex characters")
         feasibility_paths = [Path(p) for p in args.feasibility]
         feasibility_results = load_feasibility_results(feasibility_paths)
-
+        if args.expected_producer_commit is not None and any(result.get("recorded_commit") != args.expected_producer_commit for result in feasibility_results):
+            raise DecisionRefused("FEASIBILITY_COMMIT_MISMATCH", "feasibility recorded_commit must equal the detached producer commit")
         vector_validation_path = Path(args.vector_validation)
         vector_validation = load_vector_validation(vector_validation_path)
 
@@ -206,8 +211,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     output_path = Path(args.output)
+    if output_path.exists():
+        print(f"REFUSED [OUTPUT_EXISTS] refusing to overwrite {output_path}", file=sys.stderr)
+        return 1
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(decision, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    output_path.write_bytes(canonical_bytes(decision))
     print(f"wrote {output_path} profile_selection={decision['profile_selection']}")
     return 0
 

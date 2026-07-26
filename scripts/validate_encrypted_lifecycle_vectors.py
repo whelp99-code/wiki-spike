@@ -431,11 +431,32 @@ def v_binding() -> None:
 
 def v_bundle() -> None:
     data = load("bundle-one-pass-vectors-v1.json")
-    # projected envelope: artifact_name and bundle_sha256 both empty strings
+    payload_paths = [
+        "payload/gate1-decision.json",
+        "payload/macos/sqlcipher-feasibility.json",
+        "payload/ubuntu/import-receipt.json",
+        "payload/vector-validation.json",
+    ]
+    envelope_fields = {
+        "schema", "artifact_kind", "repository", "producer_commit",
+        "contract_digest", "toolchain_lock_digest", "workflow_file_digest",
+        "workflow_run_id", "workflow_run_attempt", "platform", "artifact_name",
+        "payload_paths", "payload_sha256", "bundle_sha256", "produced_at",
+    }
+
+    # projected envelope: artifact_name and bundle_sha256 both empty strings.
     tmpl = data["template_envelope"]
+    check(set(tmpl) == envelope_fields, "bundle: template envelope fields are not exact")
     check(tmpl["artifact_name"] == "", "bundle: template artifact_name not empty")
     check(tmpl["bundle_sha256"] == "", "bundle: template bundle_sha256 not empty")
-    check(tmpl["stored_size_bytes"] == "0", "bundle: template stored_size_bytes not 0")
+    check(tmpl["artifact_kind"] == "GATE1_DECISION", "bundle: template artifact kind invalid")
+    check(tmpl["repository"] == "wiki-spike/wiki-spike", "bundle: template repository invalid")
+    check(tmpl["payload_paths"] == payload_paths, "bundle: template payload paths are not closed")
+    check(set(data["payload_files"]) == set(payload_paths), "bundle: payload file paths are not closed")
+    check(
+        tmpl["payload_sha256"] == [sha256_hex(data["payload_files"][path].encode()) for path in payload_paths],
+        "bundle: template payload hashes mismatch",
+    )
     check(canon(tmpl).hex() == data["projected_envelope_bytes_hex"],
           "bundle: projected envelope canonical bytes mismatch")
     check(sha256_hex(canon(tmpl)) == data["projected_envelope_sha256"],
@@ -443,13 +464,27 @@ def v_bundle() -> None:
     check(str(len(canon(tmpl))) == data["projected_envelope_size"],
           "bundle: projected envelope size mismatch")
 
-    # manifest canonical bytes
+    # Manifest is canonical, closed over its projected envelope and payload files.
     manifest = data["manifest"]
+    expected_entries = [
+        {"path": "artifact-envelope.json", "sha256": data["projected_envelope_sha256"],
+         "size": data["projected_envelope_size"]},
+        *[
+            {"path": path, "sha256": sha256_hex(data["payload_files"][path].encode()),
+             "size": str(len(data["payload_files"][path].encode()))}
+            for path in payload_paths
+        ],
+    ]
+    expected_entries.sort(key=lambda entry: entry["path"].encode())
+    check(manifest == {"schema": "wiki-artifact-bundle-manifest-v1", "entries": expected_entries},
+          "bundle: manifest entries are not closed")
     check(canon(manifest).hex() == data["manifest_canonical_bytes_hex"],
           "bundle: manifest canonical bytes mismatch")
+    check(sha256_hex(canon(manifest)) == data["bundle_sha256"], "bundle: manifest digest mismatch")
 
-    # stored envelope canonical bytes + artifact_name suffix = bundle_sha256[:16]
+    # Stored envelope has the same exact wire shape and binds the manifest digest.
     stored = data["stored_envelope"]
+    check(set(stored) == envelope_fields, "bundle: stored envelope fields are not exact")
     check(canon(stored).hex() == data["stored_envelope_bytes_hex"],
           "bundle: stored envelope canonical bytes mismatch")
     bundle_sha = data["bundle_sha256"]
@@ -457,21 +492,19 @@ def v_bundle() -> None:
           "bundle: artifact_name does not carry bundle_sha256 prefix")
     check(stored["artifact_name"] == data["artifact_name"], "bundle: stored artifact_name mismatch")
     check(stored["bundle_sha256"] == bundle_sha, "bundle: stored bundle_sha256 mismatch")
+    check(stored["payload_paths"] == payload_paths, "bundle: stored payload paths are not closed")
 
-    # mutation raw manifests must NOT equal canonical bytes (noncanonical rejected)
+    # Mutation raw manifests must NOT equal canonical bytes (noncanonical rejected).
     canonical_text = canon(manifest).decode("utf-8")
     for mut in data["mutation_cases"]:
         raw = mut["raw_manifest_text"]
         if mut["case"] == "key_order":
-            # key_order case may be byte-identical text but semantically re-sorted;
-            # accept either an explicit noncanonical difference or a documented error.
             check(mut["expected_error"] in ("noncanonical_bundle_manifest", "self_field_violation"),
                   "bundle: key_order expected_error unexpected")
         elif mut["case"] == "self_field":
             check("bundle-manifest.json" in raw, "bundle: self_field case missing self entry")
         else:
             check(raw != canonical_text, f"bundle: mutation {mut['case']} unexpectedly canonical")
-
 
 def v_floor() -> None:
     data = load("floor-state-vectors-v1.json")

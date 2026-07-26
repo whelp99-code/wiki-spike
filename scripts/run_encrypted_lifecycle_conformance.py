@@ -2,18 +2,18 @@
 """Same-commit Gate 8 conformance run for the Encrypted Single-Memory Lifecycle.
 
 Runs the full conformance surface at the CURRENT implementation commit and
-records the outcome as a single ``conformance-report.json`` payload:
+records the outcome as a single ``payload/conformance-pre-canary.json``:
 
-  * encrypted-lifecycle test suite (pytest tests/encrypted_lifecycle)
-  * architecture-boundary check (scripts/check_architecture_boundaries.py)
-  * independent vector validator (scripts/validate_encrypted_lifecycle_vectors.py)
+  * project test suite
+  * architecture-boundary check
+  * secret scan and encrypted-lifecycle plaintext-safety tests
+  * independent vector validator
   * recall corpus evaluation (Top-3 hit rate >= 0.80, zero forbidden returns)
   * extraction corpus evaluation (zero forbidden returns)
 
 The run is fail-closed: any failing surface marks the whole run non-conformant.
-With ``--output-dir`` the report payload is written; with the bundle arguments
-supplied it is then wrapped into an immutable ``CONFORMANCE_PRE_CANARY`` bundle
-via ``build_encrypted_lifecycle_bundle.py`` for the Gate 8 three-lane join.
+With the required provenance arguments it wraps the report into an immutable
+``CONFORMANCE_PRE_CANARY`` bundle and writes its computed identity metadata.
 
 This script never fabricates a green result: a non-conformant run exits
 non-zero and (when bundling) refuses to emit a bundle.
@@ -22,9 +22,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
+from build_encrypted_lifecycle_bundle import canonical_bytes
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -37,12 +39,27 @@ def _run(cmd: list[str]) -> tuple[bool, str]:
     return proc.returncode == 0, "\n".join(tail)
 
 
-def _check_pytest() -> tuple[bool, str]:
-    return _run([sys.executable, "-m", "pytest", "tests/encrypted_lifecycle", "-q"])
+def _check_project_tests() -> tuple[bool, str]:
+    return _run([sys.executable, "-m", "pytest", "-q"])
 
 
 def _check_boundaries() -> tuple[bool, str]:
     return _run([sys.executable, "scripts/check_architecture_boundaries.py"])
+def _check_secrets() -> tuple[bool, str]:
+    return _run([sys.executable, "scripts/scan_secrets.py"])
+
+def _check_plaintext_safety() -> tuple[bool, str]:
+    return _run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/encrypted_lifecycle/test_encrypted_cas.py",
+            "tests/encrypted_lifecycle/test_lifecycle_db.py",
+            "tests/encrypted_lifecycle/test_gate5_forget.py",
+            "-q",
+        ]
+    )
 
 
 def _check_vectors() -> tuple[bool, str]:
@@ -78,8 +95,10 @@ def _check_extraction() -> tuple[bool, str]:
 
 def run_conformance() -> dict:
     checks = {
-        "encrypted_lifecycle_tests": _check_pytest,
+        "project_tests": _check_project_tests,
         "architecture_boundaries": _check_boundaries,
+        "secret_scan": _check_secrets,
+        "plaintext_safety": _check_plaintext_safety,
         "vector_validator": _check_vectors,
         "recall_corpus": _check_recall,
         "extraction_corpus": _check_extraction,
@@ -102,30 +121,56 @@ def _git_head_commit() -> str:
         ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, capture_output=True, text=True
     )
     return proc.stdout.strip() if proc.returncode == 0 else ""
+def _required_sha256(value: str) -> str:
+    if not re.fullmatch(r"[0-9a-f]{64}", value):
+        raise ValueError("provenance digest must be a lowercase 64-hex SHA-256")
+    return value
 
+
+def _required_nonempty(value: str, name: str) -> str:
+    if not value:
+        raise ValueError(f"{name} is required")
+    return value
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-dir", help="directory to write conformance-report.json")
-    parser.add_argument("--bundle-output-dir", help="also build a CONFORMANCE_PRE_CANARY bundle here")
-    parser.add_argument("--repository", default="wiki-spike")
-    parser.add_argument("--workflow-run-id", default="0")
-    parser.add_argument("--workflow-run-attempt", default="1")
-    parser.add_argument("--platform", default="local/conformance-run")
-    parser.add_argument("--contract-digest", default="")
-    parser.add_argument("--toolchain-lock-digest", default="")
-    parser.add_argument("--workflow-file-digest", default="")
+    parser.add_argument("--output-dir", required=True, help="directory to write payload/conformance-pre-canary.json")
+    parser.add_argument("--bundle-output-dir", required=True, help="build a CONFORMANCE_PRE_CANARY bundle here")
+    parser.add_argument("--artifact-metadata-output", required=True, help="write computed bundle identity and strict expected tuple here")
+    parser.add_argument("--repository", required=True)
+    parser.add_argument("--workflow-run-id", required=True)
+    parser.add_argument("--workflow-run-attempt", required=True)
+    parser.add_argument("--platform", required=True)
+    parser.add_argument("--produced-at", required=True)
+    parser.add_argument("--source-run-url", required=True)
+    parser.add_argument("--contract-digest", required=True)
+    parser.add_argument("--toolchain-lock-digest", required=True)
+    parser.add_argument("--workflow-file-digest", required=True)
     args = parser.parse_args(argv)
-
+    try:
+        for name in (
+            "repository",
+            "workflow_run_id",
+            "workflow_run_attempt",
+            "platform",
+            "produced_at",
+            "source_run_url",
+        ):
+            _required_nonempty(getattr(args, name), name)
+        for name in ("contract_digest", "toolchain_lock_digest", "workflow_file_digest"):
+            _required_sha256(getattr(args, name))
+        implementation_commit = _git_head_commit()
+        if not re.fullmatch(r"[0-9a-f]{40,64}", implementation_commit):
+            raise ValueError("checked-out implementation commit must be a hexadecimal Git object ID")
+    except ValueError as exc:
+        parser.error(str(exc))
     report = run_conformance()
-    report["implementation_commit"] = _git_head_commit()
-
-    if args.output_dir:
-        out = Path(args.output_dir)
-        out.mkdir(parents=True, exist_ok=True)
-        (out / "conformance-report.json").write_text(
-            json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-        )
+    report["implementation_commit"] = implementation_commit
+    payload_bytes = canonical_bytes(report)
+    out = Path(args.output_dir)
+    payload_path = out / "payload" / "conformance-pre-canary.json"
+    payload_path.parent.mkdir(parents=True, exist_ok=True)
+    payload_path.write_bytes(payload_bytes)
 
     print(json.dumps(report, indent=2, sort_keys=True))
 
@@ -137,26 +182,31 @@ def main(argv: list[str] | None = None) -> int:
         # Wrap the report payload into an immutable CONFORMANCE_PRE_CANARY bundle.
         import tempfile
 
-        from build_encrypted_lifecycle_bundle import build_bundle, write_deterministic_tar
-        from build_encrypted_lifecycle_bundle import ENVELOPE_ENTRY_PATH, MANIFEST_ENTRY_PATH
+        from build_encrypted_lifecycle_bundle import (
+            ENVELOPE_ENTRY_PATH,
+            MANIFEST_ENTRY_PATH,
+            build_bundle,
+            write_deterministic_tar,
+        )
 
         with tempfile.TemporaryDirectory() as tmp:
             payload_dir = Path(tmp)
-            (payload_dir / "conformance-report.json").write_text(
-                json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-            )
+            payload = payload_dir / "payload"
+            payload.mkdir()
+            (payload / "conformance-pre-canary.json").write_bytes(payload_bytes)
             built = build_bundle(
                 input_dir=payload_dir,
-                payload_names=["conformance-report.json"],
+                payload_names=["payload/conformance-pre-canary.json"],
                 artifact_kind="CONFORMANCE_PRE_CANARY",
                 repository=args.repository,
                 producer_commit=report["implementation_commit"],
-                contract_digest=args.contract_digest or ("0" * 64),
-                toolchain_lock_digest=args.toolchain_lock_digest or ("0" * 64),
-                workflow_file_digest=args.workflow_file_digest or ("0" * 64),
+                contract_digest=args.contract_digest,
+                toolchain_lock_digest=args.toolchain_lock_digest,
+                workflow_file_digest=args.workflow_file_digest,
                 workflow_run_id=args.workflow_run_id,
                 workflow_run_attempt=args.workflow_run_attempt,
                 platform_token=args.platform,
+                produced_at=args.produced_at,
             )
             out = Path(args.bundle_output_dir)
             out.mkdir(parents=True, exist_ok=True)
@@ -170,7 +220,36 @@ def main(argv: list[str] | None = None) -> int:
                 tar_files.append((rel, data))
             tar_path = out / f"{built['artifact_name']}.tar"
             write_deterministic_tar(tar_path, tar_files)
-            print(f"built conformance bundle {tar_path}")
+            expected = {
+                field: built["envelope"][field]
+                for field in (
+                    "repository",
+                    "artifact_kind",
+                    "platform",
+                    "producer_commit",
+                    "contract_digest",
+                    "toolchain_lock_digest",
+                    "workflow_file_digest",
+                    "workflow_run_id",
+                    "workflow_run_attempt",
+                    "artifact_name",
+                    "bundle_sha256",
+                    "payload_paths",
+                    "payload_sha256",
+                )
+            }
+            expected["source_run_url"] = args.source_run_url
+            metadata = {
+                "artifact_name": built["artifact_name"],
+                "tar_path": str(tar_path),
+                "expected": expected,
+            }
+            metadata_path = Path(args.artifact_metadata_output)
+            metadata_path.parent.mkdir(parents=True, exist_ok=True)
+            metadata_path.write_text(
+                json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            )
+            print(json.dumps(metadata, sort_keys=True))
 
     return 0
 

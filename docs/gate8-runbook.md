@@ -7,100 +7,98 @@ ARCHITECT/CRITIC review over that machine evidence). No single artifact claims a
 delivery verdict on its own; the verdict-free manifest is signed by two
 independent reviewers, and a separate receipt records the outcome.
 
-## Lanes and producers
+## Lanes and immutable tuples
 
-| Lane | Artifact kind | Producer | Workflow |
+| Lane | Artifact kind | Workflow | Commit binding |
 |---|---|---|---|
-| gate1 | `GATE1_DECISION` | Gate 1 decision writer | (Gate 1) |
-| conformance | `CONFORMANCE_PRE_CANARY` | `scripts/run_encrypted_lifecycle_conformance.py` | same-commit conformance run |
-| canary | `CANARY_24H` | `scripts/run_encrypted_lifecycle_canary_24h.py` | `encrypted-lifecycle-canary-24h.yml` |
+| gate1 | `GATE1_DECISION` | `encrypted-lifecycle-gate1-decision.yml` | `gate1_commit` |
+| conformance | `CONFORMANCE_PRE_CANARY` | `encrypted-lifecycle-conformance.yml` | `implementation_commit` |
+| canary | `CANARY_24H` | `encrypted-lifecycle-canary.yml` | `implementation_commit` |
 
-All three lanes MUST be bound to the **same `producer_commit`** (the immutable
-commit under review). The join fails closed on any producer_commit mismatch.
+Gate 1 MAY use a different commit. Conformance and canary MUST use the same
+immutable `implementation_commit`. Record the complete tuple for each lane:
+repository, run ID, run attempt, exact artifact name, bundle SHA-256,
+source-run URL, platform, producer commit, contract digest, toolchain-lock
+digest, and workflow-file digest.
 
-## 1. Same-commit conformance run
+## 1. Produce conformance evidence
 
-Runs the full conformance surface at the implementation commit and wraps the
-report into an immutable `CONFORMANCE_PRE_CANARY` bundle:
+Run `scripts/run_encrypted_lifecycle_conformance.py` from the checked-out
+`implementation_commit`, with the complete conformance tuple. Its immutable
+bundle is the conformance lane input to the join.
 
-```bash
-python3 scripts/run_encrypted_lifecycle_conformance.py \
-  --output-dir artifacts/encrypted-lifecycle/conformance \
-  --bundle-output-dir artifacts/encrypted-lifecycle/conformance \
-  --workflow-run-id "$RUN_ID" --workflow-run-attempt "$RUN_ATTEMPT" \
-  --platform "self-hosted/macos-15/arm64/wiki-conformance-workstation" \
-  --contract-digest "$CONTRACT_DIGEST" \
-  --toolchain-lock-digest "$TOOLCHAIN_LOCK_DIGEST" \
-  --workflow-file-digest "$WORKFLOW_FILE_DIGEST"
-```
+## 2. Run or resume the durable canary
 
-The run is fail-closed: it executes the encrypted-lifecycle test suite, the
-architecture-boundary check, the independent vector validator, the recall corpus
-evaluation (Top-3 ≥ 0.80, zero forbidden returns), and the extraction corpus
-evaluation (zero forbidden returns). Any failing surface marks the run
-non-conformant, exits non-zero, and refuses to emit a bundle. It never
-fabricates a green result.
+Dispatch `encrypted-lifecycle-canary.yml` at `implementation_commit`. The
+canary service owns its durable root at the absolute private path supplied by
+`CANARY_DURABLE_STATE_ROOT`; it is not a GitHub artifact and no resume artifact
+input exists.
 
-## 2. Exactly-24-hour canary (self-hosted macOS)
+A GitHub rerun of the same original workflow run ID (a changed attempt) resumes
+only that run's checkpoint chain. The service derives the chain path from
+repository, implementation commit, and the original run ID, so it never scans
+or reuses another run for the same commit. An incomplete checkpoint resumes;
+a stale checkpoint or a failed terminal checkpoint requires a fresh workflow dispatch
+with a new run ID. A terminal-issued checkpoint is terminal: its evidence cannot be
+replayed, relabeled, or issued again. Historical runs do not block a fresh workflow
+dispatch. A healthy terminal run produces the `CANARY_24H` bundle after the configured
+24-hour duration.
 
-Trigger `encrypted-lifecycle-canary-24h.yml` (workflow_dispatch) against the
-immutable commit. It runs the canary on a self-hosted macOS 15 / arm64 runner
-for exactly 24 hours (default `duration_seconds=86400`, probing every 15
-minutes), exercising a full remember → decrypt → forget/veto round-trip on a
-fresh disposable workspace each probe, then wraps the report into an immutable
-`CANARY_24H` bundle. A single failed probe marks the canary unhealthy and the
-job fails closed (no bundle is emitted by an unhealthy run).
+## 3. Strict three-lane join
 
-Local short-canary smoke test (no 24h wait):
+Dispatch `encrypted-lifecycle-evidence-join.yml` with all three complete lane
+tuples, `gate1_commit`, shared `implementation_commit`, `contract_digest`,
+`toolchain_lock_digest`, and `workspace_id`. It downloads each exact named
+artifact separately and strictly imports it. The join rejects missing,
+substituted, extra, or mismatched artifacts and emits the verdict-free
+`pre-review-manifest.json` and `evidence-join.json`.
 
-```bash
-python3 scripts/run_encrypted_lifecycle_canary_24h.py --duration-seconds 0 --interval-seconds 0 --output-dir /tmp/canary
-```
+## 4. Issue, write, and strictly import the final receipt
 
-## 3. Three-lane evidence join (verdict-free)
-
-Once all three immutable bundles exist, trigger
-`encrypted-lifecycle-conformance.yml` (workflow_dispatch) with the three
-producing run IDs. It downloads and **strictly imports** each bundle
-(`scripts/import_encrypted_lifecycle_bundle.py` — re-implemented from scratch,
-never trusting the builder), requires a single producer_commit across lanes, and
-runs `scripts/join_gate8_evidence.py` to emit:
-
-- `pre-review-manifest.json` — the **verdict-free** enumeration of the three
-  imported bundles bound to the implementation commit (no pass/fail field).
-- `evidence-join.json` — preserves the three independent import receipts
-  verbatim under one digest.
-
-The join is not a delivery gate and emits no verdict. A missing input, a failed
-strict import, or a producer_commit mismatch is a hard failure (no false-green).
-
-## 4. Independent review (two attestations + separate receipt)
-
-Over the emitted `manifest_digest`, the ARCHITECT and CRITIC each independently
-sign an attestation, and a separate receipt records the reviewed outcome
-(`wiki_spike.infrastructure.conformance`):
+The final receipt freezes a path-sorted `{path: sha256}` inventory derived from
+the complete strict-import receipts. It is canonical JSON and is rejected when
+a path is omitted, substituted, duplicated/aliased, extra, noncanonical, or
+has the wrong digest. Both the pre-review manifest and evidence join must
+contain identical strict receipts.
 
 ```python
 from wiki_spike.infrastructure.conformance import (
-    ARCHITECT, CRITIC,
-    attest_manifest, build_review_receipt, verify_review_receipt,
+    ARCHITECT, CRITIC, attest_manifest, write_final_review_receipt,
+    import_final_review_receipt,
 )
 
-arch = attest_manifest(role=ARCHITECT, key_id="arch-key", private_key=arch_sk, manifest_digest=manifest_digest)
-critic = attest_manifest(role=CRITIC, key_id="critic-key", private_key=critic_sk, manifest_digest=manifest_digest)
-receipt = build_review_receipt(workspace_id=ws, manifest_digest=manifest_digest, attestations=(arch, critic))
-verify_review_receipt(receipt, {ARCHITECT: arch_pk, CRITIC: critic_pk}, manifest_digest)
+arch = attest_manifest(
+    reviewer_role=ARCHITECT, reviewer_key_id="arch-key", private_key=arch_sk,
+    workspace_id=workspace_id, implementation_commit=implementation_commit,
+    manifest_digest=manifest.manifest_digest, issued_at=issued_at, expires_at=expires_at,
+)
+critic = attest_manifest(
+    reviewer_role=CRITIC, reviewer_key_id="critic-key", private_key=critic_sk,
+    workspace_id=workspace_id, implementation_commit=implementation_commit,
+    manifest_digest=manifest.manifest_digest, issued_at=issued_at, expires_at=expires_at,
+)
+receipt = write_final_review_receipt(
+    workspace_id=workspace_id, implementation_commit=implementation_commit,
+    manifest=manifest, evidence_join=evidence_join, attestations=(arch, critic),
+    trusted_reviewers=trusted_reviewers, now=now,
+)
+import_final_review_receipt(
+    receipt, trusted_reviewers=trusted_reviewers, workspace_id=workspace_id,
+    implementation_commit=implementation_commit, manifest=manifest,
+    evidence_join=evidence_join, now=now,
+)
 ```
 
-The receipt is valid only when both required roles are present, distinct, bound
-to the manifest digest, and verify under their role public keys. Attestations
-are domain-separated (R10-2), so a signature is valid only for its exact
-role/key/manifest digest.
+`trusted_reviewers` maps each role to its current `(key_id, public_key)`.
+`issued_at`, `expires_at`, and `now` are canonical UTC timestamps; attestations
+must be issued no later than `now`, unexpired, and no longer than one hour.
+ARCHITECT and CRITIC roles and key IDs must be distinct.
 
-## What is NOT automated here
+## 5. External execution
 
-- The 24-hour canary requires a real 24h window on a self-hosted macOS runner.
-- The ARCHITECT/CRITIC attestations and the separate review receipt are produced
-  by the review process (human/agent reviewers holding independent keys); the
-  machinery builds and verifies them but never fabricates a verdict or a
-  signature.
+Push the implementation commit, dispatch Gate 1, conformance, and the durable
+canary on their designated self-hosted runners, then dispatch the evidence
+join with the recorded tuples. Obtain independent reviewer signatures, write
+the final receipt, and strictly import it using the APIs above. These
+runner, GitHub artifact, and signing operations are intentionally external to
+local preparation.

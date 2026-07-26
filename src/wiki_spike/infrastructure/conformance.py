@@ -23,8 +23,11 @@ Architecture-boundary contract: infrastructure layer; may import
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Mapping
+from pathlib import PurePosixPath
 
 from wiki_spike.infrastructure import crypto
 from wiki_spike.memory_core.contracts import canonical_bytes
@@ -34,13 +37,12 @@ from wiki_spike.memory_core.contracts import canonical_bytes
 # ---------------------------------------------------------------------------
 
 PRE_REVIEW_MANIFEST_DOMAIN = "wiki.gate8.pre-review-manifest.v1"
-REVIEW_ATTESTATION_DOMAIN = "wiki.gate8.review-attestation.v1"
-REVIEW_RECEIPT_DOMAIN = "wiki.gate8.review-receipt.v1"
+REVIEW_ATTESTATION_DOMAIN = "wiki.gate8.reviewer-attestation.v1"
 EVIDENCE_JOIN_DOMAIN = "wiki.gate8.evidence-join.v1"
 
 PRE_REVIEW_MANIFEST_SCHEMA = "wiki-gate8-pre-review-manifest-v1"
-REVIEW_ATTESTATION_SCHEMA = "wiki-gate8-review-attestation-v1"
-REVIEW_RECEIPT_SCHEMA = "wiki-gate8-review-receipt-v1"
+REVIEW_ATTESTATION_SCHEMA = "wiki-gate8-reviewer-attestation-v1"
+FINAL_REVIEW_RECEIPT_SCHEMA = "wiki-gate8-final-review-receipt-v1"
 EVIDENCE_JOIN_SCHEMA = "wiki-gate8-evidence-join-v1"
 
 ARCHITECT = "ARCHITECT"
@@ -51,6 +53,30 @@ GATE1 = "gate1"
 CONFORMANCE = "conformance"
 CANARY = "canary"
 REQUIRED_LANES: tuple[str, ...] = (GATE1, CONFORMANCE, CANARY)
+LANE_ARTIFACT_KINDS: dict[str, str] = {
+    GATE1: "GATE1_DECISION",
+    CONFORMANCE: "CONFORMANCE_PRE_CANARY",
+    CANARY: "CANARY_24H",
+}
+STRICT_IMPORT_RECEIPT_FIELDS = frozenset((
+    "repository", "artifact_kind", "platform", "producer_commit",
+    "contract_digest", "toolchain_lock_digest", "workflow_file_digest",
+    "workflow_run_id", "workflow_run_attempt", "artifact_name",
+    "bundle_sha256", "payload_paths", "payload_sha256", "source_run_url",
+    "verified",
+))
+ATTESTATION_FIELDS = frozenset((
+    "schema", "reviewer_role", "verdict", "workspace_id",
+    "implementation_commit", "manifest_digest", "reviewer_key_id",
+    "issued_at", "expires_at", "signature",
+))
+FINAL_REVIEW_RECEIPT_FIELDS = frozenset((
+    "schema", "workspace_id", "implementation_commit", "manifest_digest",
+    "artifact_inventory", "attestations",
+))
+APPROVE = "APPROVE"
+MAX_ATTESTATION_LIFETIME_SECONDS = 3600
+_ATTESTATION_TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 
 class ConformanceError(Exception):
@@ -71,13 +97,10 @@ def _domain_digest(domain: str, body: Mapping) -> str:
 
 @dataclass(frozen=True)
 class BundleRef:
-    """One imported immutable bundle lane (digest-only references)."""
+    """One lane's complete, strictly verified import receipt."""
 
     lane: str
-    artifact_name: str
-    artifact_kind: str
-    bundle_sha256: str
-    platform: str
+    receipt: dict
 
 
 @dataclass(frozen=True)
@@ -96,16 +119,7 @@ def _manifest_body(workspace_id: str, implementation_commit: str, bundles: tuple
     return {
         "workspace_id": workspace_id,
         "implementation_commit": implementation_commit,
-        "bundles": [
-            {
-                "lane": b.lane,
-                "artifact_name": b.artifact_name,
-                "artifact_kind": b.artifact_kind,
-                "bundle_sha256": b.bundle_sha256,
-                "platform": b.platform,
-            }
-            for b in bundles
-        ],
+        "bundles": [{"lane": b.lane, "receipt": b.receipt} for b in bundles],
     }
 
 
@@ -116,9 +130,8 @@ def build_pre_review_manifest(
     bundles: Mapping[str, Mapping],
 ) -> PreReviewManifest:
     """Build the verdict-free pre-review manifest from exactly the three
-    required lanes. Each ``bundles[lane]`` must provide ``artifact_name``,
-    ``artifact_kind``, ``bundle_sha256``, and ``platform``. Fails closed on a
-    missing/extra lane or a missing field."""
+    required lanes. Each lane supplies one complete, strictly verified import
+    receipt, preserved verbatim and covered by ``manifest_digest``."""
     missing = [lane for lane in REQUIRED_LANES if lane not in bundles]
     if missing:
         raise ConformanceError("manifest_missing_lanes", f"missing bundle lane(s): {sorted(missing)}")
@@ -127,23 +140,36 @@ def build_pre_review_manifest(
         raise ConformanceError("manifest_extra_lanes", f"unexpected bundle lane(s): {sorted(extra)}")
 
     refs: list[BundleRef] = []
+    receipt_keys = STRICT_IMPORT_RECEIPT_FIELDS
+    seen_receipts: set[bytes] = set()
     for lane in REQUIRED_LANES:
-        entry = bundles[lane]
-        for field in ("artifact_name", "artifact_kind", "bundle_sha256", "platform"):
-            if not entry.get(field):
-                raise ConformanceError(
-                    "manifest_lane_field_missing",
-                    f"lane {lane!r} missing required field {field!r}",
-                )
-        refs.append(
-            BundleRef(
-                lane=lane,
-                artifact_name=entry["artifact_name"],
-                artifact_kind=entry["artifact_kind"],
-                bundle_sha256=entry["bundle_sha256"],
-                platform=entry["platform"],
+        receipt = bundles[lane]
+        if set(receipt) != receipt_keys:
+            raise ConformanceError(
+                "manifest_receipt_keys_invalid",
+                f"lane {lane!r} receipt must use the closed strict-import receipt wire",
             )
-        )
+        if receipt["verified"] is not True:
+            raise ConformanceError("manifest_receipt_unverified", f"lane {lane!r} receipt is not verified")
+        if receipt["artifact_kind"] != LANE_ARTIFACT_KINDS[lane]:
+            raise ConformanceError("manifest_receipt_lane_mismatch", f"lane {lane!r} receipt has the wrong artifact kind")
+        if lane in (CONFORMANCE, CANARY) and receipt["producer_commit"] != implementation_commit:
+            raise ConformanceError("manifest_receipt_commit_mismatch", f"lane {lane!r} must use implementation_commit")
+        scalar_fields = receipt_keys - {"payload_paths", "payload_sha256", "verified"}
+        if not all(isinstance(receipt[field], str) and receipt[field] for field in scalar_fields):
+            raise ConformanceError("manifest_receipt_invalid", f"lane {lane!r} receipt has an invalid scalar field")
+        if not isinstance(receipt["payload_paths"], list) or not isinstance(receipt["payload_sha256"], list):
+            raise ConformanceError("manifest_receipt_invalid", f"lane {lane!r} receipt payload fields are invalid")
+        if not receipt["source_run_url"]:
+            raise ConformanceError("manifest_receipt_source_missing", f"lane {lane!r} source_run_url is required")
+        try:
+            receipt_bytes = canonical_bytes(receipt)
+        except Exception as exc:
+            raise ConformanceError("manifest_receipt_invalid", f"lane {lane!r} receipt is not canonicalizable") from exc
+        if receipt_bytes in seen_receipts:
+            raise ConformanceError("manifest_receipt_reused", "each lane must have a distinct import receipt")
+        seen_receipts.add(receipt_bytes)
+        refs.append(BundleRef(lane=lane, receipt=dict(receipt)))
 
     ordered = tuple(refs)
     body = _manifest_body(workspace_id, implementation_commit, ordered)
@@ -158,169 +184,320 @@ def build_pre_review_manifest(
 
 
 # ---------------------------------------------------------------------------
-# Independent review attestations (ARCHITECT / CRITIC)
+# Independent review attestations and final receipt
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class ReviewAttestation:
-    """One reviewer's independent Ed25519 signature over the manifest digest."""
+    """Closed reviewer attestation wire, signed independently by one reviewer."""
 
     schema: str
-    role: str
-    key_id: str
+    reviewer_role: str
+    verdict: str
+    workspace_id: str
+    implementation_commit: str
     manifest_digest: str
-    signature_hex: str
+    reviewer_key_id: str
+    issued_at: str
+    expires_at: str
+    signature: str
+
+    def to_mapping(self) -> dict[str, str]:
+        return {
+            "schema": self.schema,
+            "reviewer_role": self.reviewer_role,
+            "verdict": self.verdict,
+            "workspace_id": self.workspace_id,
+            "implementation_commit": self.implementation_commit,
+            "manifest_digest": self.manifest_digest,
+            "reviewer_key_id": self.reviewer_key_id,
+            "issued_at": self.issued_at,
+            "expires_at": self.expires_at,
+            "signature": self.signature,
+        }
 
 
-def _attestation_payload(role: str, key_id: str, manifest_digest: str) -> dict:
+def _parse_attestation_time(value: str, field: str) -> datetime:
+    if not isinstance(value, str):
+        raise ConformanceError("attestation_time_invalid", f"{field} must be a UTC timestamp")
+    try:
+        return datetime.strptime(value, _ATTESTATION_TIME_FORMAT).replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise ConformanceError(
+            "attestation_time_invalid",
+            f"{field} must use canonical UTC second precision",
+        ) from exc
+
+
+def _attestation_payload(
+    *,
+    reviewer_role: str,
+    workspace_id: str,
+    implementation_commit: str,
+    manifest_digest: str,
+    reviewer_key_id: str,
+    issued_at: str,
+    expires_at: str,
+) -> dict[str, str]:
     return {
         "schema": REVIEW_ATTESTATION_SCHEMA,
-        "role": role,
-        "key_id": key_id,
+        "reviewer_role": reviewer_role,
+        "verdict": APPROVE,
+        "workspace_id": workspace_id,
+        "implementation_commit": implementation_commit,
         "manifest_digest": manifest_digest,
+        "reviewer_key_id": reviewer_key_id,
+        "issued_at": issued_at,
+        "expires_at": expires_at,
     }
 
 
-def attest_manifest(*, role: str, key_id: str, private_key, manifest_digest: str) -> ReviewAttestation:
-    """Produce one independent attestation. ``role`` must be ARCHITECT or
-    CRITIC. The signature is domain-separated (R10-2) so it is valid only for
-    this exact role/key/manifest digest."""
-    if role not in REQUIRED_ROLES:
-        raise ConformanceError("attestation_invalid_role", f"role must be one of {REQUIRED_ROLES}, got {role!r}")
-    if not key_id:
-        raise ConformanceError("attestation_missing_key_id", "key_id is required")
-    signature_hex = crypto.sign(private_key, REVIEW_ATTESTATION_DOMAIN, _attestation_payload(role, key_id, manifest_digest))
-    return ReviewAttestation(
-        schema=REVIEW_ATTESTATION_SCHEMA,
-        role=role,
-        key_id=key_id,
+def attest_manifest(
+    *,
+    reviewer_role: str,
+    reviewer_key_id: str,
+    private_key,
+    workspace_id: str,
+    implementation_commit: str,
+    manifest_digest: str,
+    issued_at: str,
+    expires_at: str,
+) -> ReviewAttestation:
+    """Issue a complete, closed APPROVE attestation over one exact manifest."""
+    payload = _attestation_payload(
+        reviewer_role=reviewer_role,
+        workspace_id=workspace_id,
+        implementation_commit=implementation_commit,
         manifest_digest=manifest_digest,
-        signature_hex=signature_hex,
+        reviewer_key_id=reviewer_key_id,
+        issued_at=issued_at,
+        expires_at=expires_at,
+    )
+    _validate_attestation_mapping(payload)
+    return ReviewAttestation(
+        **payload,
+        signature=crypto.sign(private_key, REVIEW_ATTESTATION_DOMAIN, payload),
     )
 
 
-def verify_attestation(attestation: ReviewAttestation, public_key, manifest_digest: str) -> None:
-    """Verify one attestation binds to ``manifest_digest`` and verifies under
-    ``public_key``. Raises ``ConformanceError`` (or InvalidSignature) on any
-    mismatch."""
-    if attestation.schema != REVIEW_ATTESTATION_SCHEMA:
+def _validate_attestation_mapping(value: Mapping) -> None:
+    if not isinstance(value, Mapping):
+        raise ConformanceError("attestation_fields_invalid", "attestation must be an object")
+    if set(value) != ATTESTATION_FIELDS - {"signature"} and set(value) != ATTESTATION_FIELDS:
+        raise ConformanceError("attestation_fields_invalid", "attestation must use the closed wire fields")
+    if value.get("schema") != REVIEW_ATTESTATION_SCHEMA:
         raise ConformanceError("attestation_schema_mismatch", f"expected {REVIEW_ATTESTATION_SCHEMA!r}")
-    if attestation.role not in REQUIRED_ROLES:
-        raise ConformanceError("attestation_invalid_role", f"role must be one of {REQUIRED_ROLES}")
-    if attestation.manifest_digest != manifest_digest:
-        raise ConformanceError(
-            "attestation_manifest_mismatch",
-            f"attestation binds {attestation.manifest_digest!r}, expected {manifest_digest!r}",
-        )
+    if value.get("reviewer_role") not in REQUIRED_ROLES:
+        raise ConformanceError("attestation_invalid_role", f"reviewer_role must be one of {REQUIRED_ROLES}")
+    if value.get("verdict") != APPROVE:
+        raise ConformanceError("attestation_invalid_verdict", "reviewer verdict must be APPROVE")
+    for field in ATTESTATION_FIELDS - {"signature"}:
+        if not isinstance(value.get(field), str) or not value[field]:
+            raise ConformanceError("attestation_invalid_field", f"{field} must be a non-empty string")
+    if "signature" in value and (not isinstance(value["signature"], str) or not value["signature"]):
+        raise ConformanceError("attestation_invalid_field", "signature must be a non-empty string")
+
+
+def _attestation_from_mapping(value: Mapping) -> ReviewAttestation:
+    _validate_attestation_mapping(value)
+    if set(value) != ATTESTATION_FIELDS:
+        raise ConformanceError("attestation_fields_invalid", "attestation signature is required")
+    return ReviewAttestation(**dict(value))
+
+
+def verify_attestation(
+    attestation: ReviewAttestation,
+    trusted_reviewers: Mapping[str, tuple[str, object]],
+    *,
+    workspace_id: str,
+    implementation_commit: str,
+    manifest_digest: str,
+    now: str,
+) -> None:
+    """Fail closed on wire, trust, binding, clock, or signature mismatch."""
+    wire = attestation.to_mapping()
+    _validate_attestation_mapping(wire)
+    if (
+        attestation.workspace_id != workspace_id
+        or attestation.implementation_commit != implementation_commit
+        or attestation.manifest_digest != manifest_digest
+    ):
+        raise ConformanceError("attestation_binding_mismatch", "attestation does not bind the expected review target")
+    try:
+        expected_key_id, public_key = trusted_reviewers[attestation.reviewer_role]
+    except KeyError as exc:
+        raise ConformanceError("attestation_untrusted_role", "reviewer role is not trusted") from exc
+    if attestation.reviewer_key_id != expected_key_id:
+        raise ConformanceError("attestation_untrusted_key", "reviewer key is not authorized for its role")
+
+    issued = _parse_attestation_time(attestation.issued_at, "issued_at")
+    expires = _parse_attestation_time(attestation.expires_at, "expires_at")
+    trusted_now = _parse_attestation_time(now, "now")
+    if expires <= issued:
+        raise ConformanceError("attestation_lifetime_invalid", "expires_at must be after issued_at")
+    if (expires - issued).total_seconds() > MAX_ATTESTATION_LIFETIME_SECONDS:
+        raise ConformanceError("attestation_lifetime_invalid", "attestation lifetime exceeds the allowed bound")
+    if issued > trusted_now:
+        raise ConformanceError("attestation_not_yet_valid", "attestation is issued in the future")
+    if expires <= trusted_now:
+        raise ConformanceError("attestation_expired", "attestation is expired")
     try:
         crypto.verify(
             public_key,
             REVIEW_ATTESTATION_DOMAIN,
-            _attestation_payload(attestation.role, attestation.key_id, attestation.manifest_digest),
-            attestation.signature_hex,
+            _attestation_payload(
+                reviewer_role=attestation.reviewer_role,
+                workspace_id=attestation.workspace_id,
+                implementation_commit=attestation.implementation_commit,
+                manifest_digest=attestation.manifest_digest,
+                reviewer_key_id=attestation.reviewer_key_id,
+                issued_at=attestation.issued_at,
+                expires_at=attestation.expires_at,
+            ),
+            attestation.signature,
         )
-    except Exception as exc:  # cryptography.exceptions.InvalidSignature et al.
-        raise ConformanceError("attestation_signature_invalid", f"{attestation.role} attestation failed: {exc}") from exc
+    except Exception as exc:
+        raise ConformanceError("attestation_signature_invalid", "reviewer attestation signature failed") from exc
 
 
-# ---------------------------------------------------------------------------
-# Separate review receipt
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class ReviewReceipt:
-    """Separate receipt recording the reviewed manifest digest plus the two
-    independent attestations. Distinct from the attestations themselves."""
-
-    schema: str
-    workspace_id: str
-    manifest_digest: str
-    attestations: tuple[ReviewAttestation, ...]
-    receipt_digest: str
-
-
-def _receipt_body(workspace_id: str, manifest_digest: str, attestations: tuple[ReviewAttestation, ...]) -> dict:
-    return {
-        "workspace_id": workspace_id,
-        "manifest_digest": manifest_digest,
-        "attestations": [
-            {
-                "schema": a.schema,
-                "role": a.role,
-                "key_id": a.key_id,
-                "manifest_digest": a.manifest_digest,
-                "signature_hex": a.signature_hex,
-            }
-            for a in attestations
-        ],
-    }
-
-
-def _validate_attestation_set(attestations: tuple[ReviewAttestation, ...], manifest_digest: str) -> None:
-    if len(attestations) != len(REQUIRED_ROLES):
-        raise ConformanceError(
-            "receipt_attestation_count",
-            f"exactly {len(REQUIRED_ROLES)} attestations required, got {len(attestations)}",
-        )
-    roles = [a.role for a in attestations]
-    if len(set(roles)) != len(roles):
-        raise ConformanceError("receipt_duplicate_role", f"attestation roles must be distinct, got {roles}")
-    if set(roles) != set(REQUIRED_ROLES):
-        raise ConformanceError("receipt_missing_role", f"attestations must cover {REQUIRED_ROLES}, got {sorted(roles)}")
-    for a in attestations:
-        if a.manifest_digest != manifest_digest:
-            raise ConformanceError(
-                "receipt_attestation_manifest_mismatch",
-                f"{a.role} attestation binds a different manifest digest",
-            )
-
-
-def build_review_receipt(
+def _validate_attestation_set(
+    attestations: tuple[ReviewAttestation, ...],
+    trusted_reviewers: Mapping[str, tuple[str, object]],
     *,
     workspace_id: str,
+    implementation_commit: str,
     manifest_digest: str,
-    attestations: tuple[ReviewAttestation, ...],
-) -> ReviewReceipt:
-    """Build the separate review receipt. Requires exactly the two distinct
-    required roles, both bound to ``manifest_digest``."""
-    _validate_attestation_set(attestations, manifest_digest)
-    body = _receipt_body(workspace_id, manifest_digest, attestations)
-    receipt_digest = _domain_digest(REVIEW_RECEIPT_DOMAIN, body)
-    return ReviewReceipt(
-        schema=REVIEW_RECEIPT_SCHEMA,
-        workspace_id=workspace_id,
-        manifest_digest=manifest_digest,
-        attestations=attestations,
-        receipt_digest=receipt_digest,
-    )
-
-
-def verify_review_receipt(
-    receipt: ReviewReceipt,
-    public_keys: Mapping[str, object],
-    manifest_digest: str,
+    now: str,
 ) -> None:
-    """Verify the receipt: correct schema, both required roles present/distinct,
-    every attestation verifies under its role's public key and binds the
-    manifest digest, and the receipt digest recomputes."""
-    if receipt.schema != REVIEW_RECEIPT_SCHEMA:
-        raise ConformanceError("receipt_schema_mismatch", f"expected {REVIEW_RECEIPT_SCHEMA!r}")
-    if receipt.manifest_digest != manifest_digest:
-        raise ConformanceError(
-            "receipt_manifest_mismatch",
-            f"receipt binds {receipt.manifest_digest!r}, expected {manifest_digest!r}",
-        )
-    _validate_attestation_set(receipt.attestations, manifest_digest)
-    for a in receipt.attestations:
-        if a.role not in public_keys:
-            raise ConformanceError("receipt_missing_public_key", f"no public key supplied for role {a.role!r}")
-        verify_attestation(a, public_keys[a.role], manifest_digest)
-    expected = _domain_digest(REVIEW_RECEIPT_DOMAIN, _receipt_body(receipt.workspace_id, manifest_digest, receipt.attestations))
-    if expected != receipt.receipt_digest:
-        raise ConformanceError("receipt_digest_mismatch", "receipt_digest does not recompute")
+    if len(attestations) != len(REQUIRED_ROLES):
+        raise ConformanceError("receipt_attestation_count", f"exactly {len(REQUIRED_ROLES)} attestations are required")
+    roles = [attestation.reviewer_role for attestation in attestations]
+    keys = [attestation.reviewer_key_id for attestation in attestations]
+    if len(set(roles)) != len(roles):
+        raise ConformanceError("receipt_duplicate_role", "reviewer roles must be distinct")
+    if len(set(keys)) != len(keys):
+        raise ConformanceError("receipt_duplicate_key", "reviewer keys must be distinct")
+    from cryptography.hazmat.primitives import serialization
 
+    public_key_fingerprints = {
+        hashlib.sha256(
+            public_key.public_bytes(
+                serialization.Encoding.Raw,
+                serialization.PublicFormat.Raw,
+            )
+        ).hexdigest()
+        for _, public_key in trusted_reviewers.values()
+    }
+    if len(public_key_fingerprints) != len(REQUIRED_ROLES):
+        raise ConformanceError(
+            "receipt_duplicate_public_key",
+            "reviewer public-key material must be independently held",
+        )
+    if tuple(roles) != REQUIRED_ROLES:
+        raise ConformanceError("receipt_attestation_order_invalid", f"attestations must use canonical role order {REQUIRED_ROLES}")
+    for attestation in attestations:
+        verify_attestation(
+            attestation,
+            trusted_reviewers,
+            workspace_id=workspace_id,
+            implementation_commit=implementation_commit,
+            manifest_digest=manifest_digest,
+            now=now,
+        )
+
+
+def write_final_review_receipt(
+    *,
+    workspace_id: str,
+    implementation_commit: str,
+    manifest: PreReviewManifest,
+    evidence_join: "EvidenceJoin",
+    attestations: tuple[ReviewAttestation, ...],
+    trusted_reviewers: Mapping[str, tuple[str, object]],
+    now: str,
+) -> bytes:
+    """Write the sole canonical final-review receipt representation."""
+    manifest_digest = manifest.manifest_digest
+    if (
+        manifest.workspace_id != workspace_id
+        or manifest.implementation_commit != implementation_commit
+    ):
+        raise ConformanceError("receipt_manifest_binding_mismatch", "manifest does not bind the receipt target")
+    inventory = _reviewed_artifact_inventory(manifest, evidence_join)
+    for field, value in {
+        "workspace_id": workspace_id,
+        "implementation_commit": implementation_commit,
+        "manifest_digest": manifest_digest,
+    }.items():
+        if not isinstance(value, str) or not value:
+            raise ConformanceError("receipt_invalid_field", f"{field} must be a non-empty string")
+    _validate_attestation_set(
+        attestations, trusted_reviewers, workspace_id=workspace_id,
+        implementation_commit=implementation_commit, manifest_digest=manifest_digest, now=now,
+    )
+    receipt = {
+        "schema": FINAL_REVIEW_RECEIPT_SCHEMA,
+        "workspace_id": workspace_id,
+        "implementation_commit": implementation_commit,
+        "manifest_digest": manifest_digest,
+        "artifact_inventory": inventory,
+        "attestations": [attestation.to_mapping() for attestation in attestations],
+    }
+    return canonical_bytes(receipt)
+
+
+def import_final_review_receipt(
+    receipt_bytes: bytes,
+    *,
+    trusted_reviewers: Mapping[str, tuple[str, object]],
+    workspace_id: str,
+    implementation_commit: str,
+    manifest: PreReviewManifest,
+    evidence_join: "EvidenceJoin",
+    now: str,
+) -> tuple[ReviewAttestation, ...]:
+    """Strictly import and verify a canonical final-review receipt."""
+    try:
+        receipt = json.loads(receipt_bytes)
+    except (TypeError, ValueError, UnicodeDecodeError) as exc:
+        raise ConformanceError("receipt_decode_invalid", "receipt must be UTF-8 JSON") from exc
+    if not isinstance(receipt, dict) or set(receipt) != FINAL_REVIEW_RECEIPT_FIELDS:
+        raise ConformanceError("receipt_fields_invalid", "receipt must use the closed final-review wire")
+    try:
+        if canonical_bytes(receipt) != receipt_bytes:
+            raise ConformanceError("receipt_noncanonical", "receipt bytes are not canonical")
+    except ConformanceError:
+        raise
+    except Exception as exc:
+        raise ConformanceError("receipt_noncanonical", "receipt is not canonicalizable") from exc
+    manifest_digest = manifest.manifest_digest
+    if (
+        manifest.workspace_id != workspace_id
+        or manifest.implementation_commit != implementation_commit
+    ):
+        raise ConformanceError("receipt_manifest_binding_mismatch", "manifest does not bind the receipt target")
+    for field in ("workspace_id", "implementation_commit", "manifest_digest"):
+        if not isinstance(receipt[field], str) or not receipt[field]:
+            raise ConformanceError("receipt_invalid_field", f"{field} must be a non-empty string")
+    if receipt["schema"] != FINAL_REVIEW_RECEIPT_SCHEMA:
+        raise ConformanceError("receipt_schema_mismatch", f"expected {FINAL_REVIEW_RECEIPT_SCHEMA!r}")
+    if (
+        receipt["workspace_id"] != workspace_id
+        or receipt["implementation_commit"] != implementation_commit
+        or receipt["manifest_digest"] != manifest_digest
+    ):
+        raise ConformanceError("receipt_binding_mismatch", "receipt does not bind the expected review target")
+    if receipt["artifact_inventory"] != _reviewed_artifact_inventory(manifest, evidence_join):
+        raise ConformanceError("receipt_inventory_mismatch", "receipt inventory does not exactly match both reviewed manifests")
+    if not isinstance(receipt["attestations"], list):
+        raise ConformanceError("receipt_attestations_invalid", "attestations must be an array")
+    attestations = tuple(_attestation_from_mapping(value) for value in receipt["attestations"])
+    _validate_attestation_set(
+        attestations, trusted_reviewers, workspace_id=workspace_id,
+        implementation_commit=implementation_commit, manifest_digest=manifest_digest, now=now,
+    )
+    return attestations
 
 # ---------------------------------------------------------------------------
 # Three-import evidence join
@@ -371,7 +548,22 @@ def build_evidence_join(
     if extra:
         raise ConformanceError("join_extra_lanes", f"unexpected import receipt lane(s): {sorted(extra)}")
 
-    ordered = tuple((lane, dict(import_receipts[lane])) for lane in REQUIRED_LANES)
+    seen_receipts: set[bytes] = set()
+    ordered_items: list[tuple[str, dict]] = []
+    for lane in REQUIRED_LANES:
+        receipt = import_receipts[lane]
+        if set(receipt) != STRICT_IMPORT_RECEIPT_FIELDS or receipt.get("verified") is not True:
+            raise ConformanceError("join_receipt_invalid", f"lane {lane!r} is not a closed verified import receipt")
+        if receipt.get("artifact_kind") != LANE_ARTIFACT_KINDS[lane] or not receipt.get("source_run_url"):
+            raise ConformanceError("join_receipt_lane_mismatch", f"lane {lane!r} receipt does not bind its expected provenance")
+        if lane in (CONFORMANCE, CANARY) and receipt.get("producer_commit") != implementation_commit:
+            raise ConformanceError("join_receipt_commit_mismatch", f"lane {lane!r} must use implementation_commit")
+        receipt_bytes = canonical_bytes(receipt)
+        if receipt_bytes in seen_receipts:
+            raise ConformanceError("join_receipt_reused", "each lane must have a distinct import receipt")
+        seen_receipts.add(receipt_bytes)
+        ordered_items.append((lane, dict(receipt)))
+    ordered = tuple(ordered_items)
     body = _join_body(workspace_id, implementation_commit, ordered, manifest_digest)
     join_digest = _domain_digest(EVIDENCE_JOIN_DOMAIN, body)
     return EvidenceJoin(
@@ -392,6 +584,18 @@ def verify_evidence_join(join: EvidenceJoin, manifest_digest: str) -> None:
     lanes = [lane for lane, _ in join.import_receipts]
     if sorted(lanes) != sorted(REQUIRED_LANES):
         raise ConformanceError("join_lanes_mismatch", f"expected lanes {sorted(REQUIRED_LANES)}, got {sorted(lanes)}")
+    seen_receipts: set[bytes] = set()
+    for lane, receipt in join.import_receipts:
+        if set(receipt) != STRICT_IMPORT_RECEIPT_FIELDS or receipt.get("verified") is not True:
+            raise ConformanceError("join_receipt_invalid", f"lane {lane!r} is not a closed verified import receipt")
+        if receipt.get("artifact_kind") != LANE_ARTIFACT_KINDS[lane] or not receipt.get("source_run_url"):
+            raise ConformanceError("join_receipt_lane_mismatch", f"lane {lane!r} receipt does not bind its expected provenance")
+        if lane in (CONFORMANCE, CANARY) and receipt.get("producer_commit") != join.implementation_commit:
+            raise ConformanceError("join_receipt_commit_mismatch", f"lane {lane!r} must use implementation_commit")
+        receipt_bytes = canonical_bytes(receipt)
+        if receipt_bytes in seen_receipts:
+            raise ConformanceError("join_receipt_reused", "each lane must have a distinct import receipt")
+        seen_receipts.add(receipt_bytes)
     if join.manifest_digest != manifest_digest:
         raise ConformanceError(
             "join_manifest_mismatch",
@@ -403,3 +607,46 @@ def verify_evidence_join(join: EvidenceJoin, manifest_digest: str) -> None:
     )
     if expected != join.join_digest:
         raise ConformanceError("join_digest_mismatch", "join_digest does not recompute")
+def _reviewed_artifact_inventory(
+    manifest: PreReviewManifest, evidence_join: EvidenceJoin,
+) -> dict[str, str]:
+    """Return the frozen, path-sorted payload inventory shared by both manifests."""
+    verify_evidence_join(evidence_join, manifest.manifest_digest)
+    if (
+        evidence_join.workspace_id != manifest.workspace_id
+        or evidence_join.implementation_commit != manifest.implementation_commit
+    ):
+        raise ConformanceError("receipt_evidence_binding_mismatch", "evidence join does not bind the manifest target")
+
+    manifest_receipts = {bundle.lane: bundle.receipt for bundle in manifest.bundles}
+    join_receipts = dict(evidence_join.import_receipts)
+    if tuple(bundle.lane for bundle in manifest.bundles) != REQUIRED_LANES:
+        raise ConformanceError("receipt_manifest_lanes_invalid", "manifest must contain each lane in canonical order")
+    inventory: dict[str, str] = {}
+    seen_paths: set[str] = set()
+    for lane in REQUIRED_LANES:
+        receipt = manifest_receipts.get(lane)
+        if receipt is None or lane not in join_receipts:
+            raise ConformanceError("receipt_inventory_lane_missing", f"missing reviewed lane {lane!r}")
+        if canonical_bytes(receipt) != canonical_bytes(join_receipts[lane]):
+            raise ConformanceError("receipt_manifest_receipt_mismatch", f"lane {lane!r} differs between reviewed manifests")
+        paths, digests = receipt["payload_paths"], receipt["payload_sha256"]
+        if len(paths) != len(digests) or not paths:
+            raise ConformanceError("receipt_inventory_invalid", f"lane {lane!r} has invalid payload inventory")
+        for path, digest in zip(paths, digests):
+            normalized = PurePosixPath(path).as_posix() if isinstance(path, str) else ""
+            if (
+                not isinstance(path, str)
+                or not path
+                or path != normalized
+                or path.startswith("/")
+                or any(part in (".", "..") for part in PurePosixPath(path).parts)
+            ):
+                raise ConformanceError("receipt_inventory_path_invalid", "payload paths must be canonical relative paths")
+            if path in seen_paths:
+                raise ConformanceError("receipt_inventory_duplicate_path", f"duplicate or aliased payload path {path!r}")
+            if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+                raise ConformanceError("receipt_inventory_digest_invalid", f"payload {path!r} has an invalid SHA-256 digest")
+            seen_paths.add(path)
+            inventory[path] = digest
+    return dict(sorted(inventory.items()))

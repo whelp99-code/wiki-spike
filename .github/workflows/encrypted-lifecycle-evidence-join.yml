@@ -1,0 +1,120 @@
+name: encrypted-lifecycle-evidence-join
+
+# Dispatch-only Gate 8 join. Each lane is an explicit immutable artifact tuple;
+# this workflow neither produces evidence nor infers artifact names or digests.
+on:
+  workflow_dispatch:
+    inputs:
+      gate1_run_id: {description: "Gate 1 producer run id", required: true, type: string}
+      gate1_run_attempt: {description: "Gate 1 producer run attempt", required: true, type: string}
+      gate1_artifact_name: {description: "Exact Gate 1 artifact name", required: true, type: string}
+      gate1_bundle_sha256: {description: "Exact Gate 1 bundle SHA-256", required: true, type: string}
+      conformance_run_id: {description: "Conformance producer run id", required: true, type: string}
+      conformance_run_attempt: {description: "Conformance producer run attempt", required: true, type: string}
+      conformance_artifact_name: {description: "Exact conformance artifact name", required: true, type: string}
+      conformance_bundle_sha256: {description: "Exact conformance bundle SHA-256", required: true, type: string}
+      canary_run_id: {description: "Canary producer run id", required: true, type: string}
+      canary_run_attempt: {description: "Canary producer run attempt", required: true, type: string}
+      canary_artifact_name: {description: "Exact canary artifact name", required: true, type: string}
+      canary_bundle_sha256: {description: "Exact canary bundle SHA-256", required: true, type: string}
+      gate1_commit: {description: "Immutable Gate 1 producer commit", required: true, type: string}
+      implementation_commit: {description: "Shared conformance and canary producer commit", required: true, type: string}
+      contract_digest: {description: "Encrypted lifecycle contract digest", required: true, type: string}
+      toolchain_lock_digest: {description: "Toolchain lock digest", required: true, type: string}
+      workspace_id: {description: "Workspace identifier", required: true, type: string}
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  join:
+    name: Gate 8 separate-lane evidence join (verdict-free)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout implementation commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.implementation_commit }}
+          fetch-depth: 0
+
+      - name: Verify trusted source bindings
+        env:
+          GATE1_COMMIT: ${{ inputs.gate1_commit }}
+          IMPLEMENTATION_COMMIT: ${{ inputs.implementation_commit }}
+          CONTRACT_DIGEST: ${{ inputs.contract_digest }}
+          TOOLCHAIN_LOCK_DIGEST: ${{ inputs.toolchain_lock_digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "${GATE1_COMMIT}^{commit}"
+          git cat-file -e "${IMPLEMENTATION_COMMIT}^{commit}"
+          test "${{ github.sha }}" = "$IMPLEMENTATION_COMMIT"
+          test "$(git symbolic-ref -q HEAD || true)" = ""
+          test "$(git rev-parse HEAD)" = "$IMPLEMENTATION_COMMIT"
+          gate1_workflow_digest="$(git show "${GATE1_COMMIT}:.github/workflows/encrypted-lifecycle-gate1-decision.yml" | sha256sum | cut -d' ' -f1)"
+          conformance_workflow_digest="$(git show "${IMPLEMENTATION_COMMIT}:.github/workflows/encrypted-lifecycle-conformance.yml" | sha256sum | cut -d' ' -f1)"
+          canary_workflow_digest="$(git show "${IMPLEMENTATION_COMMIT}:.github/workflows/encrypted-lifecycle-canary.yml" | sha256sum | cut -d' ' -f1)"
+          git worktree add --detach gate1-tree "$GATE1_COMMIT"
+          implementation_contract_digest="$(find schemas/encrypted-lifecycle -type f -name '*.schema.json' -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
+          gate1_contract_digest="$(find gate1-tree/schemas/encrypted-lifecycle -type f -name '*.schema.json' -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
+          implementation_lock_digest="$(sha256sum pyproject.toml | cut -d' ' -f1)"
+          gate1_lock_digest="$(sha256sum gate1-tree/pyproject.toml | cut -d' ' -f1)"
+          test "$implementation_contract_digest" = "$CONTRACT_DIGEST"
+          test "$gate1_contract_digest" = "$CONTRACT_DIGEST"
+          test "$implementation_lock_digest" = "$TOOLCHAIN_LOCK_DIGEST"
+          test "$gate1_lock_digest" = "$TOOLCHAIN_LOCK_DIGEST"
+          {
+            echo "GATE1_WORKFLOW_DIGEST=$gate1_workflow_digest"
+            echo "CONFORMANCE_WORKFLOW_DIGEST=$conformance_workflow_digest"
+            echo "CANARY_WORKFLOW_DIGEST=$canary_workflow_digest"
+          } >> "$GITHUB_ENV"
+
+      - name: Download exact Gate 1 artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.gate1_run_id }}
+          name: ${{ inputs.gate1_artifact_name }}
+          path: gate8-import/gate1
+
+      - name: Download exact conformance artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.conformance_run_id }}
+          name: ${{ inputs.conformance_artifact_name }}
+          path: gate8-import/conformance
+
+      - name: Download exact canary artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.canary_run_id }}
+          name: ${{ inputs.canary_artifact_name }}
+          path: gate8-import/canary
+
+      - name: Strict-import each explicit lane once and build verdict-free join
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/join_gate8_evidence.py \
+            --gate1 gate8-import/gate1 --conformance gate8-import/conformance --canary gate8-import/canary \
+            --workspace-id "${{ inputs.workspace_id }}" --output-dir gate8-join \
+            --gate1-commit "${{ inputs.gate1_commit }}" --implementation-commit "${{ inputs.implementation_commit }}" \
+            --contract-digest "${{ inputs.contract_digest }}" --toolchain-lock-digest "${{ inputs.toolchain_lock_digest }}" \
+            --gate1-run-id "${{ inputs.gate1_run_id }}" --gate1-run-attempt "${{ inputs.gate1_run_attempt }}" --gate1-repository "${{ github.repository }}" --gate1-source-run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ inputs.gate1_run_id }}" --gate1-artifact-name "${{ inputs.gate1_artifact_name }}" --gate1-bundle-sha256 "${{ inputs.gate1_bundle_sha256 }}" --gate1-workflow-digest "$GATE1_WORKFLOW_DIGEST" \
+            --conformance-run-id "${{ inputs.conformance_run_id }}" --conformance-run-attempt "${{ inputs.conformance_run_attempt }}" --conformance-repository "${{ github.repository }}" --conformance-source-run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ inputs.conformance_run_id }}" --conformance-artifact-name "${{ inputs.conformance_artifact_name }}" --conformance-bundle-sha256 "${{ inputs.conformance_bundle_sha256 }}" --conformance-workflow-digest "$CONFORMANCE_WORKFLOW_DIGEST" \
+            --canary-run-id "${{ inputs.canary_run_id }}" --canary-run-attempt "${{ inputs.canary_run_attempt }}" --canary-repository "${{ github.repository }}" --canary-source-run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ inputs.canary_run_id }}/attempts/${{ inputs.canary_run_attempt }}" --canary-artifact-name "${{ inputs.canary_artifact_name }}" --canary-bundle-sha256 "${{ inputs.canary_bundle_sha256 }}" --canary-workflow-digest "$CANARY_WORKFLOW_DIGEST"
+
+      - name: Upload Gate 8 join evidence
+        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce
+        with:
+          name: gate8-join-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: gate8-join/
+          if-no-files-found: error
+          retention-days: 90

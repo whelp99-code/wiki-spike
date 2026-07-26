@@ -17,6 +17,7 @@ byte-identical in-place re-run leaves the tree unchanged).
 from __future__ import annotations
 
 import copy
+import io
 import hashlib
 import json
 import os
@@ -52,6 +53,7 @@ VALIDATE_SCRIPT = SCRIPTS_DIR / "validate_encrypted_lifecycle_vectors.py"
 BUILD_BUNDLE_SCRIPT = SCRIPTS_DIR / "build_encrypted_lifecycle_bundle.py"
 IMPORT_BUNDLE_SCRIPT = SCRIPTS_DIR / "import_encrypted_lifecycle_bundle.py"
 WRITE_DECISION_SCRIPT = SCRIPTS_DIR / "write_encrypted_lifecycle_gate1_decision.py"
+GATE1_TUPLE_VALIDATOR = SCRIPTS_DIR / "validate_encrypted_lifecycle_gate1_decision.py"
 
 HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -283,18 +285,19 @@ def _build_clean_bundle(tmp_path: Path) -> tuple[Path, Path, dict]:
     input_dir = tmp_path / "input"
     output_dir = tmp_path / "bundle_out"
     input_dir.mkdir()
-    payload = input_dir / "feasibility.json"
-    payload.write_text(json.dumps({"status": "platform_unavailable", "must_verdict": "PASS"}), encoding="utf-8")
+    payload = input_dir / "payload" / "sqlcipher-feasibility.json"
+    payload.parent.mkdir()
+    payload.write_text(json.dumps({"must_verdict": "PASS", "status": "platform_unavailable"}, separators=(",", ":")), encoding="utf-8")
 
     result = run_py(
         [
             str(BUILD_BUNDLE_SCRIPT),
             "--input", str(input_dir),
             "--output", str(output_dir),
-            "--payload", "feasibility.json",
+            "--payload", "payload/sqlcipher-feasibility.json",
             "--artifact-kind", "SQLCIPHER_FEASIBILITY",
-            "--repository", "wiki-spike",
-            "--producer-commit", "deadbeef",
+            "--repository", "wiki-spike/wiki-spike",
+            "--producer-commit", "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
             "--contract-digest", HEX64_A,
             "--toolchain-lock-digest", HEX64_B,
             "--workflow-file-digest", HEX64_C,
@@ -307,43 +310,39 @@ def _build_clean_bundle(tmp_path: Path) -> tuple[Path, Path, dict]:
     return input_dir, output_dir, {"payload": payload}
 
 
-def _exploded_bundle_dir(bundle_out: Path, tmp_path: Path, suffix: str) -> Path:
-    """Build a directory containing only the loose envelope/manifest/payload
-    files (no .tar) so the importer's fallback file-walk path is exercised
-    and manifest bytes can be mutated directly."""
-    exploded = tmp_path / f"exploded_{suffix}"
-    exploded.mkdir()
-    (exploded / "bundle-envelope.json").write_bytes((bundle_out / "bundle-envelope.json").read_bytes())
-    (exploded / "bundle-manifest.json").write_bytes((bundle_out / "bundle-manifest.json").read_bytes())
-    (exploded / "feasibility.json").write_bytes((bundle_out / "feasibility.json").read_bytes() if (bundle_out / "feasibility.json").exists() else (bundle_out.parent / "input" / "feasibility.json").read_bytes())
-    return exploded
+def _archive_path(bundle_out: Path) -> Path:
+    return next(bundle_out.glob("*.tar"))
 
 
 def test_bundle_round_trip_clean_import_matches_digest(tmp_path):
     input_dir, bundle_out, _ = _build_clean_bundle(tmp_path)
-    envelope = json.loads((bundle_out / "bundle-envelope.json").read_text(encoding="utf-8"))
+    tar_path = _archive_path(bundle_out)
+    with tarfile.open(tar_path, "r") as tar:
+        envelope = json.loads(tar.extractfile("artifact-envelope.json").read().decode("utf-8"))
     expected_digest = envelope["bundle_sha256"]
     assert HEX64_RE.match(expected_digest)
 
     import_out = tmp_path / "imported"
-    result = run_py([str(IMPORT_BUNDLE_SCRIPT), "--input", str(bundle_out), "--output", str(import_out)])
+    result = run_py([str(IMPORT_BUNDLE_SCRIPT), "--input", str(tar_path), "--output", str(import_out)])
     assert result.returncode == 0, f"clean bundle import must succeed:\n{result.stdout}\n{result.stderr}"
     receipt = json.loads((import_out / "import-receipt.json").read_text(encoding="utf-8"))
     assert receipt["verified"] is True
     assert receipt["bundle_sha256"] == expected_digest
     assert receipt["artifact_name"] == envelope["artifact_name"]
-    # imported payload bytes must round-trip exactly
-    assert (import_out / "feasibility.json").read_bytes() == (input_dir / "feasibility.json").read_bytes()
+    assert receipt["repository"] == envelope["repository"]
+    assert (import_out / "payload" / "sqlcipher-feasibility.json").read_bytes() == (input_dir / "payload" / "sqlcipher-feasibility.json").read_bytes()
 
 
 def _exploded_dir_from_tar(bundle_out: Path, tmp_path: Path, name: str) -> Path:
     exploded = tmp_path / name
     exploded.mkdir()
-    tar_path = next(bundle_out.glob("*.tar"))
+    tar_path = _archive_path(bundle_out)
     with tarfile.open(tar_path, "r") as tar:
         for member in tar.getmembers():
             data = tar.extractfile(member).read()
-            (exploded / member.name).write_bytes(data)
+            destination = exploded / member.name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(data)
     return exploded
 
 
@@ -387,7 +386,7 @@ def test_bundle_importer_rejects_missing_manifest(tmp_path):
     output_dir = tmp_path / "import_out_missing_manifest"
     result = run_py([str(IMPORT_BUNDLE_SCRIPT), "--input", str(exploded), "--output", str(output_dir)])
     assert result.returncode != 0
-    assert "MANIFEST_MISSING" in result.stderr
+    assert "ARCHIVE_REQUIRED" in result.stderr
     assert not output_dir.exists()
 
 
@@ -399,9 +398,30 @@ def test_bundle_importer_rejects_payload_hash_mismatch(tmp_path):
     output_dir = tmp_path / "import_out_payload_mismatch"
     result = run_py([str(IMPORT_BUNDLE_SCRIPT), "--input", str(exploded), "--output", str(output_dir)])
     assert result.returncode != 0
-    assert "PAYLOAD_HASH_MISMATCH" in result.stderr
+    assert "ARCHIVE_REQUIRED" in result.stderr
     assert not output_dir.exists()
 
+
+def test_bundle_importer_rejects_envelope_with_unapproved_field(tmp_path):
+    _, bundle_out, _ = _build_clean_bundle(tmp_path)
+    with tarfile.open(_archive_path(bundle_out), "r") as tar:
+        files = {member.name: tar.extractfile(member).read() for member in tar.getmembers()}
+    envelope = json.loads(files["artifact-envelope.json"])
+    assert "unapproved_field" not in envelope
+    envelope["unapproved_field"] = "1"
+    files["artifact-envelope.json"] = json.dumps(
+        envelope, sort_keys=True, separators=(",", ":")
+    ).encode()
+    invalid = tmp_path / "invalid-envelope.tar"
+    with tarfile.open(invalid, "w") as tar:
+        for name, data in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            info.mode = 0o644
+            tar.addfile(info, io.BytesIO(data))
+    result = run_py([str(IMPORT_BUNDLE_SCRIPT), "--input", str(invalid), "--output", str(tmp_path / "out")])
+    assert result.returncode != 0
+    assert "ENVELOPE_KEYS_INVALID" in result.stderr
 
 # ---------------------------------------------------------------------------
 # 6. Decision fail-closed: REFUSED on a FAIL vector-validation receipt, a
@@ -693,3 +713,133 @@ def test_freshness_gate_invalid_pair_count_is_exactly_three():
     invalid_pairs = all_pairs - FRESHNESS_VALID_PAIRS
     assert len(FRESHNESS_VALID_PAIRS) == 3
     assert len(invalid_pairs) == 3
+def test_gate1_workflows_have_dedicated_exact_tuple_topology():
+    feasibility = (REPO_ROOT / ".github/workflows/encrypted-lifecycle-sqlcipher-feasibility.yml").read_text(encoding="utf-8")
+    decision = (REPO_ROOT / ".github/workflows/encrypted-lifecycle-gate1-decision.yml").read_text(encoding="utf-8")
+    assert "pull_request:" not in feasibility
+    assert "push:" not in feasibility
+    assert "GATE1_DECISION" not in feasibility
+    assert "SQLCIPHER_FEASIBILITY" in feasibility
+    assert "runs-on: ubuntu-24.04" in feasibility
+    assert "runs-on: [self-hosted, macOS, ARM64, wiki-gate1-workstation]" in decision
+    assert 'test "${{ github.sha }}" = "${{ inputs.gate1_commit }}"' in decision
+    assert 'test "$(uname -r | cut -d. -f1)" = "24"' in decision
+    assert 'test "$(sw_vers -productVersion)"' not in decision
+    assert "15.*) ;; *)" in decision
+    assert "git symbolic-ref -q HEAD" in feasibility
+    assert "git symbolic-ref -q HEAD" in decision
+    assert "overwrite: false" in feasibility
+    assert "overwrite: false" in decision
+    assert "actions/checkout@v4" not in feasibility + decision
+    assert "actions/upload-artifact@v4" not in feasibility + decision
+    assert "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683" in decision
+    assert "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065" in decision
+    assert "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093" in decision
+    assert "actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce" in decision
+    assert "sqlcipher_feasibility_harness.py --commit \"${{ inputs.gate1_commit }}\"" in decision
+    assert "cp artifacts/encrypted-lifecycle/macos-import/payload/sqlcipher-feasibility.json" in decision
+    assert "cp artifacts/encrypted-lifecycle/ubuntu-import/payload/sqlcipher-feasibility.json artifacts/encrypted-lifecycle/gate1-input/payload/macos" not in decision
+    assert "payload/gate1-decision.json" in decision
+    assert "payload/macos/sqlcipher-feasibility.json" in decision
+    assert "payload/ubuntu/import-receipt.json" in decision
+    assert "payload/vector-validation.json" in decision
+
+
+def test_gate1_tuple_validator_rejects_noncomputed_artifact_name(tmp_path):
+    receipt = {
+        "repository": "wiki-spike/wiki-spike",
+        "artifact_kind": "SQLCIPHER_FEASIBILITY",
+        "platform": "github-hosted/ubuntu-24.04/x86_64",
+        "producer_commit": "d" * 40,
+        "contract_digest": HEX64_A,
+        "toolchain_lock_digest": HEX64_B,
+        "workflow_file_digest": HEX64_C,
+        "workflow_run_id": "123",
+        "workflow_run_attempt": "1",
+        "artifact_name": "wrong",
+        "bundle_sha256": HEX64_A,
+        "payload_paths": ["payload/sqlcipher-feasibility.json"],
+        "payload_sha256": [HEX64_B],
+        "source_run_url": "",
+        "verified": True,
+    }
+    path = tmp_path / "receipt.json"
+    path.write_text(json.dumps(receipt, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+    result = run_py(
+        [
+            str(GATE1_TUPLE_VALIDATOR),
+            "--receipt", str(path),
+            "--repository", receipt["repository"],
+            "--producer-commit", receipt["producer_commit"],
+            "--contract-digest", receipt["contract_digest"],
+            "--toolchain-lock-digest", receipt["toolchain_lock_digest"],
+            "--workflow-file-digest", receipt["workflow_file_digest"],
+            "--workflow-run-id", receipt["workflow_run_id"],
+            "--workflow-run-attempt", receipt["workflow_run_attempt"],
+            "--artifact-name", receipt["artifact_name"],
+            "--bundle-sha256", receipt["bundle_sha256"],
+            "--payload-sha256", receipt["payload_sha256"][0],
+        ]
+    )
+    assert result.returncode != 0
+    assert "exact computed bundle name" in result.stderr
+
+
+def test_gate1_tuple_validator_rejects_platform_receipt_substitution(tmp_path):
+    bundle = "a" * 64
+    receipt = {
+        "repository": "wiki-spike/wiki-spike",
+        "artifact_kind": "SQLCIPHER_FEASIBILITY",
+        "platform": "github-hosted/ubuntu-24.04/x86_64",
+        "producer_commit": "d" * 40,
+        "contract_digest": HEX64_A,
+        "toolchain_lock_digest": HEX64_B,
+        "workflow_file_digest": HEX64_C,
+        "workflow_run_id": "123",
+        "workflow_run_attempt": "1",
+        "artifact_name": f"encrypted-lifecycle-sqlcipher-feasibility-123-1-{bundle[:16]}",
+        "bundle_sha256": bundle,
+        "payload_paths": ["payload/sqlcipher-feasibility.json"],
+        "payload_sha256": [HEX64_B],
+        "source_run_url": "",
+        "verified": True,
+    }
+    path = tmp_path / "receipt.json"
+    path.write_text(json.dumps(receipt, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+    result = run_py(
+        [
+            str(GATE1_TUPLE_VALIDATOR), "--receipt", str(path), "--repository", receipt["repository"],
+            "--producer-commit", receipt["producer_commit"], "--contract-digest", receipt["contract_digest"],
+            "--toolchain-lock-digest", receipt["toolchain_lock_digest"], "--workflow-file-digest", receipt["workflow_file_digest"],
+            "--workflow-run-id", receipt["workflow_run_id"], "--workflow-run-attempt", receipt["workflow_run_attempt"],
+            "--artifact-name", receipt["artifact_name"], "--bundle-sha256", receipt["bundle_sha256"],
+            "--payload-sha256", receipt["payload_sha256"][0],
+            "--platform", "self-hosted/macos-15/arm64/wiki-gate1-workstation",
+        ]
+    )
+    assert result.returncode != 0
+    assert "closed expected SQLCIPHER_FEASIBILITY tuple" in result.stderr
+
+def test_decision_writer_refuses_imported_feasibility_commit_mismatch(tmp_path):
+    feasibility = tmp_path / "feasibility.json"
+    feasibility.write_text(
+        json.dumps({"status": "platform_unavailable", "must_verdict": "NOT_RUN", "recorded_commit": "a" * 40}),
+        encoding="utf-8",
+    )
+    output = tmp_path / "decision.json"
+    result = run_py(
+        [
+            str(WRITE_DECISION_SCRIPT),
+            "--feasibility", str(feasibility),
+            "--expected-producer-commit", "b" * 40,
+            "--vector-validation", "artifacts/encrypted-lifecycle/vector-validation-receipt.json",
+            "--adr", "docs/adr/ADR-0026-encrypted-lifecycle-authority-identity.md",
+            "--adr", "docs/adr/ADR-0027-encrypted-lifecycle-recovery-deletion.md",
+            "--schemas-dir", "schemas/encrypted-lifecycle",
+            "--owner", "qa-bot:PRODUCT_OWNER",
+            "--output", str(output),
+        ]
+    )
+    assert result.returncode != 0
+    assert "FEASIBILITY_COMMIT_MISMATCH" in result.stderr
+    assert not output.exists()

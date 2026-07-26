@@ -1,152 +1,96 @@
 name: encrypted-lifecycle-conformance
 
-# Gate 8 three-lane evidence join. Downloads and strictly imports the three
-# immutable Gate 1 / conformance (pre-canary) / canary (24h) artifact tuples,
-# requires a single producer_commit across all three lanes, then builds the
-# VERDICT-FREE pre-review manifest and the evidence join that preserves the
-# three independent import receipts (scripts/join_gate8_evidence.py).
-#
-# This workflow is NOT a delivery gate and never emits a pass/fail verdict:
-# its output manifest is deliberately verdict-free. Gate 8 delivery requires
-# the two independent ARCHITECT/CRITIC attestations and the separate review
-# receipt, produced by the review process over the emitted manifest_digest
-# (see wiki_spike.infrastructure.conformance). Absence of any required dispatch
-# input, any failed strict import, or a producer_commit mismatch is a hard job
-# failure -- there is no false-green path.
-
 on:
   workflow_dispatch:
     inputs:
-      gate1_run_id:
-        description: "Workflow run ID that produced the immutable Gate 1 decision bundle"
+      implementation_commit:
+        description: "Immutable implementation commit to attest"
         required: true
-        type: string
-      canary_run_id:
-        description: "Workflow run ID that produced the 24-hour canary bundle"
-        required: true
-        type: string
-      conformance_run_id:
-        description: "Workflow run ID that produced the pre-canary conformance bundle"
-        required: true
-        type: string
-      workspace_id:
-        description: "Encrypted-lifecycle workspace id recorded in the verdict-free manifest"
-        required: false
-        default: "ws-encrypted-lifecycle"
         type: string
 
 permissions:
   contents: read
-  actions: read
 
 concurrency:
-  group: encrypted-lifecycle-conformance-${{ github.ref }}
-  cancel-in-progress: true
+  group: encrypted-lifecycle-conformance-${{ inputs.implementation_commit }}
+  cancel-in-progress: false
 
 jobs:
-  gate8-evidence-join:
-    name: Gate 8 three-lane evidence join (verdict-free, NOT a delivery gate)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
+  conformance-producer:
+    name: CONFORMANCE_PRE_CANARY producer
+    runs-on: [self-hosted, macOS, ARM64, wiki-conformance-workstation]
+    timeout-minutes: 60
     steps:
-      - name: Fail closed if any required run id is missing
+      - name: Checkout detached implementation commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.implementation_commit }}
+          fetch-depth: 0
+
+      - name: Verify dedicated macOS 15 arm64 workstation and detached HEAD
         shell: bash
         run: |
           set -euo pipefail
-          missing=0
-          if [ -z "${{ inputs.gate1_run_id }}" ]; then echo "::error::gate1_run_id is required"; missing=1; fi
-          if [ -z "${{ inputs.canary_run_id }}" ]; then echo "::error::canary_run_id is required"; missing=1; fi
-          if [ -z "${{ inputs.conformance_run_id }}" ]; then echo "::error::conformance_run_id is required"; missing=1; fi
-          if [ "$missing" -ne 0 ]; then
-            echo "::error::missing required workflow_dispatch input(s); job fails, never a silent no-op"
-            exit 1
-          fi
+          test "$(uname -s)" = "Darwin"
+          test "$(uname -r | cut -d. -f1)" = "24"
+          test "$(uname -m)" = "arm64"
+          case "$(sw_vers -productVersion)" in 15.*) ;; *) echo "::error::CONFORMANCE_PRE_CANARY requires macOS 15"; exit 1 ;; esac
+          test "$(git rev-parse --is-inside-work-tree)" = "true"
+          test "$(git symbolic-ref -q HEAD || true)" = ""
+          test "${{ github.sha }}" = "${{ inputs.implementation_commit }}"
+          test "$(git rev-parse HEAD)" = "${{ inputs.implementation_commit }}"
 
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
-          fetch-depth: 0
+          python-version: "3.12"
 
-      - name: Download Gate 1 decision bundle
-        uses: actions/download-artifact@v4
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ inputs.gate1_run_id }}
-          path: gate8-import/gate1
-          merge-multiple: true
+      - name: Install conformance dependencies
+        run: python -m pip install ".[dev]"
 
-      - name: Download conformance (pre-canary) bundle
-        uses: actions/download-artifact@v4
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ inputs.conformance_run_id }}
-          path: gate8-import/conformance
-          merge-multiple: true
-
-      - name: Download canary (24h) bundle
-        uses: actions/download-artifact@v4
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ inputs.canary_run_id }}
-          path: gate8-import/canary
-          merge-multiple: true
-
-      - name: Verify each tuple imports as a valid acyclic bundle
+      - name: Run conformance and build immutable bundle
+        id: bundle
+        shell: bash
         run: |
           set -euo pipefail
-          for lane in gate1 conformance canary; do
-            if [ -d "gate8-import/$lane" ] && ls gate8-import/$lane/*.tar >/dev/null 2>&1; then
-              python3 scripts/import_encrypted_lifecycle_bundle.py \
-                --input "gate8-import/$lane" \
-                --output "gate8-import/$lane-verified"
-            else
-              echo "::error::no bundle tar found for lane $lane; import verification cannot proceed"
-              exit 1
-            fi
-          done
+          contract_digest="$(find schemas/encrypted-lifecycle -type f -name '*.schema.json' -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | cut -d' ' -f1)"
+          toolchain_lock_digest="$(shasum -a 256 pyproject.toml | cut -d' ' -f1)"
+          workflow_file_digest="$(shasum -a 256 .github/workflows/encrypted-lifecycle-conformance.yml | cut -d' ' -f1)"
+          producer_commit="$(git rev-parse HEAD)"
+          produced_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          source_run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          test "$producer_commit" = "${{ inputs.implementation_commit }}"
+          python3 scripts/run_encrypted_lifecycle_conformance.py \
+            --output-dir artifacts/encrypted-lifecycle/conformance \
+            --bundle-output-dir artifacts/encrypted-lifecycle/conformance \
+            --artifact-metadata-output artifacts/encrypted-lifecycle/conformance/bundle-metadata.json \
+            --repository "${{ github.repository }}" \
+            --workflow-run-id "${{ github.run_id }}" \
+            --workflow-run-attempt "${{ github.run_attempt }}" \
+            --platform "self-hosted/macos-15/arm64/wiki-conformance-workstation" \
+            --produced-at "$produced_at" \
+            --source-run-url "$source_run_url" \
+            --contract-digest "$contract_digest" \
+            --toolchain-lock-digest "$toolchain_lock_digest" \
+            --workflow-file-digest "$workflow_file_digest"
+          python3 -c 'import json, os; m = json.load(open("artifacts/encrypted-lifecycle/conformance/bundle-metadata.json")); print(f"artifact_name={m[\"artifact_name\"]}", file=open(os.environ["GITHUB_OUTPUT"], "a")); print(f"tar_path={m[\"tar_path\"]}", file=open(os.environ["GITHUB_OUTPUT"], "a"))'
 
-      - name: Verify digest/commit binding across the three imported lanes
+      - name: Strictly import local CONFORMANCE_PRE_CANARY bundle
+        shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PYEOF'
-          import json
-          from pathlib import Path
+          metadata="artifacts/encrypted-lifecycle/conformance/bundle-metadata.json"
+          tar_path="${{ steps.bundle.outputs.tar_path }}"
+          contract_digest="$(find schemas/encrypted-lifecycle -type f -name '*.schema.json' -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | cut -d' ' -f1)"
+          toolchain_lock_digest="$(shasum -a 256 pyproject.toml | cut -d' ' -f1)"
+          workflow_file_digest="$(shasum -a 256 .github/workflows/encrypted-lifecycle-conformance.yml | cut -d' ' -f1)"
+          test -f "$tar_path"
+          python3 -c 'import json, sys; from pathlib import Path; sys.path.insert(0, "scripts"); from import_encrypted_lifecycle_bundle import import_bundle, load_archive; m = json.load(open(sys.argv[1])); expected = {"repository": sys.argv[4], "artifact_kind": "CONFORMANCE_PRE_CANARY", "platform": "self-hosted/macos-15/arm64/wiki-conformance-workstation", "producer_commit": sys.argv[5], "contract_digest": sys.argv[6], "toolchain_lock_digest": sys.argv[7], "workflow_file_digest": sys.argv[8], "workflow_run_id": sys.argv[9], "workflow_run_attempt": sys.argv[10], "artifact_name": m["artifact_name"], "bundle_sha256": m["expected"]["bundle_sha256"], "payload_paths": ["payload/conformance-pre-canary.json"], "payload_sha256": m["expected"]["payload_sha256"], "source_run_url": sys.argv[11]}; result = import_bundle(Path(sys.argv[2]), expected=expected); output = Path(sys.argv[3]); output.mkdir(parents=True, exist_ok=True); files = load_archive(Path(sys.argv[2])); [((output / path).parent.mkdir(parents=True, exist_ok=True), (output / path).write_bytes(files[path])) for path in result["payload_paths"]]; (output / "import-receipt.json").write_text(json.dumps(result, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")' "$metadata" "$tar_path" artifacts/encrypted-lifecycle/conformance-imported "${{ github.repository }}" "${{ inputs.implementation_commit }}" "$contract_digest" "$toolchain_lock_digest" "$workflow_file_digest" "${{ github.run_id }}" "${{ github.run_attempt }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-          lanes = ["gate1", "conformance", "canary"]
-          commits = set()
-          for lane in lanes:
-              envelope_path = next(Path(f"gate8-import/{lane}").glob("bundle-envelope.json"))
-              envelope = json.loads(envelope_path.read_text(encoding="utf-8"))
-              commits.add(envelope["producer_commit"])
-              print(f"{lane}: producer_commit={envelope['producer_commit']} artifact_kind={envelope['artifact_kind']}")
-
-          if len(commits) != 1:
-              raise SystemExit(f"::error::producer_commit differs across lanes: {sorted(commits)}")
-          print(f"all three lanes bound to producer_commit={commits.pop()}")
-          PYEOF
-
-      - name: Build verdict-free pre-review manifest + evidence join
-        run: |
-          set -euo pipefail
-          python3 scripts/join_gate8_evidence.py \
-            --gate1 gate8-import/gate1 \
-            --conformance gate8-import/conformance \
-            --canary gate8-import/canary \
-            --workspace-id "${{ inputs.workspace_id }}" \
-            --output-dir gate8-join
-
-      - name: Upload Gate 8 join evidence (verdict-free)
-        uses: actions/upload-artifact@v4
+      - name: Upload immutable CONFORMANCE_PRE_CANARY bundle
+        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce
         with:
-          name: gate8-join-evidence
-          path: gate8-join/
+          name: ${{ steps.bundle.outputs.artifact_name }}
+          path: ${{ steps.bundle.outputs.tar_path }}
+          if-no-files-found: error
           retention-days: 90
-
-      - name: Gate 8 join complete (verdict-free; review attestations pending)
-        run: |
-          echo "Gate 8 three-lane evidence join succeeded."
-          echo "Emitted verdict-free pre-review-manifest.json + evidence-join.json (uploaded as gate8-join-evidence)."
-          echo "This workflow is NOT a delivery gate and emits no pass/fail verdict."
-          echo "Gate 8 delivery requires the two independent ARCHITECT/CRITIC attestations and the"
-          echo "separate review receipt, produced by the review process over the emitted manifest_digest"
-          echo "(see wiki_spike.infrastructure.conformance)."

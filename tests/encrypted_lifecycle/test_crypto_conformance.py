@@ -361,12 +361,9 @@ def test_bundle_one_pass_projection_and_digest_reproduce_byte_for_byte():
     stored_envelope["bundle_sha256"] = bundle_sha256
     from wiki_spike.memory_core.contracts import canonical_bytes
 
-    precount_bytes = canonical_bytes(stored_envelope)
-    stored_envelope["stored_size_bytes"] = str(len(precount_bytes))
     stored_envelope_bytes = canonical_bytes(stored_envelope)
     assert stored_envelope_bytes.hex() == data["stored_envelope_bytes_hex"]
     assert stored_envelope == data["stored_envelope"]
-    assert stored_envelope["stored_size_bytes"] == data["stored_size_bytes"]
 
 
 def test_bundle_one_pass_manifest_mutation_cases_are_noncanonical():

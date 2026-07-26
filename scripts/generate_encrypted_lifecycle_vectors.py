@@ -950,10 +950,19 @@ def build_floor_state_vectors() -> dict:
 
 
 def build_bundle_vectors() -> dict:
-    payload_a = b"payload A content"
-    payload_b = b"payload B content"
-    payload_sha_a = sha256_hex(payload_a)
-    payload_sha_b = sha256_hex(payload_b)
+    payload_files = {
+        "payload/gate1-decision.json": b'{"schema":"wiki-gate1-decision-v1"}',
+        "payload/macos/sqlcipher-feasibility.json": b'{"schema":"wiki-sqlcipher-feasibility-v1","platform":"macos"}',
+        "payload/ubuntu/import-receipt.json": b'{"schema":"wiki-import-receipt-v1","platform":"ubuntu"}',
+        "payload/vector-validation.json": b'{"schema":"wiki-vector-validation-v1"}',
+    }
+    payload_paths = [
+        "payload/gate1-decision.json",
+        "payload/macos/sqlcipher-feasibility.json",
+        "payload/ubuntu/import-receipt.json",
+        "payload/vector-validation.json",
+    ]
+    payload_sha256 = [sha256_hex(payload_files[path]) for path in payload_paths]
 
     run = "123"
     attempt = "1"
@@ -972,10 +981,9 @@ def build_bundle_vectors() -> dict:
         "workflow_run_attempt": attempt,
         "platform": "github-hosted/ubuntu-24.04/x86_64",
         "artifact_name": "",
-        "payload_paths": ["a.txt", "b.txt"],
-        "payload_sha256": [payload_sha_a, payload_sha_b],
+        "payload_paths": payload_paths,
+        "payload_sha256": payload_sha256,
         "bundle_sha256": "",
-        "stored_size_bytes": "0",
         "produced_at": "2026-07-24T00:00:00Z",
     }
 
@@ -985,9 +993,12 @@ def build_bundle_vectors() -> dict:
 
     manifest_entries = [
         {"path": "artifact-envelope.json", "sha256": projected_sha256, "size": str(projected_size)},
-        {"path": "a.txt", "sha256": payload_sha_a, "size": str(len(payload_a))},
-        {"path": "b.txt", "sha256": payload_sha_b, "size": str(len(payload_b))},
+        *[
+            {"path": path, "sha256": sha256_hex(payload_files[path]), "size": str(len(payload_files[path]))}
+            for path in payload_paths
+        ],
     ]
+    manifest_entries.sort(key=lambda entry: entry["path"].encode())
     manifest = {"schema": "wiki-artifact-bundle-manifest-v1", "entries": manifest_entries}
     manifest_canonical_bytes = canonical_bytes(manifest)
     bundle_sha256 = sha256_hex(manifest_canonical_bytes)
@@ -996,8 +1007,6 @@ def build_bundle_vectors() -> dict:
     stored_envelope = dict(template)
     stored_envelope["artifact_name"] = artifact_name
     stored_envelope["bundle_sha256"] = bundle_sha256
-    stored_bytes_precount = canonical_bytes(stored_envelope)
-    stored_envelope["stored_size_bytes"] = str(len(stored_bytes_precount))
     stored_envelope_bytes = canonical_bytes(stored_envelope)
 
     manifest_text = manifest_canonical_bytes.decode("utf-8")
@@ -1031,7 +1040,7 @@ def build_bundle_vectors() -> dict:
     return {
         "schema": "wiki-encrypted-lifecycle-bundle-one-pass-vectors-v1",
         "template_envelope": template,
-        "payload_files": {"a.txt": payload_a.decode(), "b.txt": payload_b.decode()},
+        "payload_files": {path: payload_files[path].decode() for path in payload_paths},
         "projected_envelope_bytes_hex": projected_bytes.hex(),
         "projected_envelope_sha256": projected_sha256,
         "projected_envelope_size": str(projected_size),
@@ -1041,7 +1050,6 @@ def build_bundle_vectors() -> dict:
         "artifact_name": artifact_name,
         "stored_envelope": stored_envelope,
         "stored_envelope_bytes_hex": stored_envelope_bytes.hex(),
-        "stored_size_bytes": stored_envelope["stored_size_bytes"],
         "mutation_cases": mutation_cases,
     }
 
