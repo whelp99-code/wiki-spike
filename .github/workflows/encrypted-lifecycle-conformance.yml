@@ -80,7 +80,7 @@ jobs:
             --contract-digest "$contract_digest" \
             --toolchain-lock-digest "$toolchain_lock_digest" \
             --workflow-file-digest "$workflow_file_digest"
-          python3 -c 'import json, os; m = json.load(open("artifacts/encrypted-lifecycle/conformance/bundle-metadata.json")); print(f"artifact_name={m[\"artifact_name\"]}", file=open(os.environ["GITHUB_OUTPUT"], "a")); print(f"tar_path={m[\"tar_path\"]}", file=open(os.environ["GITHUB_OUTPUT"], "a"))'
+          python3 -c 'import json, os; m = json.load(open("artifacts/encrypted-lifecycle/conformance/bundle-metadata.json")); output = open(os.environ["GITHUB_OUTPUT"], "a"); print("artifact_name=" + m["artifact_name"], file=output); print("tar_path=" + m["tar_path"], file=output)'
 
       - name: Strictly import local CONFORMANCE_PRE_CANARY bundle
         shell: bash
