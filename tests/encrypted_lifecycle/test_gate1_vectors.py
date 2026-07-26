@@ -738,6 +738,7 @@ def test_gate1_workflows_have_dedicated_exact_tuple_topology():
     assert "actions/setup-python@" not in decision
     assert "Bind service-owned Python 3.12" in decision
     assert 'python_bin="$(command -v python3.12)"' in decision
+    assert 'ln -sf "$python_bin" "$shim_dir/python3"' in decision
     assert 'echo "$shim_dir" >> "$GITHUB_PATH"' in decision
     assert 'sqlcipher_prefix="$(brew --prefix sqlcipher)"' in decision
     assert "python -m pip install pysqlcipher3" in decision
