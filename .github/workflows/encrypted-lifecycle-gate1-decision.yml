@@ -151,8 +151,20 @@ jobs:
           python3 scripts/validate_encrypted_lifecycle_vectors.py
           mkdir -p artifacts/encrypted-lifecycle/gate1-input/payload/macos artifacts/encrypted-lifecycle/gate1-input/payload/ubuntu
           cp artifacts/encrypted-lifecycle/macos-import/payload/sqlcipher-feasibility.json artifacts/encrypted-lifecycle/gate1-input/payload/macos/sqlcipher-feasibility.json
-          cp artifacts/encrypted-lifecycle/ubuntu-import/import-receipt.json artifacts/encrypted-lifecycle/gate1-input/payload/ubuntu/import-receipt.json
-          cp artifacts/encrypted-lifecycle/vector-validation-receipt.json artifacts/encrypted-lifecycle/gate1-input/payload/vector-validation.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          for source, destination in (
+              ("artifacts/encrypted-lifecycle/ubuntu-import/import-receipt.json", "artifacts/encrypted-lifecycle/gate1-input/payload/ubuntu/import-receipt.json"),
+              ("artifacts/encrypted-lifecycle/vector-validation-receipt.json", "artifacts/encrypted-lifecycle/gate1-input/payload/vector-validation.json"),
+          ):
+              payload = json.loads(Path(source).read_text(encoding="utf-8"))
+              Path(destination).write_text(
+                  json.dumps(payload, sort_keys=True, separators=(",", ":")),
+                  encoding="utf-8",
+              )
+          PY
           python3 scripts/write_encrypted_lifecycle_gate1_decision.py \
             --feasibility artifacts/encrypted-lifecycle/macos-import/payload/sqlcipher-feasibility.json \
             --feasibility artifacts/encrypted-lifecycle/ubuntu-import/payload/sqlcipher-feasibility.json \
