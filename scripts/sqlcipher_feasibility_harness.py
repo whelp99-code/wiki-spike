@@ -126,17 +126,26 @@ def _run_scorecard(driver: Any, workdir: Path) -> tuple[list[Check], dict[str, f
     db1 = workdir / "check1.db"
 
     def check_key_before_open(check: Check) -> None:
-        conn = driver.connect(str(db1))
+        keyed_conn = driver.connect(str(db1))
+        try:
+            keyed_conn.execute(f"PRAGMA key = '{TEST_KEY_A}'")
+            keyed_conn.execute("CREATE TABLE encrypted_probe (v TEXT)")
+            keyed_conn.execute("INSERT INTO encrypted_probe VALUES ('key-required')")
+            keyed_conn.commit()
+        finally:
+            keyed_conn.close()
+
+        unkeyed_conn = driver.connect(str(db1))
         try:
             failed = False
             try:
-                conn.execute("SELECT count(*) FROM sqlite_master").fetchall()
+                unkeyed_conn.execute("SELECT v FROM encrypted_probe").fetchall()
             except Exception:
                 failed = True
-            assert failed, "reading an encrypted-intent DB before PRAGMA key succeeded"
-            check.detail = "read before key pragma raised as required"
+            assert failed, "reading an existing encrypted DB before PRAGMA key succeeded"
+            check.detail = "existing encrypted DB rejected read before key pragma"
         finally:
-            conn.close()
+            unkeyed_conn.close()
 
     checks.append(_run_check("key_before_open_enforced", check_key_before_open))
 

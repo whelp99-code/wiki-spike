@@ -68,7 +68,14 @@ jobs:
           echo "$shim_dir" >> "$GITHUB_PATH"
 
       - name: Install Gate 1 decision dependencies
-        run: python -m pip install ".[dev]"
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install ".[dev]"
+          sqlcipher_prefix="$(brew --prefix sqlcipher)"
+          test -f "$sqlcipher_prefix/include/sqlcipher/sqlite3.h"
+          CPPFLAGS="-I$sqlcipher_prefix/include" LDFLAGS="-L$sqlcipher_prefix/lib" python -m pip install pysqlcipher3
+          python -c "from pysqlcipher3 import dbapi2; assert dbapi2.connect(':memory:').execute('PRAGMA cipher_version').fetchone()[0]"
 
       - name: Download exact SQLCIPHER_FEASIBILITY artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
