@@ -43,10 +43,16 @@ jobs:
           test "${{ github.sha }}" = "${{ inputs.implementation_commit }}"
           test "$(git rev-parse HEAD)" = "${{ inputs.implementation_commit }}"
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
-        with:
-          python-version: "3.12"
+      - name: Bind service-owned Python 3.12
+        shell: bash
+        run: |
+          set -euo pipefail
+          python_bin="$(command -v python3.12)"
+          test "$( "$python_bin" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' )" = "3.12"
+          shim_dir="$RUNNER_TEMP/python312-bin"
+          mkdir -p "$shim_dir"
+          ln -sf "$python_bin" "$shim_dir/python"
+          echo "$shim_dir" >> "$GITHUB_PATH"
       - name: Verify service-owned durable state root
         shell: bash
         run: |
