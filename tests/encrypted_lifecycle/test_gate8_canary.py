@@ -122,7 +122,7 @@ def test_canary_workflow_is_a_dedicated_macos_producer():
     assert "runs-on: [self-hosted, macOS, ARM64, wiki-canary-workstation]" in workflow
     assert "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683" in workflow
     assert "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065" in workflow
-    assert "actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce" in workflow
+    assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in workflow
     assert "implementation_commit:" in workflow
     assert 'ref: ${{ inputs.implementation_commit }}' in workflow
     assert 'test "$(git symbolic-ref -q HEAD || true)" = ""' in workflow

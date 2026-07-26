@@ -210,7 +210,7 @@ jobs:
             --output artifacts/encrypted-lifecycle/gate1-local-import
 
       - name: Upload immutable GATE1_DECISION bundle
-        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ${{ steps.bundle.outputs.artifact_name }}
           path: artifacts/encrypted-lifecycle/gate1-bundle/${{ steps.bundle.outputs.artifact_name }}.tar
