@@ -507,6 +507,31 @@ def _discover_durable_checkpoint(root: Path, binding: dict[str, str], duration_s
     return state_dir, checkpoint
 
 
+def _wait_for_scheduled_probe(
+    scheduled_at: Decimal,
+    last_observed: Decimal,
+    interval_seconds: int,
+    monotonic_origin: float,
+    wall_origin: Decimal,
+) -> None:
+    """Wait for the canonical wall-clock slot without accepting an early wake."""
+    while True:
+        now = Decimal(str(time.time()))
+        if now < last_observed:
+            raise ValueError("CANARY_24H clock rollback detected")
+        if now >= scheduled_at + interval_seconds:
+            raise ValueError("CANARY_24H scheduled probe was skipped")
+        if now >= scheduled_at:
+            return
+        monotonic_delay = float(scheduled_at - wall_origin) - (
+            time.monotonic() - monotonic_origin
+        )
+        wall_delay = float(scheduled_at - now)
+        # A sleep may return early.  Keep waiting on the wall-clock schedule, with
+        # a small positive sleep to avoid spinning when the remaining delay rounds down.
+        time.sleep(max(wall_delay, monotonic_delay, float(_EPOCH_PRECISION)))
+
+
 def run_canary(
     duration_seconds: int,
     interval_seconds: int,
@@ -559,17 +584,20 @@ def run_canary(
         probe_index = _parse_canonical_integer(checkpoint["next_probe_index"], "next_probe_index")
         scheduled_at = _parse_canonical_epoch(checkpoint["next_probe_at_epoch"], "next_probe_at_epoch")
         last_observed = _parse_canonical_epoch(checkpoint["last_observed_epoch"], "last_observed_epoch")
-        now = Decimal(str(time.time()))
-        if now < last_observed:
-            raise ValueError("CANARY_24H clock rollback detected")
-        if now >= scheduled_at + interval_seconds:
-            raise ValueError("CANARY_24H scheduled probe was skipped")
-        delay = float(scheduled_at - wall_origin) - (time.monotonic() - monotonic_origin)
-        if delay > 0:
-            time.sleep(delay)
+        _wait_for_scheduled_probe(
+            scheduled_at,
+            last_observed,
+            interval_seconds,
+            monotonic_origin,
+            wall_origin,
+        )
         probe = run_probe(probe_index)
         completed_at = Decimal(str(time.time())).quantize(_EPOCH_PRECISION, rounding=ROUND_DOWN)
-        if completed_at < last_observed or completed_at > scheduled_at + interval_seconds:
+        if (
+            completed_at < scheduled_at
+            or completed_at < last_observed
+            or completed_at > scheduled_at + interval_seconds
+        ):
             raise ValueError("CANARY_24H clock rollback or skipped probe detected")
         probe["scheduled_at_epoch"] = _canonical_epoch(scheduled_at)
         probe["completed_at_epoch"] = _canonical_epoch(completed_at)
