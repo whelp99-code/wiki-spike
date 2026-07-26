@@ -73,7 +73,7 @@ def _bundles() -> dict:
             artifact_name="encrypted-lifecycle-gate1-decision-1-1-0123456789abcdef",
             artifact_kind="GATE1_DECISION",
             bundle_sha256="11" * 32,
-            platform="self-hosted/macos-15/arm64/wiki-gate1-workstation",
+            platform="self-hosted/macos-26/arm64/wiki-gate1-workstation",
             workflow_run_id="1",
             payload_paths=[
                 "payload/gate1-decision.json",
@@ -87,7 +87,7 @@ def _bundles() -> dict:
             artifact_name="encrypted-lifecycle-conformance-pre-canary-2-1-0123456789abcdef",
             artifact_kind="CONFORMANCE_PRE_CANARY",
             bundle_sha256="22" * 32,
-            platform="self-hosted/macos-15/arm64/wiki-conformance-workstation",
+            platform="self-hosted/macos-26/arm64/wiki-conformance-workstation",
             workflow_run_id="2",
             payload_paths=["payload/conformance-pre-canary.json"],
             payload_sha256=["51" * 32],
@@ -96,7 +96,7 @@ def _bundles() -> dict:
             artifact_name="encrypted-lifecycle-canary-24h-3-1-0123456789abcdef",
             artifact_kind="CANARY_24H",
             bundle_sha256="33" * 32,
-            platform="self-hosted/macos-15/arm64/wiki-canary-workstation",
+            platform="self-hosted/macos-26/arm64/wiki-canary-workstation",
             workflow_run_id="3",
             payload_paths=["payload/rollout-evidence.json"],
             payload_sha256=["61" * 32],
@@ -532,7 +532,7 @@ def test_conformance_producer_issues_exact_payload_and_strictly_imports(tmp_path
             "--repository", "owner/repository",
             "--workflow-run-id", "7",
             "--workflow-run-attempt", "1",
-            "--platform", "self-hosted/macos-15/arm64/wiki-conformance-workstation",
+            "--platform", "self-hosted/macos-26/arm64/wiki-conformance-workstation",
             "--produced-at", "2026-07-26T01:02:03Z",
             "--source-run-url", "https://github.example/owner/repository/actions/runs/7",
             "--contract-digest", "11" * 32,
@@ -573,7 +573,7 @@ def test_conformance_producer_strict_import_rejects_wrong_expected_tuple(tmp_pat
             "--repository", "owner/repository",
             "--workflow-run-id", "7",
             "--workflow-run-attempt", "1",
-            "--platform", "self-hosted/macos-15/arm64/wiki-conformance-workstation",
+            "--platform", "self-hosted/macos-26/arm64/wiki-conformance-workstation",
             "--produced-at", "2026-07-26T01:02:03Z",
             "--source-run-url", "https://github.example/owner/repository/actions/runs/7",
             "--contract-digest", "11" * 32,
@@ -607,7 +607,9 @@ def test_gate8_conformance_workflow_is_a_dedicated_macos_producer():
     assert 'test "$(git symbolic-ref -q HEAD || true)" = ""' in conformance
     assert 'test "$(git rev-parse HEAD)" = "${{ inputs.implementation_commit }}"' in conformance
     assert 'test "$(uname -s)" = "Darwin"' in conformance
-    assert 'test "$(uname -r | cut -d. -f1)" = "24"' in conformance
+    assert 'test "$(uname -r | cut -d. -f1)" = "25"' in conformance
+    assert 'case "$(sw_vers -productVersion)" in 26.*)' in conformance
+    assert "26.*) ;; *)" in conformance
     assert 'test "$(uname -m)" = "arm64"' in conformance
     assert 'test "${{ github.sha }}" = "${{ inputs.implementation_commit }}"' in conformance
     for action in ("checkout", "setup-python", "upload-artifact"):

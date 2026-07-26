@@ -725,9 +725,9 @@ def test_gate1_workflows_have_dedicated_exact_tuple_topology():
     assert "runs-on: ubuntu-24.04" in feasibility
     assert "runs-on: [self-hosted, macOS, ARM64, wiki-gate1-workstation]" in decision
     assert 'test "${{ github.sha }}" = "${{ inputs.gate1_commit }}"' in decision
-    assert 'test "$(uname -r | cut -d. -f1)" = "24"' in decision
-    assert 'test "$(sw_vers -productVersion)"' not in decision
-    assert "15.*) ;; *)" in decision
+    assert 'test "$(uname -r | cut -d. -f1)" = "25"' in decision
+    assert 'case "$(sw_vers -productVersion)" in 26.*)' in decision
+    assert "26.*) ;; *)" in decision
     assert "git symbolic-ref -q HEAD" in feasibility
     assert "git symbolic-ref -q HEAD" in decision
     assert "overwrite: false" in feasibility
@@ -816,7 +816,7 @@ def test_gate1_tuple_validator_rejects_platform_receipt_substitution(tmp_path):
             "--workflow-run-id", receipt["workflow_run_id"], "--workflow-run-attempt", receipt["workflow_run_attempt"],
             "--artifact-name", receipt["artifact_name"], "--bundle-sha256", receipt["bundle_sha256"],
             "--payload-sha256", receipt["payload_sha256"][0],
-            "--platform", "self-hosted/macos-15/arm64/wiki-gate1-workstation",
+            "--platform", "self-hosted/macos-26/arm64/wiki-gate1-workstation",
         ]
     )
     assert result.returncode != 0
