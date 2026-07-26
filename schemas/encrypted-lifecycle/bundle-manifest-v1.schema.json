@@ -31,9 +31,9 @@
         "platform": {
           "enum": [
             "github-hosted/ubuntu-24.04/x86_64",
-            "self-hosted/macos-15/arm64/wiki-gate1-workstation",
-            "self-hosted/macos-15/arm64/wiki-conformance-workstation",
-            "self-hosted/macos-15/arm64/wiki-canary-workstation"
+            "self-hosted/macos-26/arm64/wiki-gate1-workstation",
+            "self-hosted/macos-26/arm64/wiki-conformance-workstation",
+            "self-hosted/macos-26/arm64/wiki-canary-workstation"
           ]
         },
         "artifact_name": {

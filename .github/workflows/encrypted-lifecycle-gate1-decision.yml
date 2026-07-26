@@ -44,15 +44,15 @@ jobs:
           ref: ${{ inputs.gate1_commit }}
           fetch-depth: 0
 
-      - name: Verify Darwin 24/macOS 15 arm64 workstation and detached triggering commit
+      - name: Verify Darwin 25/macOS 26 arm64 workstation and detached triggering commit
         shell: bash
         run: |
           set -euo pipefail
           test "${{ github.sha }}" = "${{ inputs.gate1_commit }}"
           test "$(uname -s)" = "Darwin"
-          test "$(uname -r | cut -d. -f1)" = "24"
+          test "$(uname -r | cut -d. -f1)" = "25"
           test "$(uname -m)" = "arm64"
-          case "$(sw_vers -productVersion)" in 15.*) ;; *) echo "::error::GATE1_DECISION requires macOS 15"; exit 1 ;; esac
+          case "$(sw_vers -productVersion)" in 26.*) ;; *) echo "::error::GATE1_DECISION requires macOS 26"; exit 1 ;; esac
           test "$(git symbolic-ref -q HEAD || true)" = ""
           test "$(git rev-parse HEAD)" = "${{ inputs.gate1_commit }}"
 
@@ -123,13 +123,13 @@ jobs:
           contract_digest="$(find schemas/encrypted-lifecycle -type f -name '*.schema.json' -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | cut -d' ' -f1)"
           toolchain_lock_digest="$(shasum -a 256 pyproject.toml | cut -d' ' -f1)"
           workflow_file_digest="$(shasum -a 256 .github/workflows/encrypted-lifecycle-gate1-decision.yml | cut -d' ' -f1)"
-          python3 scripts/build_encrypted_lifecycle_bundle.py --input artifacts/encrypted-lifecycle/macos-feasibility --output artifacts/encrypted-lifecycle/macos-bundle --payload payload/sqlcipher-feasibility.json --artifact-kind SQLCIPHER_FEASIBILITY --repository "${{ github.repository }}" --producer-commit "${{ inputs.gate1_commit }}" --contract-digest "$contract_digest" --toolchain-lock-digest "$toolchain_lock_digest" --workflow-file-digest "$workflow_file_digest" --workflow-run-id "${{ github.run_id }}" --workflow-run-attempt "${{ github.run_attempt }}" --platform "self-hosted/macos-15/arm64/wiki-gate1-workstation"
+          python3 scripts/build_encrypted_lifecycle_bundle.py --input artifacts/encrypted-lifecycle/macos-feasibility --output artifacts/encrypted-lifecycle/macos-bundle --payload payload/sqlcipher-feasibility.json --artifact-kind SQLCIPHER_FEASIBILITY --repository "${{ github.repository }}" --producer-commit "${{ inputs.gate1_commit }}" --contract-digest "$contract_digest" --toolchain-lock-digest "$toolchain_lock_digest" --workflow-file-digest "$workflow_file_digest" --workflow-run-id "${{ github.run_id }}" --workflow-run-attempt "${{ github.run_attempt }}" --platform "self-hosted/macos-26/arm64/wiki-gate1-workstation"
           macos_tar="$(find artifacts/encrypted-lifecycle/macos-bundle -maxdepth 1 -type f -name '*.tar' -print)"
           test "$(printf '%s\n' "$macos_tar" | sed '/^$/d' | wc -l | tr -d ' ')" = "1"
           python3 scripts/import_encrypted_lifecycle_bundle.py --input "$macos_tar" --output artifacts/encrypted-lifecycle/macos-import
           receipt=artifacts/encrypted-lifecycle/macos-import/import-receipt.json
           field() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$receipt" "$1"; }
-          python3 scripts/validate_encrypted_lifecycle_gate1_decision.py --receipt "$receipt" --repository "${{ github.repository }}" --producer-commit "${{ inputs.gate1_commit }}" --contract-digest "$(field contract_digest)" --toolchain-lock-digest "$(field toolchain_lock_digest)" --workflow-file-digest "$(field workflow_file_digest)" --workflow-run-id "$(field workflow_run_id)" --workflow-run-attempt "$(field workflow_run_attempt)" --artifact-name "$(field artifact_name)" --bundle-sha256 "$(field bundle_sha256)" --payload-sha256 "$(python3 -c 'import json; print(json.load(open("'"$receipt"'"))["payload_sha256"][0])')" --platform "self-hosted/macos-15/arm64/wiki-gate1-workstation"
+          python3 scripts/validate_encrypted_lifecycle_gate1_decision.py --receipt "$receipt" --repository "${{ github.repository }}" --producer-commit "${{ inputs.gate1_commit }}" --contract-digest "$(field contract_digest)" --toolchain-lock-digest "$(field toolchain_lock_digest)" --workflow-file-digest "$(field workflow_file_digest)" --workflow-run-id "$(field workflow_run_id)" --workflow-run-attempt "$(field workflow_run_attempt)" --artifact-name "$(field artifact_name)" --bundle-sha256 "$(field bundle_sha256)" --payload-sha256 "$(python3 -c 'import json; print(json.load(open("'"$receipt"'"))["payload_sha256"][0])')" --platform "self-hosted/macos-26/arm64/wiki-gate1-workstation"
 
       - name: Validate independent evidence, vectors, and write Gate 1 decision
         shell: bash
@@ -196,7 +196,7 @@ jobs:
             --workflow-file-digest "$workflow_file_digest" \
             --workflow-run-id "${{ github.run_id }}" \
             --workflow-run-attempt "${{ github.run_attempt }}" \
-            --platform "self-hosted/macos-15/arm64/wiki-gate1-workstation"
+            --platform "self-hosted/macos-26/arm64/wiki-gate1-workstation"
           tar_path="$(find artifacts/encrypted-lifecycle/gate1-bundle -maxdepth 1 -type f -name '*.tar' -print)"
           test "$(printf '%s\n' "$tar_path" | sed '/^$/d' | wc -l | tr -d ' ')" = "1"
           echo "artifact_name=${tar_path##*/}" | sed 's/\.tar$//' >> "$GITHUB_OUTPUT"

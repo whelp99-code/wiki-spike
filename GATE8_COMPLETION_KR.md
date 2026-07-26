@@ -19,7 +19,7 @@
 | **Conformance machinery** | `conformance.py`: verdict-free pre-review manifest + two independent attestation(ARCHITECT/CRITIC, R10-2 domain-separated) + separate receipt + three-import evidence join. | ✅ |
 | **Same-commit conformance run** | `run_encrypted_lifecycle_conformance.py`: 현재 커밋에서 전체 conformance surface 실행 → `CONFORMANCE_PRE_CANARY` bundle 산출. fail-closed(위조 green 불가). | ✅ |
 | **Three-lane evidence join** | `join_gate8_evidence.py` + conformance workflow: 세 immutable bundle(gate1/conformance/canary) strict import → 단일 producer_commit 검증 → verdict-free manifest + evidence join. `gate8_not_implemented` 제거. | ✅ |
-| **24-hour canary** | `run_encrypted_lifecycle_canary_24h.py` + `encrypted-lifecycle-canary-24h.yml`: self-hosted macOS runner에서 정확히 24h, 15분 주기 remember→decrypt→forget/veto round-trip → `CANARY_24H` bundle. fail-closed. | ✅ (코드/워크플로) |
+| **24-hour canary** | `run_encrypted_lifecycle_canary_24h.py` + `encrypted-lifecycle-canary.yml`: Darwin 25, macOS 26.* self-hosted arm64 runner에서 정확히 24h, 15분 주기 remember→decrypt→forget/veto round-trip → `CANARY_24H` bundle. fail-closed. | ✅ (코드/워크플로) |
 | **Runbook** | `docs/gate8-runbook.md`: lane/producer, conformance run, 24h canary, three-lane join, independent review 절차. | ✅ |
 | **Red-team report** | `artifacts/conformance/encrypted-lifecycle/gate8/redteam/red-team-report.json`: 33개 adversarial case 전부 PASS. | ✅ |
 
@@ -55,7 +55,7 @@ G8-09  Gate 8 red-team report + close-out (this commit)
 
 다음은 self-hosted 인프라/실시간이 필요해 이 세션에서 **코드·워크플로·runbook으로 구축**했으나 실제 실행은 CI에서 이루어진다:
 
-- **정확히 24시간 canary 실제 실행** — self-hosted macOS 15/arm64 runner에서 24h 윈도우 필요(`encrypted-lifecycle-canary-24h.yml`).
+- **정확히 24시간 canary 실제 실행** — Darwin 25, macOS 26.* self-hosted arm64 runner에서 24h 윈도우 필요(`encrypted-lifecycle-canary.yml`).
 - **세 immutable tuple의 실제 CI 산출/import** — gate1/conformance/canary bundle은 각 워크플로 실행이 산출; join은 그 산출물을 소비.
 - **두 독립 ARCHITECT/CRITIC attestation + separate receipt 서명** — 독립 키를 가진 리뷰 프로세스가 manifest_digest 위에 서명(machinery는 구축·검증 완료, 서명은 위조 불가).
 

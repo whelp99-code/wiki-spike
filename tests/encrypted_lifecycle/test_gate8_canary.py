@@ -128,7 +128,9 @@ def test_canary_workflow_is_a_dedicated_macos_producer():
     assert 'test "$(git symbolic-ref -q HEAD || true)" = ""' in workflow
     assert 'test "$(git rev-parse HEAD)" = "${{ inputs.implementation_commit }}"' in workflow
     assert 'test "$(uname -s)" = "Darwin"' in workflow
-    assert 'test "$(uname -r | cut -d. -f1)" = "24"' in workflow
+    assert 'test "$(uname -r | cut -d. -f1)" = "25"' in workflow
+    assert 'case "$(sw_vers -productVersion)" in 26.*)' in workflow
+    assert "26.*) ;; *)" in workflow
     assert 'test "$(uname -m)" = "arm64"' in workflow
     assert "import_bundle(Path(sys.argv[1]), expected=expected)" in workflow
     assert "canary-expected-tuple.json" in workflow
@@ -384,7 +386,7 @@ def test_producer_issues_exact_rollout_payload_and_strictly_imports_it(tmp_path,
         "--durable-state-root", str(tmp_path),
         "--repository", "owner/repo", "--workflow-run-id", "1", "--workflow-run-attempt", "1",
         "--implementation-commit", "a" * 40, "--source-run-url", "https://example.test/run/1",
-        "--platform", "self-hosted/macos-15/arm64/wiki-canary-workstation",
+        "--platform", "self-hosted/macos-26/arm64/wiki-canary-workstation",
         "--contract-digest", "b" * 64, "--toolchain-lock-digest", "c" * 64,
         "--workflow-file-digest", "d" * 64,
     ]) == 0

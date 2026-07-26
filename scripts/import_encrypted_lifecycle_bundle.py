@@ -7,7 +7,7 @@ from typing import Any, Mapping
 
 ENVELOPE_SCHEMA="wiki-artifact-bundle-envelope-v1"; MANIFEST_SCHEMA="wiki-artifact-bundle-manifest-v1"; ENVELOPE_ENTRY_PATH="artifact-envelope.json"; MANIFEST_ENTRY_PATH="bundle-manifest.json"
 KIND_PAYLOADS={"SQLCIPHER_FEASIBILITY":("payload/sqlcipher-feasibility.json",),"GATE1_DECISION":("payload/gate1-decision.json","payload/macos/sqlcipher-feasibility.json","payload/ubuntu/import-receipt.json","payload/vector-validation.json"),"CONFORMANCE_PRE_CANARY":("payload/conformance-pre-canary.json",),"CANARY_24H":("payload/rollout-evidence.json",)}
-PLATFORMS=frozenset(("github-hosted/ubuntu-24.04/x86_64","self-hosted/macos-15/arm64/wiki-gate1-workstation","self-hosted/macos-15/arm64/wiki-conformance-workstation","self-hosted/macos-15/arm64/wiki-canary-workstation"))
+PLATFORMS=frozenset(("github-hosted/ubuntu-24.04/x86_64","self-hosted/macos-26/arm64/wiki-gate1-workstation","self-hosted/macos-26/arm64/wiki-conformance-workstation","self-hosted/macos-26/arm64/wiki-canary-workstation"))
 HEX64=re.compile(r"^[0-9a-f]{64}$"); SHA40=re.compile(r"^[0-9a-f]{40}$"); DECIMAL=re.compile(r"^(0|[1-9][0-9]*)$"); REPOSITORY=re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"); TIMESTAMP=re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
 
 class BundleImportError(Exception):

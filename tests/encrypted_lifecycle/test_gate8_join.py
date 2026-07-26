@@ -24,10 +24,50 @@ for _p in (str(SCRIPTS), str(SRC)):
 
 import build_encrypted_lifecycle_bundle as builder  # noqa: E402
 import join_gate8_evidence as joiner  # noqa: E402
+import import_encrypted_lifecycle_bundle as importer  # noqa: E402
 
 GATE1_COMMIT = "ab" * 20
 COMMIT = "cd" * 20
 ZERO64 = "0" * 64
+
+MACOS26_PLATFORMS = {
+    "self-hosted/macos-26/arm64/wiki-gate1-workstation",
+    "self-hosted/macos-26/arm64/wiki-conformance-workstation",
+    "self-hosted/macos-26/arm64/wiki-canary-workstation",
+}
+CLOSED_PLATFORMS = {"github-hosted/ubuntu-24.04/x86_64", *MACOS26_PLATFORMS}
+OLD_MACOS15_PLATFORMS = (
+    "self-hosted/macos-15/arm64/wiki-gate1-workstation",
+    "self-hosted/macos-15/arm64/wiki-conformance-workstation",
+    "self-hosted/macos-15/arm64/wiki-canary-workstation",
+)
+
+
+def test_platform_contract_is_exact_and_rejects_all_macos15_tokens():
+    schema = json.loads(
+        (REPO_ROOT / "schemas/encrypted-lifecycle/bundle-manifest-v1.schema.json").read_text()
+    )
+    schema_platforms = set(
+        schema["definitions"]["bundleEnvelopeV1"]["properties"]["platform"]["enum"]
+    )
+    assert builder.PLATFORMS == CLOSED_PLATFORMS
+    assert importer.PLATFORMS == CLOSED_PLATFORMS
+    assert schema_platforms == CLOSED_PLATFORMS
+    assert {spec["platform"] for spec in joiner.LANE_SPECS.values()} == MACOS26_PLATFORMS
+
+    for old_platform in OLD_MACOS15_PLATFORMS:
+        with pytest.raises(ValueError, match="closed token"):
+            builder.validate_inputs(
+                repository="owner/repository",
+                producer_commit="a" * 40,
+                contract_digest="b" * 64,
+                toolchain_lock_digest="c" * 64,
+                workflow_file_digest="d" * 64,
+                workflow_run_id="1",
+                workflow_run_attempt="1",
+                platform_token=old_platform,
+                produced_at="2026-07-26T00:00:00Z",
+            )
 
 _LANES = [
     (
@@ -98,7 +138,7 @@ def _payload(lane: str) -> bytes:
                 "current_workflow_run_id": "1",
                 "current_workflow_run_attempt": "1",
                 "implementation_commit": COMMIT,
-                "platform": "self-hosted/macos-15/arm64/wiki-canary-workstation",
+                "platform": "self-hosted/macos-26/arm64/wiki-canary-workstation",
                 "workflow_file_digest": ZERO64,
                 "contract_digest": ZERO64,
                 "toolchain_lock_digest": ZERO64,
@@ -165,9 +205,9 @@ def _build_lane(
         workflow_run_id="1",
         workflow_run_attempt="1",
         platform_token={
-            "GATE1_DECISION": "self-hosted/macos-15/arm64/wiki-gate1-workstation",
-            "CONFORMANCE_PRE_CANARY": "self-hosted/macos-15/arm64/wiki-conformance-workstation",
-            "CANARY_24H": "self-hosted/macos-15/arm64/wiki-canary-workstation",
+            "GATE1_DECISION": "self-hosted/macos-26/arm64/wiki-gate1-workstation",
+            "CONFORMANCE_PRE_CANARY": "self-hosted/macos-26/arm64/wiki-conformance-workstation",
+            "CANARY_24H": "self-hosted/macos-26/arm64/wiki-canary-workstation",
         }[kind],
         produced_at="2026-01-01T00:00:00Z",
     )

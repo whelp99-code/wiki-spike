@@ -16,7 +16,7 @@ DECIMAL = re.compile(r"^(0|[1-9][0-9]*)$")
 KIND = "SQLCIPHER_FEASIBILITY"
 PAYLOAD_PATH = "payload/sqlcipher-feasibility.json"
 UBUNTU_PLATFORM = "github-hosted/ubuntu-24.04/x86_64"
-MACOS_PLATFORM = "self-hosted/macos-15/arm64/wiki-gate1-workstation"
+MACOS_PLATFORM = "self-hosted/macos-26/arm64/wiki-gate1-workstation"
 MACOS_HARNESS_PLATFORM = "darwin/arm64"
 
 
