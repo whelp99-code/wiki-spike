@@ -124,6 +124,7 @@ def test_canary_workflow_is_a_dedicated_macos_producer():
     assert "actions/setup-python@" not in workflow
     assert "Bind service-owned Python 3.12" in workflow
     assert 'python_bin="$(command -v python3.12)"' in workflow
+    assert 'ln -sf "$python_bin" "$shim_dir/python3"' in workflow
     assert 'echo "$shim_dir" >> "$GITHUB_PATH"' in workflow
     assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in workflow
     assert "implementation_commit:" in workflow

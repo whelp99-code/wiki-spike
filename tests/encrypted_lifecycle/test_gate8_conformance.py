@@ -603,6 +603,7 @@ def test_gate8_conformance_workflow_is_a_dedicated_macos_producer():
     assert "actions/setup-python@" not in conformance
     assert "Bind service-owned Python 3.12" in conformance
     assert 'python_bin="$(command -v python3.12)"' in conformance
+    assert 'ln -sf "$python_bin" "$shim_dir/python3"' in conformance
     assert 'echo "$shim_dir" >> "$GITHUB_PATH"' in conformance
     assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in conformance
     assert "implementation_commit:" in conformance

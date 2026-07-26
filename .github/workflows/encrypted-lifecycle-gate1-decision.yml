@@ -65,6 +65,7 @@ jobs:
           shim_dir="$RUNNER_TEMP/python312-bin"
           mkdir -p "$shim_dir"
           ln -sf "$python_bin" "$shim_dir/python"
+          ln -sf "$python_bin" "$shim_dir/python3"
           echo "$shim_dir" >> "$GITHUB_PATH"
 
       - name: Install Gate 1 decision dependencies
