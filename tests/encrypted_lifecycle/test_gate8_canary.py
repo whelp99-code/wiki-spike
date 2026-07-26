@@ -148,6 +148,8 @@ def test_canary_workflow_is_a_dedicated_macos_producer():
     assert "resume_checkpoint_artifact_id" not in workflow
     assert "Download exact immutable resume checkpoint" not in workflow
     assert "Simulate durable interruption and automatic recovery" in workflow
+    assert "--duration-seconds 4 --interval-seconds 2" in workflow
+    assert "--duration-seconds 0" not in workflow
 def test_checkpoint_rejects_tamper_reorder_stale_and_binding_mismatch(tmp_path):
     path = tmp_path / "checkpoint.json"
     binding = canary._checkpoint_binding(
