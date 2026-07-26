@@ -601,7 +601,7 @@ def test_gate8_conformance_workflow_is_a_dedicated_macos_producer():
     assert "gate8-evidence-join:" not in conformance
     assert "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683" in conformance
     assert "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065" in conformance
-    assert "actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce" in conformance
+    assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in conformance
     assert "implementation_commit:" in conformance
     assert 'ref: ${{ inputs.implementation_commit }}' in conformance
     assert 'test "$(git symbolic-ref -q HEAD || true)" = ""' in conformance
