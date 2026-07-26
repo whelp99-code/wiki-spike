@@ -153,10 +153,12 @@ def test_checkpoint_rejects_tamper_reorder_stale_and_binding_mismatch(tmp_path):
     binding = canary._checkpoint_binding(
         repository="owner/repo",
         workflow_run_id="1",
+        workflow_run_attempt="1",
         implementation_commit="a" * 40,
         workflow_file_digest="b" * 64,
         contract_digest="c" * 64,
         toolchain_lock_digest="d" * 64,
+        platform="self-hosted/macos-26/arm64/wiki-canary-workstation",
     )
     started = time.time() - 1
     checkpoint = {
@@ -215,17 +217,28 @@ def test_checkpoint_rejects_tamper_reorder_stale_and_binding_mismatch(tmp_path):
     canary._write_checkpoint(path, checkpoint)
     with pytest.raises(ValueError, match="rollback"):
         canary._load_checkpoint(path, binding, 900, 900)
-    with pytest.raises(ValueError, match="bound"):
-        canary._load_checkpoint(path, {**binding, "workflow_file_digest": "e" * 64}, 900, 900)
+    for field, value in (
+        ("repository", "other/repo"),
+        ("original_workflow_run_id", "other-run"),
+        ("implementation_commit", "e" * 40),
+        ("workflow_file_digest", "e" * 64),
+        ("contract_digest", "e" * 64),
+        ("toolchain_lock_digest", "e" * 64),
+        ("platform", "other-platform"),
+    ):
+        with pytest.raises(ValueError, match="bound"):
+            canary._load_checkpoint(path, {**binding, field: value}, 900, 900)
 def test_checkpoint_resume_accepts_new_attempt_but_rejects_cross_run_and_skipped_probe(tmp_path, monkeypatch):
     path = tmp_path / "checkpoint.json"
     binding = canary._checkpoint_binding(
         repository="owner/repo",
         workflow_run_id="original-run",
+        workflow_run_attempt="1",
         implementation_commit="a" * 40,
         workflow_file_digest="b" * 64,
         contract_digest="c" * 64,
         toolchain_lock_digest="d" * 64,
+        platform="self-hosted/macos-26/arm64/wiki-canary-workstation",
     )
     started = 1_000.0
     checkpoint = {
@@ -239,19 +252,84 @@ def test_checkpoint_resume_accepts_new_attempt_but_rejects_cross_run_and_skipped
     }
     canary._write_checkpoint(path, checkpoint)
     monkeypatch.setattr(canary.time, "time", lambda: started + 1)
-    resumed = canary._load_checkpoint(path, binding, 900, 900)
+    resumed = canary._load_checkpoint(
+        path, {**binding, "workflow_run_attempt": "2"}, 900, 900
+    )
     assert "started_at_monotonic" not in resumed
     with pytest.raises(ValueError, match="bound"):
-        canary._load_checkpoint(path, {**binding, "original_workflow_run_id": "other-run"}, 900, 900)
+        canary._load_checkpoint(
+            path, {**binding, "original_workflow_run_id": "other-run"}, 900, 900
+        )
 
     monkeypatch.setattr(canary.time, "time", lambda: started + 900)
     with pytest.raises(ValueError, match="skipped"):
-        canary._load_checkpoint(path, binding, 900, 900)
+        canary._load_checkpoint(path, {**binding, "workflow_run_attempt": "2"}, 900, 900)
+def test_durable_resume_advances_workflow_attempt_without_mutating_immutable_provenance(tmp_path, monkeypatch):
+    class Clock:
+        now = 1_000.0
+
+        def time(self):
+            return self.now
+
+        def monotonic(self):
+            return self.now
+
+        def sleep(self, seconds):
+            self.now += seconds
+
+    clock = Clock()
+    monkeypatch.setattr(canary.time, "time", clock.time)
+    monkeypatch.setattr(canary.time, "monotonic", clock.monotonic)
+    monkeypatch.setattr(canary.time, "sleep", clock.sleep)
+    monkeypatch.setattr(
+        canary,
+        "run_probe",
+        lambda index: {
+            "probe_index": str(index), "passed": True, "error": None, "elapsed_seconds": "0.000"
+        },
+    )
+    root = tmp_path.resolve()
+    attempt_one = canary._checkpoint_binding(
+        repository="owner/repo",
+        workflow_run_id="stable-run-id",
+        workflow_run_attempt="1",
+        implementation_commit="a" * 40,
+        workflow_file_digest="b" * 64,
+        contract_digest="c" * 64,
+        toolchain_lock_digest="d" * 64,
+        platform="self-hosted/macos-26/arm64/wiki-canary-workstation",
+    )
+    with pytest.raises(InterruptedError, match="simulated interruption"):
+        canary.run_canary(
+            1, 1, durable_state_root=root, checkpoint_binding=attempt_one, interrupt_after_probe=0
+        )
+
+    attempt_two = {**attempt_one, "workflow_run_attempt": "2"}
+    with pytest.raises(ValueError, match="reused"):
+        canary._discover_durable_checkpoint(root, attempt_one, 1, 1)
+    with pytest.raises(ValueError, match="skipped"):
+        canary._discover_durable_checkpoint(
+            root, {**attempt_one, "workflow_run_attempt": "3"}, 1, 1
+        )
+    with pytest.raises(ValueError, match="wrong binding"):
+        canary._discover_durable_checkpoint(
+            root, {**attempt_two, "platform": "other-platform"}, 1, 1
+        )
+
+    report = canary.run_canary(1, 1, durable_state_root=root, checkpoint_binding=attempt_two)
+    assert report["probe_count"] == "2"
+    state_dir = canary._durable_state_directory(root, attempt_two, create=False)
+    terminal = canary._load_durable_chain(
+        state_dir, canary._static_binding(attempt_two), 1, 1
+    )
+    assert terminal["binding"]["workflow_run_attempt"] == "2"
 def test_durable_discovery_isolated_by_original_run_and_rejects_completed_replay(tmp_path):
     root = tmp_path.resolve()
     binding = canary._checkpoint_binding(
-        repository="owner/repo", workflow_run_id="run-1", implementation_commit="a" * 40,
-        workflow_file_digest="b" * 64, contract_digest="c" * 64, toolchain_lock_digest="d" * 64,
+        repository="owner/repo", workflow_run_id="run-1", workflow_run_attempt="1",
+        implementation_commit="a" * 40, workflow_file_digest="b" * 64,
+        contract_digest="c" * 64, toolchain_lock_digest="d" * 64,
+        platform="self-hosted/macos-26/arm64/wiki-canary-workstation",
     )
     canary.run_canary(0, 1, durable_state_root=root, checkpoint_binding=binding)
     with pytest.raises(ValueError, match="cannot be replayed"):
@@ -298,10 +376,12 @@ def _durable_chain_directory(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     binding = canary._checkpoint_binding(
         repository="owner/repo",
         workflow_run_id="run-1",
+        workflow_run_attempt="1",
         implementation_commit="a" * 40,
         workflow_file_digest="b" * 64,
         contract_digest="c" * 64,
         toolchain_lock_digest="d" * 64,
+        platform="self-hosted/macos-26/arm64/wiki-canary-workstation",
     )
     return canary._durable_state_directory(tmp_path.resolve(), binding, create=True), binding
 
