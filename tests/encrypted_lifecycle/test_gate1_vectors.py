@@ -735,7 +735,10 @@ def test_gate1_workflows_have_dedicated_exact_tuple_topology():
     assert "actions/checkout@v4" not in feasibility + decision
     assert "actions/upload-artifact@v4" not in feasibility + decision
     assert "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683" in decision
-    assert "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065" in decision
+    assert "actions/setup-python@" not in decision
+    assert "Bind service-owned Python 3.12" in decision
+    assert 'python_bin="$(command -v python3.12)"' in decision
+    assert 'echo "$shim_dir" >> "$GITHUB_PATH"' in decision
     assert "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093" in decision
     assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in decision
     assert "sqlcipher_feasibility_harness.py --commit \"${{ inputs.gate1_commit }}\"" in decision

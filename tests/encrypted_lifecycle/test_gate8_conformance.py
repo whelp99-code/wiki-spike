@@ -600,7 +600,10 @@ def test_gate8_conformance_workflow_is_a_dedicated_macos_producer():
     assert "runs-on: [self-hosted, macOS, ARM64, wiki-conformance-workstation]" in conformance
     assert "gate8-evidence-join:" not in conformance
     assert "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683" in conformance
-    assert "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065" in conformance
+    assert "actions/setup-python@" not in conformance
+    assert "Bind service-owned Python 3.12" in conformance
+    assert 'python_bin="$(command -v python3.12)"' in conformance
+    assert 'echo "$shim_dir" >> "$GITHUB_PATH"' in conformance
     assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in conformance
     assert "implementation_commit:" in conformance
     assert 'ref: ${{ inputs.implementation_commit }}' in conformance
@@ -612,7 +615,7 @@ def test_gate8_conformance_workflow_is_a_dedicated_macos_producer():
     assert "26.*) ;; *)" in conformance
     assert 'test "$(uname -m)" = "arm64"' in conformance
     assert 'test "${{ github.sha }}" = "${{ inputs.implementation_commit }}"' in conformance
-    for action in ("checkout", "setup-python", "upload-artifact"):
+    for action in ("checkout", "upload-artifact"):
         assert re.search(rf"actions/{action}@[0-9a-f]{{40}}", conformance)
     assert "--produced-at" in conformance
     assert "--source-run-url" in conformance
