@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import sys
 import time
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -36,6 +37,50 @@ def test_short_canary_is_healthy_but_is_simulation():
     assert report["probe_count"] == "1"
     assert report["failure_count"] == "0"
     assert all(p["passed"] for p in report["probes"])
+
+
+def test_wait_for_scheduled_probe_retries_an_early_wake(monkeypatch):
+    wall_times = iter((100.999, 101.000))
+    sleeps: list[float] = []
+    monkeypatch.setattr(canary.time, "time", lambda: next(wall_times))
+    monkeypatch.setattr(canary.time, "monotonic", lambda: 0.999)
+    monkeypatch.setattr(canary.time, "sleep", sleeps.append)
+
+    canary._wait_for_scheduled_probe(
+        scheduled_at=Decimal("101.000"),
+        last_observed=Decimal("100.000"),
+        interval_seconds=10,
+        monotonic_origin=0.0,
+        wall_origin=Decimal("100.000"),
+    )
+
+    assert sleeps
+    assert sleeps[0] >= 0.001
+
+
+@pytest.mark.parametrize(
+    ("now", "message"),
+    ((Decimal("99.999"), "rollback"), (Decimal("111.000"), "skipped")),
+)
+def test_wait_for_scheduled_probe_rejects_clock_rollback_and_skipped_window(
+    monkeypatch, now, message
+):
+    monkeypatch.setattr(canary.time, "time", lambda: float(now))
+    monkeypatch.setattr(canary.time, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(
+        canary.time,
+        "sleep",
+        lambda _delay: pytest.fail("invalid clock state must fail before sleeping"),
+    )
+
+    with pytest.raises(ValueError, match=message):
+        canary._wait_for_scheduled_probe(
+            scheduled_at=Decimal("101.000"),
+            last_observed=Decimal("100.000"),
+            interval_seconds=10,
+            monotonic_origin=0.0,
+            wall_origin=Decimal("100.000"),
+        )
 
 
 def test_canary_report_records_failures(monkeypatch):
