@@ -27,14 +27,14 @@ jobs:
           ref: ${{ inputs.implementation_commit }}
           fetch-depth: 0
 
-      - name: Verify dedicated macOS 15 arm64 workstation and detached HEAD
+      - name: Verify dedicated Darwin 25/macOS 26 arm64 workstation and detached HEAD
         shell: bash
         run: |
           set -euo pipefail
           test "$(uname -s)" = "Darwin"
-          test "$(uname -r | cut -d. -f1)" = "24"
+          test "$(uname -r | cut -d. -f1)" = "25"
           test "$(uname -m)" = "arm64"
-          case "$(sw_vers -productVersion)" in 15.*) ;; *) echo "::error::CONFORMANCE_PRE_CANARY requires macOS 15"; exit 1 ;; esac
+          case "$(sw_vers -productVersion)" in 26.*) ;; *) echo "::error::CONFORMANCE_PRE_CANARY requires macOS 26"; exit 1 ;; esac
           test "$(git rev-parse --is-inside-work-tree)" = "true"
           test "$(git symbolic-ref -q HEAD || true)" = ""
           test "${{ github.sha }}" = "${{ inputs.implementation_commit }}"
@@ -67,7 +67,7 @@ jobs:
             --repository "${{ github.repository }}" \
             --workflow-run-id "${{ github.run_id }}" \
             --workflow-run-attempt "${{ github.run_attempt }}" \
-            --platform "self-hosted/macos-15/arm64/wiki-conformance-workstation" \
+            --platform "self-hosted/macos-26/arm64/wiki-conformance-workstation" \
             --produced-at "$produced_at" \
             --source-run-url "$source_run_url" \
             --contract-digest "$contract_digest" \
@@ -85,7 +85,7 @@ jobs:
           toolchain_lock_digest="$(shasum -a 256 pyproject.toml | cut -d' ' -f1)"
           workflow_file_digest="$(shasum -a 256 .github/workflows/encrypted-lifecycle-conformance.yml | cut -d' ' -f1)"
           test -f "$tar_path"
-          python3 -c 'import json, sys; from pathlib import Path; sys.path.insert(0, "scripts"); from import_encrypted_lifecycle_bundle import import_bundle, load_archive; m = json.load(open(sys.argv[1])); expected = {"repository": sys.argv[4], "artifact_kind": "CONFORMANCE_PRE_CANARY", "platform": "self-hosted/macos-15/arm64/wiki-conformance-workstation", "producer_commit": sys.argv[5], "contract_digest": sys.argv[6], "toolchain_lock_digest": sys.argv[7], "workflow_file_digest": sys.argv[8], "workflow_run_id": sys.argv[9], "workflow_run_attempt": sys.argv[10], "artifact_name": m["artifact_name"], "bundle_sha256": m["expected"]["bundle_sha256"], "payload_paths": ["payload/conformance-pre-canary.json"], "payload_sha256": m["expected"]["payload_sha256"], "source_run_url": sys.argv[11]}; result = import_bundle(Path(sys.argv[2]), expected=expected); output = Path(sys.argv[3]); output.mkdir(parents=True, exist_ok=True); files = load_archive(Path(sys.argv[2])); [((output / path).parent.mkdir(parents=True, exist_ok=True), (output / path).write_bytes(files[path])) for path in result["payload_paths"]]; (output / "import-receipt.json").write_text(json.dumps(result, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")' "$metadata" "$tar_path" artifacts/encrypted-lifecycle/conformance-imported "${{ github.repository }}" "${{ inputs.implementation_commit }}" "$contract_digest" "$toolchain_lock_digest" "$workflow_file_digest" "${{ github.run_id }}" "${{ github.run_attempt }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          python3 -c 'import json, sys; from pathlib import Path; sys.path.insert(0, "scripts"); from import_encrypted_lifecycle_bundle import import_bundle, load_archive; m = json.load(open(sys.argv[1])); expected = {"repository": sys.argv[4], "artifact_kind": "CONFORMANCE_PRE_CANARY", "platform": "self-hosted/macos-26/arm64/wiki-conformance-workstation", "producer_commit": sys.argv[5], "contract_digest": sys.argv[6], "toolchain_lock_digest": sys.argv[7], "workflow_file_digest": sys.argv[8], "workflow_run_id": sys.argv[9], "workflow_run_attempt": sys.argv[10], "artifact_name": m["artifact_name"], "bundle_sha256": m["expected"]["bundle_sha256"], "payload_paths": ["payload/conformance-pre-canary.json"], "payload_sha256": m["expected"]["payload_sha256"], "source_run_url": sys.argv[11]}; result = import_bundle(Path(sys.argv[2]), expected=expected); output = Path(sys.argv[3]); output.mkdir(parents=True, exist_ok=True); files = load_archive(Path(sys.argv[2])); [((output / path).parent.mkdir(parents=True, exist_ok=True), (output / path).write_bytes(files[path])) for path in result["payload_paths"]]; (output / "import-receipt.json").write_text(json.dumps(result, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")' "$metadata" "$tar_path" artifacts/encrypted-lifecycle/conformance-imported "${{ github.repository }}" "${{ inputs.implementation_commit }}" "$contract_digest" "$toolchain_lock_digest" "$workflow_file_digest" "${{ github.run_id }}" "${{ github.run_attempt }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       - name: Upload immutable CONFORMANCE_PRE_CANARY bundle
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

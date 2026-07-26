@@ -7,6 +7,28 @@ ARCHITECT/CRITIC review over that machine evidence). No single artifact claims a
 delivery verdict on its own; the verdict-free manifest is signed by two
 independent reviewers, and a separate receipt records the outcome.
 
+## macOS 26 platform cutover
+
+The owner superseded the historical Darwin 24/macOS 15 platform pin with the
+Darwin 25/macOS 26 contract below. Historical plans remain immutable audit
+records, but commit `2fe371311e6290b60b8b5634af8cf14b97f0452c` and runs
+`30188838986`, `30188869214`, `30188878973`, and `30188879689` are obsolete
+under this contract. They MUST NOT be relabeled, imported, or joined.
+
+After publishing a migration commit, always produce a completely fresh evidence
+sequence:
+
+1. dispatch fresh Ubuntu `SQLCIPHER_FEASIBILITY`;
+2. use its exact tuple to dispatch fresh macOS 26 `GATE1_DECISION`;
+3. dispatch fresh macOS 26 `CONFORMANCE_PRE_CANARY` and exact-24-hour
+   `CANARY_24H` at the migration implementation commit;
+4. strictly join only those new three lane tuples;
+5. obtain fresh independent ARCHITECT/CRITIC signatures and import the final
+   receipt.
+
+Changing the platform enum changes the contract digest, so even the earlier
+successful Ubuntu feasibility artifact cannot seed the migrated Gate 1 lane.
+
 ## Lanes and immutable tuples
 
 | Lane | Artifact kind | Workflow | Commit binding |
@@ -16,10 +38,15 @@ independent reviewers, and a separate receipt records the outcome.
 | canary | `CANARY_24H` | `encrypted-lifecycle-canary.yml` | `implementation_commit` |
 
 Gate 1 MAY use a different commit. Conformance and canary MUST use the same
-immutable `implementation_commit`. Record the complete tuple for each lane:
-repository, run ID, run attempt, exact artifact name, bundle SHA-256,
-source-run URL, platform, producer commit, contract digest, toolchain-lock
-digest, and workflow-file digest.
+immutable `implementation_commit`. Gate 1, conformance, and canary run only on
+their dedicated self-hosted `arm64` runners with Darwin kernel major `25` and
+`sw_vers -productVersion` matching `26.*`; their platform identities are,
+respectively, `self-hosted/macos-26/arm64/wiki-gate1-workstation`,
+`self-hosted/macos-26/arm64/wiki-conformance-workstation`, and
+`self-hosted/macos-26/arm64/wiki-canary-workstation`. Record the complete tuple
+for each lane: repository, run ID, run attempt, exact artifact name, bundle
+SHA-256, source-run URL, platform, producer commit, contract digest,
+toolchain-lock digest, and workflow-file digest.
 
 ## 1. Produce conformance evidence
 

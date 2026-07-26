@@ -24,7 +24,7 @@ KIND_PAYLOADS = {
     "CONFORMANCE_PRE_CANARY": ("payload/conformance-pre-canary.json",),
     "CANARY_24H": ("payload/rollout-evidence.json",),
 }
-PLATFORMS = frozenset(("github-hosted/ubuntu-24.04/x86_64", "self-hosted/macos-15/arm64/wiki-gate1-workstation", "self-hosted/macos-15/arm64/wiki-conformance-workstation", "self-hosted/macos-15/arm64/wiki-canary-workstation"))
+PLATFORMS = frozenset(("github-hosted/ubuntu-24.04/x86_64", "self-hosted/macos-26/arm64/wiki-gate1-workstation", "self-hosted/macos-26/arm64/wiki-conformance-workstation", "self-hosted/macos-26/arm64/wiki-canary-workstation"))
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DECIMAL = re.compile(r"^(0|[1-9][0-9]*)$")

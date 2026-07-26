@@ -43,9 +43,9 @@ from import_encrypted_lifecycle_bundle import (  # noqa: E402
 LANE_ORDER = (GATE1, CONFORMANCE, CANARY)
 
 LANE_SPECS = {
-    GATE1: {"artifact_kind": "GATE1_DECISION", "payload_path": "payload/gate1-decision.json", "payload_schema": "wiki-gate1-decision-v1", "platform": "self-hosted/macos-15/arm64/wiki-gate1-workstation", "payload_fields": {}},
-    CONFORMANCE: {"artifact_kind": "CONFORMANCE_PRE_CANARY", "payload_path": "payload/conformance-pre-canary.json", "payload_schema": "wiki-gate8-conformance-report-v1", "platform": "self-hosted/macos-15/arm64/wiki-conformance-workstation", "payload_fields": {"conformant": True}},
-    CANARY: {"artifact_kind": "CANARY_24H", "payload_path": "payload/rollout-evidence.json", "payload_schema": "wiki-gate8-canary-report-v1", "platform": "self-hosted/macos-15/arm64/wiki-canary-workstation", "payload_fields": {"evidence_lane": "CANARY_24H", "healthy": True, "configured_duration_seconds": "86400", "interval_seconds": "900", "failure_count": "0"}},
+    GATE1: {"artifact_kind": "GATE1_DECISION", "payload_path": "payload/gate1-decision.json", "payload_schema": "wiki-gate1-decision-v1", "platform": "self-hosted/macos-26/arm64/wiki-gate1-workstation", "payload_fields": {}},
+    CONFORMANCE: {"artifact_kind": "CONFORMANCE_PRE_CANARY", "payload_path": "payload/conformance-pre-canary.json", "payload_schema": "wiki-gate8-conformance-report-v1", "platform": "self-hosted/macos-26/arm64/wiki-conformance-workstation", "payload_fields": {"conformant": True}},
+    CANARY: {"artifact_kind": "CANARY_24H", "payload_path": "payload/rollout-evidence.json", "payload_schema": "wiki-gate8-canary-report-v1", "platform": "self-hosted/macos-26/arm64/wiki-canary-workstation", "payload_fields": {"evidence_lane": "CANARY_24H", "healthy": True, "configured_duration_seconds": "86400", "interval_seconds": "900", "failure_count": "0"}},
 }
 
 
