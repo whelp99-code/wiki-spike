@@ -122,7 +122,7 @@ def run_probe(probe_index: int) -> dict:
         }
 
 
-CHECKPOINT_SCHEMA = "wiki-gate8-canary-checkpoint-v3"
+CHECKPOINT_SCHEMA = "wiki-gate8-canary-checkpoint-v4"
 _EPOCH_PRECISION = Decimal("0.001")
 _CANONICAL_INTEGER_RE = re.compile(r"(?:0|[1-9][0-9]*)")
 _CANONICAL_EPOCH_RE = re.compile(r"(?:0|[1-9][0-9]*)\.[0-9]{3}")
@@ -157,21 +157,63 @@ def _checkpoint_binding(
     *,
     repository: str,
     workflow_run_id: str,
+    workflow_run_attempt: str,
     implementation_commit: str,
     workflow_file_digest: str,
     contract_digest: str,
     toolchain_lock_digest: str,
+    platform: str,
 ) -> dict[str, str]:
     return {
         "repository": repository,
         "original_workflow_run_id": workflow_run_id,
+        "workflow_run_attempt": workflow_run_attempt,
         "implementation_commit": implementation_commit,
         "workflow_file_digest": workflow_file_digest,
         "contract_digest": contract_digest,
         "toolchain_lock_digest": toolchain_lock_digest,
+        "platform": platform,
     }
+
+
 def _static_binding(binding: dict[str, str]) -> dict[str, str]:
-    return {key: value for key, value in binding.items() if key != "original_workflow_run_id"}
+    return {
+        key: value for key, value in binding.items()
+        if key != "workflow_run_attempt"
+    }
+
+
+def _binding_attempt(binding: dict[str, str]) -> int:
+    attempt = _parse_canonical_integer(
+        binding.get("workflow_run_attempt"), "binding workflow_run_attempt"
+    )
+    if attempt < 1:
+        raise ValueError("CANARY_24H checkpoint workflow run attempt is invalid")
+    return attempt
+
+
+def _validate_binding(binding: object) -> dict[str, str]:
+    expected = {
+        "repository",
+        "original_workflow_run_id",
+        "workflow_run_attempt",
+        "implementation_commit",
+        "workflow_file_digest",
+        "contract_digest",
+        "toolchain_lock_digest",
+        "platform",
+    }
+    if not isinstance(binding, dict) or set(binding) != expected:
+        raise ValueError("CANARY_24H checkpoint binding is invalid")
+    if any(not isinstance(value, str) or not value for value in binding.values()):
+        raise ValueError("CANARY_24H checkpoint binding is invalid")
+    if not re.fullmatch(r"[0-9a-f]{40}", binding["implementation_commit"]):
+        raise ValueError("CANARY_24H checkpoint binding is invalid")
+    for field in ("workflow_file_digest", "contract_digest", "toolchain_lock_digest"):
+        if not re.fullmatch(r"[0-9a-f]{64}", binding[field]):
+            raise ValueError("CANARY_24H checkpoint binding is invalid")
+    _binding_attempt(binding)
+    return binding
 
 
 def _require_secure_directory(path: Path, *, create: bool = False) -> None:
@@ -277,10 +319,17 @@ def _load_checkpoint(
     }
     if set(checkpoint) != required or checkpoint["schema"] != CHECKPOINT_SCHEMA:
         raise ValueError("CANARY_24H checkpoint wire is invalid")
-    if not isinstance(checkpoint["binding"], dict):
-        raise ValueError("CANARY_24H checkpoint binding is invalid")
-    if binding is not None and checkpoint["binding"] != binding:
-        raise ValueError("CANARY_24H checkpoint is bound to another repository, commit, run, workflow, or digest")
+    checkpoint_binding = _validate_binding(checkpoint["binding"])
+    if binding is not None:
+        requested_binding = _validate_binding(binding)
+        if _static_binding(checkpoint_binding) != _static_binding(requested_binding):
+            raise ValueError("CANARY_24H checkpoint is bound to another repository, commit, run, platform, workflow, or digest")
+        checkpoint_attempt = _binding_attempt(checkpoint_binding)
+        requested_attempt = _binding_attempt(requested_binding)
+        if checkpoint_attempt > requested_attempt:
+            raise ValueError("CANARY_24H checkpoint workflow run attempt rolled back")
+        if requested_attempt > checkpoint_attempt + 1:
+            raise ValueError("CANARY_24H checkpoint workflow run attempt was skipped")
     stored_duration = _parse_canonical_integer(checkpoint["duration_seconds"], "duration_seconds")
     stored_interval = _parse_canonical_integer(checkpoint["interval_seconds"], "interval_seconds")
     next_probe_index = _parse_canonical_integer(checkpoint["next_probe_index"], "next_probe_index")
@@ -378,11 +427,12 @@ def _load_durable_chain(state_dir: Path, static_binding: dict[str, str], duratio
             raise ValueError("CANARY_24H durable checkpoint filename is tampered")
         if digest in checkpoints_by_digest:
             raise ValueError("CANARY_24H durable checkpoint chain has a duplicate digest")
-        if _static_binding(checkpoint["binding"]) != static_binding:
+        checkpoint_binding = _validate_binding(checkpoint["binding"])
+        if _static_binding(checkpoint_binding) != static_binding:
             raise ValueError("CANARY_24H durable checkpoint has wrong binding")
         if chain_binding is None:
-            chain_binding = checkpoint["binding"]
-        elif checkpoint["binding"] != chain_binding:
+            chain_binding = checkpoint_binding
+        elif _static_binding(checkpoint_binding) != _static_binding(chain_binding):
             raise ValueError("CANARY_24H durable checkpoint chain has inconsistent binding")
         checkpoints_by_digest[digest] = checkpoint
         checkpoint_paths_by_digest[digest] = entry
@@ -413,6 +463,10 @@ def _load_durable_chain(state_dir: Path, static_binding: dict[str, str], duratio
                 index == previous_index and checkpoint["state"] in {"failed", "terminal-issued"}
             ):
                 raise ValueError("CANARY_24H durable checkpoint chain has a schedule gap")
+            previous_attempt = _binding_attempt(previous["binding"])
+            attempt = _binding_attempt(checkpoint["binding"])
+            if attempt < previous_attempt or attempt > previous_attempt + 1:
+                raise ValueError("CANARY_24H durable checkpoint chain has an invalid workflow run attempt transition")
         walked.add(digest)
         children = successors.get(digest, [])
         if checkpoint["state"] in {"failed", "terminal-issued"} and children:
@@ -442,12 +496,14 @@ def _discover_durable_checkpoint(root: Path, binding: dict[str, str], duration_s
     if not state_dir.exists():
         return None
     checkpoint = _load_durable_chain(state_dir, _static_binding(binding), duration_seconds, interval_seconds)
-    if checkpoint["binding"] != binding:
-        raise ValueError("CANARY_24H durable checkpoint belongs to another original workflow run")
+    if _static_binding(checkpoint["binding"]) != _static_binding(binding):
+        raise ValueError("CANARY_24H durable checkpoint belongs to another immutable workflow provenance")
     if checkpoint["state"] == "terminal-issued":
         raise ValueError("CANARY_24H completed evidence cannot be replayed or relabeled")
     if checkpoint["state"] == "failed":
         raise ValueError("CANARY_24H failed original workflow run requires a fresh dispatch")
+    if _binding_attempt(binding) != _binding_attempt(checkpoint["binding"]) + 1:
+        raise ValueError("CANARY_24H durable checkpoint workflow run attempt is reused, skipped, or rolled back")
     return state_dir, checkpoint
 
 
@@ -465,11 +521,13 @@ def run_canary(
     if durable_state_root is not None:
         if checkpoint_binding is None:
             raise ValueError("checkpoint binding is required")
+        checkpoint_binding = _validate_binding(checkpoint_binding)
         discovered = _discover_durable_checkpoint(
             durable_state_root, checkpoint_binding, duration_seconds, interval_seconds
         )
         if discovered is not None:
             state_dir, checkpoint = discovered
+            checkpoint["binding"] = checkpoint_binding
         else:
             state_dir = _durable_state_directory(durable_state_root, checkpoint_binding, create=True)
     if checkpoint is None:
@@ -610,6 +668,8 @@ def main(argv: list[str] | None = None) -> int:
         for name in ("repository", "workflow_run_id", "workflow_run_attempt", "implementation_commit", "source_run_url", "platform"):
             if not getattr(args, name):
                 raise ValueError(f"{name} is required")
+        if _parse_canonical_integer(args.workflow_run_attempt, "workflow_run_attempt") < 1:
+            raise ValueError("workflow_run_attempt must be at least 1")
         for name in ("contract_digest", "toolchain_lock_digest", "workflow_file_digest"):
             _required_sha256(getattr(args, name))
         duration_seconds = int(args.duration_seconds)
@@ -630,10 +690,12 @@ def main(argv: list[str] | None = None) -> int:
     binding = _checkpoint_binding(
         repository=args.repository,
         workflow_run_id=args.workflow_run_id,
+        workflow_run_attempt=args.workflow_run_attempt,
         implementation_commit=producer_commit,
         workflow_file_digest=args.workflow_file_digest,
         contract_digest=args.contract_digest,
         toolchain_lock_digest=args.toolchain_lock_digest,
+        platform=args.platform,
     )
     report = run_canary(
         duration_seconds,
