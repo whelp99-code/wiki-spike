@@ -28,6 +28,17 @@ def test_single_probe_roundtrip_passes():
     assert result["error"] is None
 
 
+def test_secure_directory_creation_is_idempotent_but_rejects_symlinks(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    canary._require_secure_directory(state, create=True)
+
+    link = tmp_path / "state-link"
+    link.symlink_to(state, target_is_directory=True)
+    with pytest.raises(ValueError, match="not a directory"):
+        canary._require_secure_directory(link, create=True)
+
+
 def test_short_canary_is_healthy_but_is_simulation():
     # duration 0 -> exactly one probe, no sleep.
     report = canary.run_canary(duration_seconds=0, interval_seconds=1)
