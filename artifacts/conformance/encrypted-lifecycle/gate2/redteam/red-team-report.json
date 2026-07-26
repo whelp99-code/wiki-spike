@@ -1,0 +1,77 @@
+{
+  "schema": "wiki-gate2-red-team-report-v1",
+  "surface": "algorithm",
+  "suite": "tests/encrypted_lifecycle/test_gate2_red_team.py",
+  "adversarial_case_count": 29,
+  "cases": [
+    {
+      "id": "aes-gcm-tamper",
+      "scenario": "Tamper ciphertext byte, tag byte, or AAD; reject wrong-length DEK; reject non-24-hex nonce.",
+      "expected": "InvalidTag on ciphertext/tag/AAD tamper; ValueError on bad DEK length or malformed nonce",
+      "verdict": "passed"
+    },
+    {
+      "id": "nonce-type-split",
+      "scenario": "Feed a 64-hex challenge nonce to is_aes_gcm_nonce_hex24 and a 24-hex AES-GCM nonce to is_challenge_nonce_hex64.",
+      "expected": "cross-type rejection both directions",
+      "verdict": "passed"
+    },
+    {
+      "id": "ed25519-single-signature-input",
+      "scenario": "Verify a signature under a different domain, under a different key, and against a tampered payload.",
+      "expected": "InvalidSignature in all three cases",
+      "verdict": "passed"
+    },
+    {
+      "id": "rfc6962-merkle-proof-tamper",
+      "scenario": "Flip a byte in an inclusion audit-path node; flip a byte in a consistency audit-path node.",
+      "expected": "reconstructed root no longer equals the genuine committed root",
+      "verdict": "passed"
+    },
+    {
+      "id": "smt-256-proof-tamper",
+      "scenario": "Change a membership proof's leaf value; flip a byte of a non-membership proof's sibling.",
+      "expected": "reconstructed root no longer equals the genuine current-map root",
+      "verdict": "passed"
+    },
+    {
+      "id": "bundle-self-field-projection",
+      "scenario": "Mutate both projected self-fields (null / different nonempty value); recompute identity from raw (non-projected) canonical bytes instead of projected bytes.",
+      "expected": "projected identity unchanged by self-field mutation; raw (non-projected) digest/size diverge from the projected identity",
+      "verdict": "passed"
+    },
+    {
+      "id": "keystore-create-only",
+      "scenario": "Overwrite with different key material; re-create after destroy; metadata-mismatch collision; readback receipt inspected for leaked raw key material.",
+      "expected": "KeyAlreadyExists / KeyAlreadyDestroyed / KeyCollision raised as appropriate; receipt mapping never contains wrapped_dek_hex or the raw DEK hex",
+      "verdict": "passed"
+    },
+    {
+      "id": "reconciliation-fail-closed",
+      "scenario": "Corrupt or missing external inventory row; ACTIVE-bound key with matching vs. attacker-forged metadata_digest.",
+      "expected": "QUARANTINE_UNKNOWN for corrupt/missing rows and metadata mismatch; RESUME_EXACT only on exact match; DESTROY_UNBOUND count is zero across all quarantined/active cases",
+      "verdict": "passed"
+    },
+    {
+      "id": "opaque-cas-rejection-and-integrity",
+      "scenario": "put() a JSON object bearing a plaintext field; put() a malformed non-envelope JSON object; simulate on-disk content swap under an existing blob_id; flip a stored byte then get().",
+      "expected": "OpaqueViolation on plaintext/malformed JSON; IntegrityError on write-once collision with different bytes and on corrupted read",
+      "verdict": "passed"
+    },
+    {
+      "id": "lifecycle-db-invariants",
+      "scenario": "Inject a plaintext-named column via ALTER TABLE; replay a stale prev_digest on append_event; inspect append_event's signature for a body parameter; insert a duplicate (workspace_id, artifact_kind, revision_id) tuple under a different artifact_id.",
+      "expected": "assert_no_plaintext_columns raises LifecycleDbError; append_event raises EventChainError and never writes a row; append_event has no body/text parameter; the hash chain over all surviving rows verifies; sqlite3.IntegrityError on the duplicate tuple",
+      "verdict": "passed"
+    },
+    {
+      "id": "workspace-format-no-fallback",
+      "scenario": "assert_marker_matches called with an expected_profile that does not match the marker's recorded profile_selection.",
+      "expected": "WorkspaceFormatError raised, no silent coercion/fallback",
+      "verdict": "passed"
+    }
+  ],
+  "pytest_redteam": "29 passed",
+  "pytest_full_encrypted_lifecycle": "165 passed",
+  "blockers": []
+}

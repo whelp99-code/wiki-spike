@@ -1,0 +1,20 @@
+{
+  "checks_run": 130,
+  "cryptography_available": true,
+  "failures": [],
+  "families": [
+    "kdf",
+    "identity",
+    "nonce",
+    "binding",
+    "bundle",
+    "floor",
+    "crash-matrix",
+    "new-consent",
+    "wal-linearization"
+  ],
+  "jsonschema_available": true,
+  "oracle": "independent-second-oracle",
+  "schema": "wiki-encrypted-lifecycle-vector-validation-receipt-v1",
+  "verdict": "PASS"
+}

@@ -1,0 +1,26 @@
+{
+  "linearization_point": "atomic_checked_snapshot_read_acquisition",
+  "schedules": [
+    {
+      "assertion": "FORGET commits strictly before the checked-snapshot acquisition point, selector must not be visible",
+      "expected_token": "suppressed",
+      "name": "schedule-a-delete-before-read",
+      "ordering": [
+        "checked_snapshot_read_begin",
+        "forget_accepted_and_committed",
+        "checked_snapshot_read_acquire"
+      ]
+    },
+    {
+      "assertion": "checked-snapshot read acquired strictly before FORGET commit reflects its own atomic as-of point and is never retroactively invalidated",
+      "expected_token": "one_pre_linearized_response_allowed",
+      "name": "schedule-b-delete-after-read",
+      "ordering": [
+        "checked_snapshot_read_acquire",
+        "checked_snapshot_read_returns",
+        "forget_accepted_and_committed"
+      ]
+    }
+  ],
+  "schema": "wiki-encrypted-lifecycle-wal-linearization-vectors-v1"
+}

@@ -1,0 +1,392 @@
+{
+  "counter_only_walk": [
+    {
+      "floor_candidate": {
+        "attempt_id": "3dafcfaa6218343276ff42263fe100bab5e2b0475a8d98b96abc88c57bfd9992",
+        "candidate_floor": {
+          "prior_floor_hash": "aaa2cc6c1aabcd42be38e11fa87259a461d52eb583ba9105efd5ba0d0bbf6222",
+          "transition_head": "e385c13ec7fdd93857297118beea8ed4ed5d3069ddccd00b266fda5171a51657",
+          "transition_root": "eeb013519bec2b6c2b251703ded0afb92d5d2ac5e90533e2aff6073025497cb3",
+          "transition_size": "1",
+          "veto_set_root": "13df4e0aee0d0e5f52c701c6433595f907c8709d59eed8e2bd137b07b0cfe556",
+          "veto_set_size": "1"
+        },
+        "candidate_floor_hash": "aefce0c49c0287c8c22d65cb7160a6fe064f3ec8bcacd7b37269ed1cb0dc9c60",
+        "candidate_kind": "VALIDATED_ADVANCE",
+        "counter": "2",
+        "disposition": "RESERVED",
+        "expected_keychain_generation": "1",
+        "expected_old_floor_hash": "aaa2cc6c1aabcd42be38e11fa87259a461d52eb583ba9105efd5ba0d0bbf6222",
+        "nonce_digest": "9e3f156324d42f0ea4b6f4fce81d56fbd64a2143a3fdd60a130d9c90e5b4d688",
+        "reason_code": null,
+        "schema": "wiki-floor-candidate-v1"
+      },
+      "last_challenge_counter": "2",
+      "schema": "wiki-floor-state-v1",
+      "state": "CHALLENGE_RESERVED",
+      "updated_at": "2026-07-24T00:10:00Z",
+      "workspace_id": "ws-test-1"
+    },
+    {
+      "floor_candidate": {
+        "attempt_id": "3dafcfaa6218343276ff42263fe100bab5e2b0475a8d98b96abc88c57bfd9992",
+        "candidate_floor": {
+          "prior_floor_hash": "aaa2cc6c1aabcd42be38e11fa87259a461d52eb583ba9105efd5ba0d0bbf6222",
+          "transition_head": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+          "transition_root": "e9fbf966ccdff764594a5e199e6aea0cc36034b46c8057cc3df88a088c20101a",
+          "transition_size": "0",
+          "veto_set_root": "e9fbf966ccdff764594a5e199e6aea0cc36034b46c8057cc3df88a088c20101a",
+          "veto_set_size": "0"
+        },
+        "candidate_floor_hash": "b98d930fe5f9586ed5c9e9e29c43f0d715916e55d1a5bfdf0f8ef4a63a1d55c3",
+        "candidate_kind": "COUNTER_ONLY",
+        "counter": "2",
+        "disposition": "ACCEPTED_PREPARED",
+        "expected_keychain_generation": "1",
+        "expected_old_floor_hash": "aaa2cc6c1aabcd42be38e11fa87259a461d52eb583ba9105efd5ba0d0bbf6222",
+        "nonce_digest": "9e3f156324d42f0ea4b6f4fce81d56fbd64a2143a3fdd60a130d9c90e5b4d688",
+        "reason_code": null,
+        "schema": "wiki-floor-candidate-v1"
+      },
+      "last_challenge_counter": "2",
+      "schema": "wiki-floor-state-v1",
+      "state": "COUNTER_UPDATE_PREPARED",
+      "updated_at": "2026-07-24T00:10:01Z",
+      "workspace_id": "ws-test-1"
+    },
+    {
+      "floor_candidate": {
+        "attempt_id": "3dafcfaa6218343276ff42263fe100bab5e2b0475a8d98b96abc88c57bfd9992",
+        "candidate_floor": {
+          "prior_floor_hash": "aaa2cc6c1aabcd42be38e11fa87259a461d52eb583ba9105efd5ba0d0bbf6222",
+          "transition_head": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+          "transition_root": "e9fbf966ccdff764594a5e199e6aea0cc36034b46c8057cc3df88a088c20101a",
+          "transition_size": "0",
+          "veto_set_root": "e9fbf966ccdff764594a5e199e6aea0cc36034b46c8057cc3df88a088c20101a",
+          "veto_set_size": "0"
+        },
+        "candidate_floor_hash": "b98d930fe5f9586ed5c9e9e29c43f0d715916e55d1a5bfdf0f8ef4a63a1d55c3",
+        "candidate_kind": "COUNTER_ONLY",
+        "counter": "2",
+        "disposition": "COMMITTED",
+        "expected_keychain_generation": "1",
+        "expected_old_floor_hash": "aaa2cc6c1aabcd42be38e11fa87259a461d52eb583ba9105efd5ba0d0bbf6222",
+        "nonce_digest": "9e3f156324d42f0ea4b6f4fce81d56fbd64a2143a3fdd60a130d9c90e5b4d688",
+        "reason_code": null,
+        "schema": "wiki-floor-candidate-v1"
+      },
+      "last_challenge_counter": "2",
+      "schema": "wiki-floor-state-v1",
+      "state": "KEYCHAIN_COMMITTED",
+      "updated_at": "2026-07-24T00:10:02Z",
+      "workspace_id": "ws-test-1"
+    },
+    {
+      "floor_candidate": null,
+      "last_challenge_counter": "2",
+      "schema": "wiki-floor-state-v1",
+      "state": "FLOOR_STABLE",
+      "updated_at": "2026-07-24T00:10:03Z",
+      "workspace_id": "ws-test-1"
+    }
+  ],
+  "exact_a_cases": [
+    {
+      "assertion": "keychain readback bytes == candidate_floor_hash A exactly",
+      "name": "recovered-success",
+      "state": {
+        "floor_candidate": {
+          "attempt_id": "3dafcfaa6218343276ff42263fe100bab5e2b0475a8d98b96abc88c57bfd9992",
+          "candidate_floor": {
+            "prior_floor_hash": "aaa2cc6c1aabcd42be38e11fa87259a461d52eb583ba9105efd5ba0d0bbf6222",
+            "transition_head": "e385c13ec7fdd93857297118beea8ed4ed5d3069ddccd00b266fda5171a51657",
+            "transition_root": "eeb013519bec2b6c2b251703ded0afb92d5d2ac5e90533e2aff6073025497cb3",
+            "transition_size": "1",
+            "veto_set_root": "13df4e0aee0d0e5f52c701c6433595f907c8709d59eed8e2bd137b07b0cfe556",
+            "veto_set_size": "1"
+          },
+          "candidate_floor_hash": "aefce0c49c0287c8c22d65cb7160a6fe064f3ec8bcacd7b37269ed1cb0dc9c60",
+          "candidate_kind": "VALIDATED_ADVANCE",
+          "counter": "3",
+          "disposition": "COMMITTED",
+          "expected_keychain_generation": "1",
+          "expected_old_floor_hash": "aaa2cc6c1aabcd42be38e11fa87259a461d52eb583ba9105efd5ba0d0bbf6222",
+          "nonce_digest": "9e3f156324d42f0ea4b6f4fce81d56fbd64a2143a3fdd60a130d9c90e5b4d688",
+          "reason_code": null,
+          "schema": "wiki-floor-candidate-v1"
+        },
+        "last_challenge_counter": "3",
+        "schema": "wiki-floor-state-v1",
+        "state": "KEYCHAIN_COMMITTED",
+        "updated_at": "2026-07-24T00:20:00Z",
+        "workspace_id": "ws-test-1"
+      }
+    },
+    {
+      "assertion": "outage retry re-dispatches identical candidate bytes A (attempt_id/hash unchanged)",
+      "name": "old-floor-retry",
+      "retry_state": {
+        "floor_candidate": {
+          "attempt_id": "3dafcfaa6218343276ff42263fe100bab5e2b0475a8d98b96abc88c57bfd9992",
+          "candidate_floor": {
+            "prior_floor_hash": "aaa2cc6c1aabcd42be38e11fa87259a461d52eb583ba9105efd5ba0d0bbf6222",
+            "transition_head": "e385c13ec7fdd93857297118beea8ed4ed5d3069ddccd00b266fda5171a51657",
+            "transition_root": "eeb013519bec2b6c2b251703ded0afb92d5d2ac5e90533e2aff6073025497cb3",
+            "transition_size": "1",
+            "veto_set_root": "13df4e0aee0d0e5f52c701c6433595f907c8709d59eed8e2bd137b07b0cfe556",
+            "veto_set_size": "1"
+          },
+          "candidate_floor_hash": "aefce0c49c0287c8c22d65cb7160a6fe064f3ec8bcacd7b37269ed1cb0dc9c60",
+          "candidate_kind": "VALIDATED_ADVANCE",
+          "counter": "3",
+          "disposition": "ACCEPTED_PREPARED",
+          "expected_keychain_generation": "1",
+          "expected_old_floor_hash": "aaa2cc6c1aabcd42be38e11fa87259a461d52eb583ba9105efd5ba0d0bbf6222",
+          "nonce_digest": "9e3f156324d42f0ea4b6f4fce81d56fbd64a2143a3fdd60a130d9c90e5b4d688",
+          "reason_code": null,
+          "schema": "wiki-floor-candidate-v1"
+        },
+        "last_challenge_counter": "3",
+        "schema": "wiki-floor-state-v1",
+        "state": "FLOOR_UPDATE_PREPARED",
+        "updated_at": "2026-07-24T00:20:02Z",
+        "workspace_id": "ws-test-1"
+      },
+      "state": {
+        "floor_candidate": {
+          "attempt_id": "3dafcfaa6218343276ff42263fe100bab5e2b0475a8d98b96abc88c57bfd9992",
+          "candidate_floor": {
+            "prior_floor_hash": "aaa2cc6c1aabcd42be38e11fa87259a461d52eb583ba9105efd5ba0d0bbf6222",
+            "transition_head": "e385c13ec7fdd93857297118beea8ed4ed5d3069ddccd00b266fda5171a51657",
+            "transition_root": "eeb013519bec2b6c2b251703ded0afb92d5d2ac5e90533e2aff6073025497cb3",
+            "transition_size": "1",
+            "veto_set_root": "13df4e0aee0d0e5f52c701c6433595f907c8709d59eed8e2bd137b07b0cfe556",
+            "veto_set_size": "1"
+          },
+          "candidate_floor_hash": "aefce0c49c0287c8c22d65cb7160a6fe064f3ec8bcacd7b37269ed1cb0dc9c60",
+          "candidate_kind": "VALIDATED_ADVANCE",
+          "counter": "3",
+          "disposition": "ACCEPTED_PREPARED",
+          "expected_keychain_generation": "1",
+          "expected_old_floor_hash": "aaa2cc6c1aabcd42be38e11fa87259a461d52eb583ba9105efd5ba0d0bbf6222",
+          "nonce_digest": "9e3f156324d42f0ea4b6f4fce81d56fbd64a2143a3fdd60a130d9c90e5b4d688",
+          "reason_code": null,
+          "schema": "wiki-floor-candidate-v1"
+        },
+        "last_challenge_counter": "3",
+        "schema": "wiki-floor-state-v1",
+        "state": "FLOOR_UPDATE_PREPARED",
+        "updated_at": "2026-07-24T00:20:01Z",
+        "workspace_id": "ws-test-1"
+      }
+    },
+    {
+      "assertion": "R10-1 AC 11: any B != A (including authenticated direct child) quarantines; no adoption",
+      "audit_digest_a": "aefce0c49c0287c8c22d65cb7160a6fe064f3ec8bcacd7b37269ed1cb0dc9c60",
+      "audit_digest_b": "b709512ea1c107b500c4e1da2fed266f70549bd70f36998d90fd21399a8bfbad",
+      "name": "b-ne-a-quarantine",
+      "state": {
+        "floor_candidate": {
+          "attempt_id": "3dafcfaa6218343276ff42263fe100bab5e2b0475a8d98b96abc88c57bfd9992",
+          "candidate_floor": {
+            "prior_floor_hash": "aaa2cc6c1aabcd42be38e11fa87259a461d52eb583ba9105efd5ba0d0bbf6222",
+            "transition_head": "e385c13ec7fdd93857297118beea8ed4ed5d3069ddccd00b266fda5171a51657",
+            "transition_root": "eeb013519bec2b6c2b251703ded0afb92d5d2ac5e90533e2aff6073025497cb3",
+            "transition_size": "1",
+            "veto_set_root": "13df4e0aee0d0e5f52c701c6433595f907c8709d59eed8e2bd137b07b0cfe556",
+            "veto_set_size": "1"
+          },
+          "candidate_floor_hash": "aefce0c49c0287c8c22d65cb7160a6fe064f3ec8bcacd7b37269ed1cb0dc9c60",
+          "candidate_kind": "VALIDATED_ADVANCE",
+          "counter": "3",
+          "disposition": "QUARANTINED",
+          "expected_keychain_generation": "1",
+          "expected_old_floor_hash": "aaa2cc6c1aabcd42be38e11fa87259a461d52eb583ba9105efd5ba0d0bbf6222",
+          "nonce_digest": "9e3f156324d42f0ea4b6f4fce81d56fbd64a2143a3fdd60a130d9c90e5b4d688",
+          "reason_code": "quarantined_floor_conflict",
+          "schema": "wiki-floor-candidate-v1"
+        },
+        "last_challenge_counter": "3",
+        "schema": "wiki-floor-state-v1",
+        "state": "QUARANTINED_FLOOR_CONFLICT",
+        "updated_at": "2026-07-24T00:20:03Z",
+        "workspace_id": "ws-test-1"
+      }
+    }
+  ],
+  "freshness_serve_gate": {
+    "invalid_in_enum_pairs": [
+      {
+        "gate": {
+          "reason": "ATTESTATION_EXPIRED_BEFORE_STABILIZE",
+          "schema": "wiki-freshness-serve-gate-v1",
+          "source_candidate_digest": "aefce0c49c0287c8c22d65cb7160a6fe064f3ec8bcacd7b37269ed1cb0dc9c60",
+          "stable_checkpoint_id": "a024398b9672844d656025705196d8b8fd3067c8edcc87c5362a7a15e90b8b35",
+          "stable_floor_generation": "1",
+          "state": "CLEAR",
+          "updated_at": "2026-07-24T00:00:04Z",
+          "workspace_id": "ws-test-1"
+        },
+        "reason": "CLEAR with non-NONE reason"
+      },
+      {
+        "gate": {
+          "reason": "CLOCK_WINDOW_EXPIRED",
+          "schema": "wiki-freshness-serve-gate-v1",
+          "source_candidate_digest": "aefce0c49c0287c8c22d65cb7160a6fe064f3ec8bcacd7b37269ed1cb0dc9c60",
+          "stable_checkpoint_id": "a024398b9672844d656025705196d8b8fd3067c8edcc87c5362a7a15e90b8b35",
+          "stable_floor_generation": "1",
+          "state": "CLEAR",
+          "updated_at": "2026-07-24T00:00:04Z",
+          "workspace_id": "ws-test-1"
+        },
+        "reason": "CLEAR with non-NONE reason"
+      },
+      {
+        "gate": {
+          "reason": "NONE",
+          "schema": "wiki-freshness-serve-gate-v1",
+          "source_candidate_digest": "aefce0c49c0287c8c22d65cb7160a6fe064f3ec8bcacd7b37269ed1cb0dc9c60",
+          "stable_checkpoint_id": "a024398b9672844d656025705196d8b8fd3067c8edcc87c5362a7a15e90b8b35",
+          "stable_floor_generation": "1",
+          "state": "FRESH_CHALLENGE_REQUIRED",
+          "updated_at": "2026-07-24T00:00:04Z",
+          "workspace_id": "ws-test-1"
+        },
+        "reason": "FRESH_CHALLENGE_REQUIRED with NONE reason"
+      }
+    ],
+    "valid_pairs": [
+      {
+        "reason": "NONE",
+        "schema": "wiki-freshness-serve-gate-v1",
+        "source_candidate_digest": "aefce0c49c0287c8c22d65cb7160a6fe064f3ec8bcacd7b37269ed1cb0dc9c60",
+        "stable_checkpoint_id": "a024398b9672844d656025705196d8b8fd3067c8edcc87c5362a7a15e90b8b35",
+        "stable_floor_generation": "1",
+        "state": "CLEAR",
+        "updated_at": "2026-07-24T00:00:04Z",
+        "workspace_id": "ws-test-1"
+      },
+      {
+        "reason": "ATTESTATION_EXPIRED_BEFORE_STABILIZE",
+        "schema": "wiki-freshness-serve-gate-v1",
+        "source_candidate_digest": "aefce0c49c0287c8c22d65cb7160a6fe064f3ec8bcacd7b37269ed1cb0dc9c60",
+        "stable_checkpoint_id": "a024398b9672844d656025705196d8b8fd3067c8edcc87c5362a7a15e90b8b35",
+        "stable_floor_generation": "1",
+        "state": "FRESH_CHALLENGE_REQUIRED",
+        "updated_at": "2026-07-24T00:00:04Z",
+        "workspace_id": "ws-test-1"
+      },
+      {
+        "reason": "CLOCK_WINDOW_EXPIRED",
+        "schema": "wiki-freshness-serve-gate-v1",
+        "source_candidate_digest": "aefce0c49c0287c8c22d65cb7160a6fe064f3ec8bcacd7b37269ed1cb0dc9c60",
+        "stable_checkpoint_id": "a024398b9672844d656025705196d8b8fd3067c8edcc87c5362a7a15e90b8b35",
+        "stable_floor_generation": "1",
+        "state": "FRESH_CHALLENGE_REQUIRED",
+        "updated_at": "2026-07-24T00:00:04Z",
+        "workspace_id": "ws-test-1"
+      }
+    ]
+  },
+  "schema": "wiki-encrypted-lifecycle-floor-state-vectors-v1",
+  "validated_advance_walk": [
+    {
+      "floor_candidate": null,
+      "last_challenge_counter": "0",
+      "schema": "wiki-floor-state-v1",
+      "state": "FLOOR_STABLE",
+      "updated_at": "2026-07-24T00:00:00Z",
+      "workspace_id": "ws-test-1"
+    },
+    {
+      "floor_candidate": {
+        "attempt_id": "3dafcfaa6218343276ff42263fe100bab5e2b0475a8d98b96abc88c57bfd9992",
+        "candidate_floor": {
+          "prior_floor_hash": "aaa2cc6c1aabcd42be38e11fa87259a461d52eb583ba9105efd5ba0d0bbf6222",
+          "transition_head": "e385c13ec7fdd93857297118beea8ed4ed5d3069ddccd00b266fda5171a51657",
+          "transition_root": "eeb013519bec2b6c2b251703ded0afb92d5d2ac5e90533e2aff6073025497cb3",
+          "transition_size": "1",
+          "veto_set_root": "13df4e0aee0d0e5f52c701c6433595f907c8709d59eed8e2bd137b07b0cfe556",
+          "veto_set_size": "1"
+        },
+        "candidate_floor_hash": "aefce0c49c0287c8c22d65cb7160a6fe064f3ec8bcacd7b37269ed1cb0dc9c60",
+        "candidate_kind": "VALIDATED_ADVANCE",
+        "counter": "1",
+        "disposition": "RESERVED",
+        "expected_keychain_generation": "1",
+        "expected_old_floor_hash": "aaa2cc6c1aabcd42be38e11fa87259a461d52eb583ba9105efd5ba0d0bbf6222",
+        "nonce_digest": "9e3f156324d42f0ea4b6f4fce81d56fbd64a2143a3fdd60a130d9c90e5b4d688",
+        "reason_code": null,
+        "schema": "wiki-floor-candidate-v1"
+      },
+      "last_challenge_counter": "1",
+      "schema": "wiki-floor-state-v1",
+      "state": "CHALLENGE_RESERVED",
+      "updated_at": "2026-07-24T00:00:01Z",
+      "workspace_id": "ws-test-1"
+    },
+    {
+      "floor_candidate": {
+        "attempt_id": "3dafcfaa6218343276ff42263fe100bab5e2b0475a8d98b96abc88c57bfd9992",
+        "candidate_floor": {
+          "prior_floor_hash": "aaa2cc6c1aabcd42be38e11fa87259a461d52eb583ba9105efd5ba0d0bbf6222",
+          "transition_head": "e385c13ec7fdd93857297118beea8ed4ed5d3069ddccd00b266fda5171a51657",
+          "transition_root": "eeb013519bec2b6c2b251703ded0afb92d5d2ac5e90533e2aff6073025497cb3",
+          "transition_size": "1",
+          "veto_set_root": "13df4e0aee0d0e5f52c701c6433595f907c8709d59eed8e2bd137b07b0cfe556",
+          "veto_set_size": "1"
+        },
+        "candidate_floor_hash": "aefce0c49c0287c8c22d65cb7160a6fe064f3ec8bcacd7b37269ed1cb0dc9c60",
+        "candidate_kind": "VALIDATED_ADVANCE",
+        "counter": "1",
+        "disposition": "ACCEPTED_PREPARED",
+        "expected_keychain_generation": "1",
+        "expected_old_floor_hash": "aaa2cc6c1aabcd42be38e11fa87259a461d52eb583ba9105efd5ba0d0bbf6222",
+        "nonce_digest": "9e3f156324d42f0ea4b6f4fce81d56fbd64a2143a3fdd60a130d9c90e5b4d688",
+        "reason_code": null,
+        "schema": "wiki-floor-candidate-v1"
+      },
+      "last_challenge_counter": "1",
+      "schema": "wiki-floor-state-v1",
+      "state": "FLOOR_UPDATE_PREPARED",
+      "updated_at": "2026-07-24T00:00:02Z",
+      "workspace_id": "ws-test-1"
+    },
+    {
+      "floor_candidate": {
+        "attempt_id": "3dafcfaa6218343276ff42263fe100bab5e2b0475a8d98b96abc88c57bfd9992",
+        "candidate_floor": {
+          "prior_floor_hash": "aaa2cc6c1aabcd42be38e11fa87259a461d52eb583ba9105efd5ba0d0bbf6222",
+          "transition_head": "e385c13ec7fdd93857297118beea8ed4ed5d3069ddccd00b266fda5171a51657",
+          "transition_root": "eeb013519bec2b6c2b251703ded0afb92d5d2ac5e90533e2aff6073025497cb3",
+          "transition_size": "1",
+          "veto_set_root": "13df4e0aee0d0e5f52c701c6433595f907c8709d59eed8e2bd137b07b0cfe556",
+          "veto_set_size": "1"
+        },
+        "candidate_floor_hash": "aefce0c49c0287c8c22d65cb7160a6fe064f3ec8bcacd7b37269ed1cb0dc9c60",
+        "candidate_kind": "VALIDATED_ADVANCE",
+        "counter": "1",
+        "disposition": "COMMITTED",
+        "expected_keychain_generation": "1",
+        "expected_old_floor_hash": "aaa2cc6c1aabcd42be38e11fa87259a461d52eb583ba9105efd5ba0d0bbf6222",
+        "nonce_digest": "9e3f156324d42f0ea4b6f4fce81d56fbd64a2143a3fdd60a130d9c90e5b4d688",
+        "reason_code": null,
+        "schema": "wiki-floor-candidate-v1"
+      },
+      "last_challenge_counter": "1",
+      "schema": "wiki-floor-state-v1",
+      "state": "KEYCHAIN_COMMITTED",
+      "updated_at": "2026-07-24T00:00:03Z",
+      "workspace_id": "ws-test-1"
+    },
+    {
+      "floor_candidate": null,
+      "last_challenge_counter": "1",
+      "schema": "wiki-floor-state-v1",
+      "state": "FLOOR_STABLE",
+      "updated_at": "2026-07-24T00:00:04Z",
+      "workspace_id": "ws-test-1"
+    }
+  ]
+}

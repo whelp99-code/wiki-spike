@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "algorithm-boundary-test-report",
+  "surface": "cli+algorithm",
+  "command": "/usr/local/bin/python3.12 -m pytest -q tests/encrypted_lifecycle/test_gate1_vectors.py",
+  "passed": 41,
+  "failed": 0,
+  "adversarial_cases": [
+    {"name": "history_root_single_hex_char_flip", "expected": "independent_rfc6962_recomputation_mismatch", "verdict": "rejected"},
+    {"name": "attestation_signature_bit_flip_ed25519_verify", "expected": "InvalidSignature", "verdict": "rejected"},
+    {"name": "fixture_supplied_checkpoint_signature_flip_case", "expected": "InvalidSignature", "verdict": "rejected"},
+    {"name": "cross_key_vector_wrong_signer_public_key", "expected": "InvalidSignature", "verdict": "rejected"},
+    {"name": "cross_domain_vector_wrong_domain_prefix", "expected": "InvalidSignature", "verdict": "rejected"},
+    {"name": "bundle_manifest_trailing_whitespace", "expected": "MANIFEST_NOT_CANONICAL", "verdict": "rejected"},
+    {"name": "bundle_manifest_reordered_keys", "expected": "MANIFEST_NOT_CANONICAL", "verdict": "rejected"},
+    {"name": "bundle_manifest_duplicate_key", "expected": "MANIFEST_DUPLICATE_KEY", "verdict": "rejected"},
+    {"name": "bundle_manifest_missing", "expected": "MANIFEST_MISSING", "verdict": "rejected"},
+    {"name": "bundle_payload_hash_mismatch", "expected": "PAYLOAD_HASH_MISMATCH", "verdict": "rejected"},
+    {"name": "decision_refuses_on_failing_vector_validation_receipt", "expected": "VECTOR_VALIDATION_FAILED", "verdict": "rejected"},
+    {"name": "decision_refuses_on_missing_required_adr", "expected": "ADR_INPUT_MISSING", "verdict": "rejected"},
+    {"name": "decision_refuses_on_invalid_owner_role", "expected": "OWNER_ROLE_INVALID", "verdict": "rejected"},
+    {"name": "decision_refuses_when_no_owners_supplied", "expected": "argparse_required_error", "verdict": "rejected"},
+    {"name": "freshness_gate_invalid_pair_CLEAR_ATTESTATION_EXPIRED_BEFORE_STABILIZE", "expected": "jsonschema_ValidationError", "verdict": "rejected"},
+    {"name": "freshness_gate_invalid_pair_CLEAR_CLOCK_WINDOW_EXPIRED", "expected": "jsonschema_ValidationError", "verdict": "rejected"},
+    {"name": "freshness_gate_invalid_pair_FRESH_CHALLENGE_REQUIRED_NONE", "expected": "jsonschema_ValidationError", "verdict": "rejected"},
+    {"name": "binding_attestation_payload_missing_required_history_root", "expected": "jsonschema_ValidationError", "verdict": "rejected"},
+    {"name": "gate1_decision_schema_unknown_profile_selection_C", "expected": "jsonschema_ValidationError", "verdict": "rejected"},
+    {"name": "validator_subprocess_run_against_empty_fixtures_dir", "expected": "nonzero_exit", "verdict": "rejected"}
+  ],
+  "generated_at": "2026-07-24T12:00:00Z"
+}

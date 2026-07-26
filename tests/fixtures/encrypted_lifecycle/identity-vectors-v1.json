@@ -1,0 +1,235 @@
+{
+  "cases": [
+    {
+      "artifact_semantic_digest": "76d226efd53a8720ddd474f027f9531873493b193132e06ce182f3dcfc07d9ad",
+      "artifact_semantic_message": {
+        "artifact_kind": "MEMORY_REVISION",
+        "consent_epoch": "1",
+        "domain": "wiki.artifact-semantic",
+        "key_version": "1",
+        "semantic_plaintext": {
+          "body": "first remember body",
+          "locator_text": "first remember body"
+        },
+        "semantic_schema": "MemoryRevisionSemanticV1",
+        "version": "1",
+        "workspace_id": "ws-test-1"
+      },
+      "command_id": "b182fd83b81186795ddef03e4c49d62c517eab12dff3907a60f55a69c546a706",
+      "command_message": {
+        "command_kind": "REMEMBER",
+        "domain": "wiki.command",
+        "input_content_digest": "9deedacad6ad38bc1b7192ad8350b033ee9d095c960883060222b43a7f8f9c88",
+        "key_version": "1",
+        "normalized_options": {
+          "note": "first-remember"
+        },
+        "policy_context_digest": "72993b6cb83904d39a8c73bd0651aa6251288ede5dbc2c7bcbdc54cc5bbf5d77",
+        "version": "1",
+        "workspace_id": "ws-test-1"
+      },
+      "logical_object_id": "5ce2f63f1e39c5f4d788be7bbfb97c4c8c56401ff5cda55007bc185c3ffa5b38",
+      "manifest_digest": "05f2ae39be54449a9c1195805483b381f11f467245eb592bbf7704a82f54def6",
+      "manifest_message": {
+        "command_digest": "b182fd83b81186795ddef03e4c49d62c517eab12dff3907a60f55a69c546a706",
+        "domain": "wiki.command-manifest",
+        "entries": [
+          {
+            "artifact_kind": "MEMORY_REVISION",
+            "artifact_role": "PRIMARY_MEMORY",
+            "artifact_semantic_digest": "76d226efd53a8720ddd474f027f9531873493b193132e06ce182f3dcfc07d9ad",
+            "ordinal": "0",
+            "revision_id": "bc2a3a8e9eb38f1e2470a6528599e2f5588a2f5864cbfe141d46dde680944a66"
+          }
+        ],
+        "key_version": "1",
+        "version": "1",
+        "workspace_id": "ws-test-1"
+      },
+      "name": "first-remember",
+      "object_id_message": {
+        "consent_epoch": "1",
+        "domain": "wiki.logical-object-id",
+        "key_version": "1",
+        "object_kind": "MEMORY",
+        "subject_key_digest": "1080ab62a3a32a990b6e3d94e0d0d019d403e03d9ea500bd3164966e695c5b67",
+        "version": "1",
+        "workspace_id": "ws-test-1"
+      },
+      "revision_id": "bc2a3a8e9eb38f1e2470a6528599e2f5588a2f5864cbfe141d46dde680944a66",
+      "revision_id_message": {
+        "artifact_semantic_digest": "76d226efd53a8720ddd474f027f9531873493b193132e06ce182f3dcfc07d9ad",
+        "consent_epoch": "1",
+        "domain": "wiki.revision-id",
+        "key_version": "1",
+        "logical_object_id": "5ce2f63f1e39c5f4d788be7bbfb97c4c8c56401ff5cda55007bc185c3ffa5b38",
+        "object_kind": "MEMORY",
+        "parent_revision_id": null,
+        "revision_number": "1",
+        "version": "1",
+        "workspace_id": "ws-test-1"
+      }
+    },
+    {
+      "artifact_semantic_digest": "2573d07cfa52600a42969b62c60e0fcaac2df9727111b0bd2b0147a8b7034bed",
+      "artifact_semantic_message": {
+        "artifact_kind": "MEMORY_REVISION",
+        "consent_epoch": "1",
+        "domain": "wiki.artifact-semantic",
+        "key_version": "1",
+        "semantic_plaintext": {
+          "body": "corrected body",
+          "locator_text": "corrected body"
+        },
+        "semantic_schema": "MemoryRevisionSemanticV1",
+        "version": "1",
+        "workspace_id": "ws-test-1"
+      },
+      "command_id": "2cde2f1e9459b0ffdbe68e16b7705949fefab63e9c75734a6efd0b9a174878d1",
+      "command_message": {
+        "command_kind": "CORRECT",
+        "domain": "wiki.command",
+        "input_content_digest": "2d120bcb6df8daa30e3b3903ae8e0c75405d6f657ed5d53ed40f8ba6f5894e59",
+        "key_version": "1",
+        "normalized_options": {
+          "note": "correction"
+        },
+        "policy_context_digest": "72993b6cb83904d39a8c73bd0651aa6251288ede5dbc2c7bcbdc54cc5bbf5d77",
+        "version": "1",
+        "workspace_id": "ws-test-1"
+      },
+      "name": "correction-r1-to-r2",
+      "parent_revision_id": "bc2a3a8e9eb38f1e2470a6528599e2f5588a2f5864cbfe141d46dde680944a66",
+      "revision_id": "b6a51680935ac2b3618f0e974456104c36cd238bc255804feb792aba92513321",
+      "revision_id_message": {
+        "artifact_semantic_digest": "2573d07cfa52600a42969b62c60e0fcaac2df9727111b0bd2b0147a8b7034bed",
+        "consent_epoch": "1",
+        "domain": "wiki.revision-id",
+        "key_version": "1",
+        "logical_object_id": "5ce2f63f1e39c5f4d788be7bbfb97c4c8c56401ff5cda55007bc185c3ffa5b38",
+        "object_kind": "MEMORY",
+        "parent_revision_id": "bc2a3a8e9eb38f1e2470a6528599e2f5588a2f5864cbfe141d46dde680944a66",
+        "revision_number": "2",
+        "version": "1",
+        "workspace_id": "ws-test-1"
+      }
+    },
+    {
+      "artifact_semantic_digest": "831bdd6ea92e4e82912c6039f5d6249453f3f4d6781bf3ab9989067f2602a6f0",
+      "artifact_semantic_message": {
+        "artifact_kind": "MEMORY_REVISION",
+        "consent_epoch": "1",
+        "domain": "wiki.artifact-semantic",
+        "key_version": "1",
+        "semantic_plaintext": {
+          "body": "converged body",
+          "locator_text": "converged body"
+        },
+        "semantic_schema": "MemoryRevisionSemanticV1",
+        "version": "1",
+        "workspace_id": "ws-test-1"
+      },
+      "assertion": "command_a.command_id != command_b.command_id; both converge on revision_id",
+      "command_a": {
+        "command_id": "e8bed0d9a225367ceee0aca49066540602e43ad57c6c10d0a6068ad962a053c3",
+        "message": {
+          "command_kind": "REMEMBER",
+          "domain": "wiki.command",
+          "input_content_digest": "c3071d69368b7d10ff75be8b51281bd76fcaabb1808c1c7ff9735457c21cf21f",
+          "key_version": "1",
+          "normalized_options": {
+            "note": "path-a"
+          },
+          "policy_context_digest": "72993b6cb83904d39a8c73bd0651aa6251288ede5dbc2c7bcbdc54cc5bbf5d77",
+          "version": "1",
+          "workspace_id": "ws-test-1"
+        }
+      },
+      "command_b": {
+        "command_id": "8af856a94f4d2451e6ce25ae08c0da2ca14cce1815b881aa7849273e29f51b16",
+        "message": {
+          "command_kind": "CORRECT",
+          "domain": "wiki.command",
+          "input_content_digest": "27792ce15860b5e9404bcc550cf16078b241fb2a297350a320d270e4d9392463",
+          "key_version": "1",
+          "normalized_options": {
+            "note": "path-b"
+          },
+          "policy_context_digest": "72993b6cb83904d39a8c73bd0651aa6251288ede5dbc2c7bcbdc54cc5bbf5d77",
+          "version": "1",
+          "workspace_id": "ws-test-1"
+        }
+      },
+      "name": "semantic-convergence",
+      "revision_id": "fd6e61774827fc3f63aa05852a1f9af428b7cacae347b1d79318f17f2f8e2a86",
+      "revision_id_message": {
+        "artifact_semantic_digest": "831bdd6ea92e4e82912c6039f5d6249453f3f4d6781bf3ab9989067f2602a6f0",
+        "consent_epoch": "1",
+        "domain": "wiki.revision-id",
+        "key_version": "1",
+        "logical_object_id": "5ce2f63f1e39c5f4d788be7bbfb97c4c8c56401ff5cda55007bc185c3ffa5b38",
+        "object_kind": "MEMORY",
+        "parent_revision_id": "b6a51680935ac2b3618f0e974456104c36cd238bc255804feb792aba92513321",
+        "revision_number": "3",
+        "version": "1",
+        "workspace_id": "ws-test-1"
+      }
+    },
+    {
+      "assertion": "differing policy_context_digest yields differing command_id (not idempotent)",
+      "command_a": {
+        "command_id": "29054fb0300159da6f03596f8eff4d6ee48749930661446acdd5b6cab2aa4644",
+        "message": {
+          "command_kind": "REMEMBER",
+          "domain": "wiki.command",
+          "input_content_digest": "f52c2013103b0270872709c76cfcb92886c9e223734b5b641e69f8f466de9604",
+          "key_version": "1",
+          "normalized_options": {
+            "note": "idempotency-check"
+          },
+          "policy_context_digest": "72993b6cb83904d39a8c73bd0651aa6251288ede5dbc2c7bcbdc54cc5bbf5d77",
+          "version": "1",
+          "workspace_id": "ws-test-1"
+        }
+      },
+      "command_b": {
+        "command_id": "de878af69a18a223cfd51c9ab68920e713d8bac9bd75c8f56ed31e9a07911906",
+        "message": {
+          "command_kind": "REMEMBER",
+          "domain": "wiki.command",
+          "input_content_digest": "f52c2013103b0270872709c76cfcb92886c9e223734b5b641e69f8f466de9604",
+          "key_version": "1",
+          "normalized_options": {
+            "note": "idempotency-check"
+          },
+          "policy_context_digest": "05d35c3cff576032c2ec020b80090de59407c157e924b1e1140f9d29a4833113",
+          "version": "1",
+          "workspace_id": "ws-test-1"
+        }
+      },
+      "name": "idempotency-mismatch"
+    },
+    {
+      "actual_parent_used": "bc2a3a8e9eb38f1e2470a6528599e2f5588a2f5864cbfe141d46dde680944a66",
+      "assertion": "expected_active_revision_id != actual_parent_used => conflict",
+      "expected_active_revision_id": "fd6e61774827fc3f63aa05852a1f9af428b7cacae347b1d79318f17f2f8e2a86",
+      "expected_conflict": true,
+      "name": "expected-active-conflict",
+      "revision_id": "9b8c2a112bed5c184650cd55d2f1b7c83db62db0630e566502eda59b1ecfb5d7",
+      "revision_id_message": {
+        "artifact_semantic_digest": "831bdd6ea92e4e82912c6039f5d6249453f3f4d6781bf3ab9989067f2602a6f0",
+        "consent_epoch": "1",
+        "domain": "wiki.revision-id",
+        "key_version": "1",
+        "logical_object_id": "5ce2f63f1e39c5f4d788be7bbfb97c4c8c56401ff5cda55007bc185c3ffa5b38",
+        "object_kind": "MEMORY",
+        "parent_revision_id": "bc2a3a8e9eb38f1e2470a6528599e2f5588a2f5864cbfe141d46dde680944a66",
+        "revision_number": "4",
+        "version": "1",
+        "workspace_id": "ws-test-1"
+      }
+    }
+  ],
+  "schema": "wiki-encrypted-lifecycle-identity-vectors-v1",
+  "workspace_id": "ws-test-1"
+}

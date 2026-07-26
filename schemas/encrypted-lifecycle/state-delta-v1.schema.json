@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://wiki-spike.local/schemas/encrypted-lifecycle/state-delta-v1.schema.json",
+  "title": "Encrypted Lifecycle StateDeltaV1 (Revision 6 frozen)",
+  "description": "StateDeltaV1 has exactly {delta_version,delta_id,operation,object_kind,object_id,revision_id,expected_active_revision_id,envelope_ref,assertion_id,evidence_edge_id,evidence_fragment_ref,deletion_command_id,scope_digest,reason_code}. Every absent/inapplicable value is literal JSON null; empty strings are invalid. `delta_id = SHA-256(b\"wiki.state-delta.v1\\0\" || canonical_json(fields except delta_id))` and the supplied ID must match. ADD/MEMORY_REVISION requires non-null object/revision/envelope with expected_active_revision_id null only for the first revision. ADD/ASSERTION requires object/revision/assertion non-null with expected_active_revision_id equal to the memory revision being asserted. ADD/EVIDENCE_EDGE requires object/revision/assertion/edge/evidence-fragment refs non-null. RETRACT requires target identity and expected_active_revision_id non-null with envelope_ref null. TOMBSTONE requires target identity, deletion_command_id, scope_digest, and reason_code non-null with envelope/addition fields null. Unknown operation/object combinations, duplicate target operations, ADD+TOMBSTONE of the same consent-epoch target, missing refs, and cross-workspace refs fail closed.",
+  "definitions": {
+    "hex64": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nullableHex64": {"oneOf": [{"$ref": "#/definitions/hex64"}, {"type": "null"}]},
+    "safeReasonCode": {
+      "oneOf": [
+        {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
+        {"type": "null"}
+      ]
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "delta_version",
+    "delta_id",
+    "operation",
+    "object_kind",
+    "object_id",
+    "revision_id",
+    "expected_active_revision_id",
+    "envelope_ref",
+    "assertion_id",
+    "evidence_edge_id",
+    "evidence_fragment_ref",
+    "deletion_command_id",
+    "scope_digest",
+    "reason_code"
+  ],
+  "properties": {
+    "delta_version": {"const": "1"},
+    "delta_id": {"$ref": "#/definitions/hex64"},
+    "operation": {"enum": ["ADD", "RETRACT", "TOMBSTONE"]},
+    "object_kind": {"enum": ["MEMORY_REVISION", "EVIDENCE_FRAGMENT", "ASSERTION", "EVIDENCE_EDGE"]},
+    "object_id": {"$ref": "#/definitions/hex64"},
+    "revision_id": {"$ref": "#/definitions/nullableHex64"},
+    "expected_active_revision_id": {"$ref": "#/definitions/nullableHex64"},
+    "envelope_ref": {"$ref": "#/definitions/nullableHex64"},
+    "assertion_id": {"$ref": "#/definitions/nullableHex64"},
+    "evidence_edge_id": {"$ref": "#/definitions/nullableHex64"},
+    "evidence_fragment_ref": {"$ref": "#/definitions/nullableHex64"},
+    "deletion_command_id": {"$ref": "#/definitions/nullableHex64"},
+    "scope_digest": {"$ref": "#/definitions/nullableHex64"},
+    "reason_code": {"$ref": "#/definitions/safeReasonCode"}
+  }
+}

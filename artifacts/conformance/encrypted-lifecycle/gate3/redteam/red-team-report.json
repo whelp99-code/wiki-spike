@@ -1,0 +1,65 @@
+{
+  "schema": "wiki-gate3-red-team-report-v1",
+  "surface": "algorithm",
+  "suite": "tests/encrypted_lifecycle/test_gate3_red_team.py",
+  "adversarial_case_count": 9,
+  "cases": [
+    {
+      "id": "a",
+      "scenario": "Identity determinism + separation: identical REMEMBER inputs across two independent pipeline/DB instances yield identical command_id/revision_id/artifact_semantic_digest/logical_object_id; independently varying project_id, subject_ordinal, consent_epoch, or sensitivity each changes all four identities with no collisions across the 5-way identity set.",
+      "expected": "Same inputs -> identical identities; any single normalized-option change -> distinct, non-colliding identities.",
+      "verdict": "passed"
+    },
+    {
+      "id": "b",
+      "scenario": "Envelope integrity: sealed CAS envelope decrypts to the original normalized body under the real AAD; flipping a ciphertext byte, flipping a tag byte, or substituting a different artifact's AAD (wrong semantic digest) each attempted decryption.",
+      "expected": "Original decrypts cleanly; every tamper (ciphertext, tag, AAD) raises cryptography.exceptions.InvalidTag.",
+      "verdict": "passed"
+    },
+    {
+      "id": "c",
+      "scenario": "Input normalization: NFD-decomposed + mixed CRLF/CR input normalizes deterministically to the same NFC/LF-normalized bytes and input_content_digest across repeated calls and across two independent pipelines (same command_id); a raw UTF-8 BOM-prefixed body is rejected.",
+      "expected": "Deterministic normalization and digest; BOM raises InputNormalizationError(bom_rejected).",
+      "verdict": "passed"
+    },
+    {
+      "id": "d",
+      "scenario": "Changeset integrity: changes_root is order-independent of input delta order (domain-separated length-framed digest over delta_id-sorted deltas); mutating a delta field changes changes_root; building a changeset from an unknown command_id raises PipelineError(command_not_found).",
+      "expected": "Reversed-order deltas produce the same changes_root; mutated delta produces a different root; unknown command_id raises.",
+      "verdict": "passed"
+    },
+    {
+      "id": "e",
+      "scenario": "ExpectedActiveRevisionV1 projection: a duplicate identical ADD delta dedupes rather than double-counting; every projected entry carries exactly the six spec fields; output is sorted by (object_kind, object_id); ADD/RETRACT/TOMBSTONE operation discriminators are preserved on the source deltas.",
+      "expected": "Dedup to 3 unique entries from 4 input deltas; exact 6-field shape; sorted-unique order; discriminators intact.",
+      "verdict": "passed"
+    },
+    {
+      "id": "f",
+      "scenario": "Review/activation state machine: review_candidate rejects an invalid review_state; APPROVE transitions custody to APPROVED; forcing custody into a terminal REJECTED state and then activating raises PipelineError(invalid_activation_state); activating a non-existent blob raises blob_not_found; activating a non-existent artifact raises key_state_not_found.",
+      "expected": "All four guard paths raise the documented PipelineError codes; APPROVE correctly updates custody_state.",
+      "verdict": "passed"
+    },
+    {
+      "id": "g",
+      "scenario": "Signed generation: the wiki.generation.v1 signature verifies under the correct domain/key; verification fails under a different domain, under a different (attacker) key, and against a tampered payload (changes_root substituted).",
+      "expected": "Correct verification succeeds; all three tamper/mismatch attempts raise cryptography.exceptions.InvalidSignature.",
+      "verdict": "passed"
+    },
+    {
+      "id": "h",
+      "scenario": "Floor protocol: a backward transition (KEYCHAIN_COMMITTED -> CHALLENGE_RESERVED) and a skip transition (FLOOR_STABLE -> KEYCHAIN_COMMITTED) both raise FloorProtocolError; build_freshness_serve_gate rejects an out-of-enum (state,reason) pair; serve_gate_allows_serving withholds serving for structurally plausible but non-CLEAR/unknown-reason gates; verify_cas_readback raises quarantined_floor_conflict on a mismatched keychain readback.",
+      "expected": "All forward-only and serve-gate invariants hold; no serve is granted outside the three valid (state,reason) pairs.",
+      "verdict": "passed"
+    },
+    {
+      "id": "i",
+      "scenario": "Event chain: appending an event with prev_digest=None onto a non-empty chain, and with an arbitrary stale prev_digest, both raise EventChainError without writing; the full persisted chain across two REMEMBER calls self-verifies (recomputed event_digest matches stored value; prev_digest strictly links to the prior row's event_digest; final row matches event_chain_head()).",
+      "expected": "Stale/replayed prev_digest raises EventChainError; the persisted chain is internally consistent and forward-linked.",
+      "verdict": "passed"
+    }
+  ],
+  "pytest_redteam": "9 passed",
+  "pytest_full_encrypted_lifecycle": "237 passed",
+  "blockers": []
+}

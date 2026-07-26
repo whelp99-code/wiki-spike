@@ -1,0 +1,63 @@
+{
+  "algorithm": "HKDF-SHA-256",
+  "ikm_hex_test_only": "4c1e6bd1af3bf393508020a770a9b376739b4d4af7ecc2a256969cb7494ee2eb",
+  "labels": [
+    {
+      "ikm_ref": "test_only_root_ikm",
+      "info_hex": "636f6d6d616e645f6469676573745f6b65795f7631007631",
+      "label": "command_digest_key_v1",
+      "output_hex": "996c16fa789b110507806a2a92c891ecb810366c07e81a59626b170a89d9aa43",
+      "salt_hex": "270f20aa31052609c0f67286afe5f2427c5cd892c13d08d6e681c143111fd25f"
+    },
+    {
+      "ikm_ref": "test_only_root_ikm",
+      "info_hex": "6d616e69666573745f6469676573745f6b65795f7631007631",
+      "label": "manifest_digest_key_v1",
+      "output_hex": "41ea05a446eeb5e2f9c031f73cc4b858a89be2314787ff32197e2cb5d9842928",
+      "salt_hex": "749040f4f3cffce4975141a6e143cb90d845f32d40d6eb911779e771466de2af"
+    },
+    {
+      "ikm_ref": "test_only_root_ikm",
+      "info_hex": "61727469666163745f6964656e746974795f6b65795f7631007631",
+      "label": "artifact_identity_key_v1",
+      "output_hex": "4e41b966a6e6c873eefe7ab452a0557fda0dc1febd06e686f5bbc07c87e3ebb4",
+      "salt_hex": "6790eecdd25bc293e40b6d3a9b79cde263521fa45cd474f90b8b590eb50d9c0b"
+    },
+    {
+      "ikm_ref": "test_only_root_ikm",
+      "info_hex": "7375626a6563745f6964656e746974795f6b65795f7631007631",
+      "label": "subject_identity_key_v1",
+      "output_hex": "32f9456bb87bb2e4a92a631b572da4be9351dbd347b4d8cd163ef6b919e53ceb",
+      "salt_hex": "9d81fb3f4dd2b9eaa962db914cff4f37a4a2e4de74ee3f955eda7cf2f3b4da10"
+    },
+    {
+      "ikm_ref": "test_only_root_ikm",
+      "info_hex": "6f626a6563745f6964656e746974795f6b65795f7631007631",
+      "label": "object_identity_key_v1",
+      "output_hex": "c17301ce6a4686b0f3e8b7aa19e48bb1cb6e76377b657befc431edf908b1350a",
+      "salt_hex": "e18f1e2c6f0fe8fc5cd2582c29cab76848218f205339ae8d50230ca4ceaedbc3"
+    },
+    {
+      "ikm_ref": "test_only_root_ikm",
+      "info_hex": "7265766973696f6e5f6964656e746974795f6b65795f7631007631",
+      "label": "revision_identity_key_v1",
+      "output_hex": "6e61369f9674926ee7bf31bdef7873e8b16d2771df576e01e795fe36dd727c0f",
+      "salt_hex": "58a05943f8a19a019484e5209a593ee353ec064089d876a9591c182971082e52"
+    },
+    {
+      "ikm_ref": "test_only_root_ikm",
+      "info_hex": "737461626c655f7375626a6563745f6b65795f7631007631",
+      "label": "stable_subject_key_v1",
+      "output_hex": "70b72fdfff95f7c6c32c70db822250a5f0b8472b4e1d7916c2ea5def848a1ab7",
+      "salt_hex": "3af4f4f020ca5825aaace11f635ecf4da9c8f394516763c854e34f5ec0e37ddb"
+    },
+    {
+      "ikm_ref": "test_only_root_ikm",
+      "info_hex": "6c6f6361746f725f6964656e746974795f6b65795f7631007631",
+      "label": "locator_identity_key_v1",
+      "output_hex": "f433c6a52c8a408e5286ebefedc084c08eacd7bfeba977cc2f7313703db63811",
+      "salt_hex": "67d1c33c8b9e3e8fa38c94fda3b453f1ec7b8f9f4d2e248d4fa22fdac0452492"
+    }
+  ],
+  "schema": "wiki-encrypted-lifecycle-kdf-vectors-v1"
+}

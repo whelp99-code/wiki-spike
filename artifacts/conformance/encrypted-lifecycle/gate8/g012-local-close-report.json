@@ -1,0 +1,1 @@
+{"schema":"wiki-g012-local-close-report-v1","surface":"api-algorithm-workflow","pytest":"1218 passed","architecture_boundaries":"PASS","secret_scan":"PASS","independent_oracle":"130 checks PASS","architect_review":"CLEAR/APPROVE","executor_qa":"passed","terminal_critic":"OKAY","blockers":[]}

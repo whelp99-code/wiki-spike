@@ -48,6 +48,9 @@ def test_repository_boundaries_pass():
         ("src/wiki_spike/cas.py", "import wiki_spike.memory_core\n", "wiki_spike.memory_core"),
         ("src/wiki_spike/memory_core/a.py", "import wiki_spike.memory_runtime\n", "wiki_spike.memory_runtime"),
         ("src/wiki_spike/memory_runtime/a.py", "import wiki_spike.applications\n", "wiki_spike.applications"),
+        ("src/wiki_spike/infrastructure/a.py", "import wiki_spike.memory_runtime\n", "wiki_spike.memory_runtime"),
+        ("src/wiki_spike/infrastructure/a.py", "from wiki_spike.cas import ContentAddressedStore\n", "wiki_spike.cas"),
+        ("src/wiki_spike/infrastructure/a.py", "import wiki_spike.applications\n", "wiki_spike.applications"),
     ],
 )
 def test_forbidden_imports_are_detected(tmp_path, relative, content, expected):
@@ -99,3 +102,52 @@ def test_symlinked_source_fails_closed(tmp_path):
         pytest.skip("symlinks unavailable")
     with pytest.raises(PreflightError, match="symlinked Python source"):
         violations(repo)
+
+
+def test_infrastructure_constant_dynamic_import_to_forbidden_module_fails_closed(tmp_path):
+    repo = make_repo(tmp_path)
+    write(
+        repo,
+        "src/wiki_spike/infrastructure/a.py",
+        "import importlib\nimportlib.import_module('wiki_spike.memory_runtime')\n",
+    )
+    found = violations(repo)
+    assert len(found) == 1
+    assert found[0].layer == "infrastructure"
+    assert found[0].imported_module == "wiki_spike.memory_runtime"
+
+
+def test_infrastructure_nonconstant_dynamic_import_fails_closed(tmp_path):
+    repo = make_repo(tmp_path)
+    write(
+        repo,
+        "src/wiki_spike/infrastructure/a.py",
+        "import importlib\nname = get_name()\nimportlib.import_module(name)\n",
+    )
+    found = violations(repo)
+    assert len(found) == 1
+    assert found[0].layer == "infrastructure"
+    assert found[0].imported_module == "<dynamic-import>"
+
+
+def test_infrastructure_aliased_dynamic_import_fails_closed(tmp_path):
+    repo = make_repo(tmp_path)
+    write(
+        repo,
+        "src/wiki_spike/infrastructure/a.py",
+        "from importlib import import_module as load\nload('wiki_spike.cas')\n",
+    )
+    found = violations(repo)
+    assert len(found) == 1
+    assert found[0].layer == "infrastructure"
+    assert found[0].imported_module == "wiki_spike.cas"
+
+
+def test_infrastructure_may_import_memory_core(tmp_path):
+    repo = make_repo(tmp_path)
+    write(
+        repo,
+        "src/wiki_spike/infrastructure/a.py",
+        "from wiki_spike.memory_core.contracts import canonical_bytes\n",
+    )
+    assert violations(repo) == []

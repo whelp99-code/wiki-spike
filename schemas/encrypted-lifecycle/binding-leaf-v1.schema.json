@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://wiki-spike.local/schemas/encrypted-lifecycle/binding-leaf-v1.schema.json",
+  "title": "Binding Leaf v1 — RestoreVetoLeafV1 (immutable) | LifecycleTransitionLeafV1 (hash-chained) (Revision 5/9)",
+  "description": "RestoreVetoLeafV1 is immutable and established once per (workspace,artifact,revision); it means this binding must never be restored and is never updated or removed. LifecycleTransitionLeafV1 is append-only and hash-chained: the first transition references the establishing veto leaf's establishing_sequence, every later transition references the previous transition hash, forks/gaps/mutation/terminal-regression/two-successors abort. This is distinct from BindingRegistryLeafV1 (binding-registry-proof-set-v1.schema.json), which tracks provider custody status, not floor veto/transition facts.",
+  "definitions": {
+    "decimalString": {"type": "string", "pattern": "^(0|[1-9][0-9]*)$"},
+    "hex64": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "opaqueId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,62}$"},
+    "nullableHex64": {"oneOf": [{"$ref": "#/definitions/hex64"}, {"type": "null"}]},
+    "restoreVetoLeafV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "leaf_version", "workspace_id", "artifact_kind", "revision_id", "dek_id", "ark_handle_digest",
+        "consent_epoch", "establishing_sequence", "leaf_type"
+      ],
+      "properties": {
+        "leaf_version": {"const": "1"},
+        "workspace_id": {"$ref": "#/definitions/opaqueId"},
+        "artifact_kind": {"enum": ["MEMORY_REVISION", "EVIDENCE_FRAGMENT", "ASSERTION", "EVIDENCE_EDGE"]},
+        "revision_id": {"$ref": "#/definitions/hex64"},
+        "dek_id": {"$ref": "#/definitions/hex64"},
+        "ark_handle_digest": {"$ref": "#/definitions/hex64"},
+        "consent_epoch": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+        "establishing_sequence": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+        "leaf_type": {"const": "RESTORE_VETO"}
+      }
+    },
+    "lifecycleTransitionLeafV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "leaf_version", "workspace_id", "artifact_kind", "revision_id", "transition_sequence",
+        "from_state", "to_state", "evidence_digest", "prior_transition_hash"
+      ],
+      "properties": {
+        "leaf_version": {"const": "1"},
+        "workspace_id": {"$ref": "#/definitions/opaqueId"},
+        "artifact_kind": {"enum": ["MEMORY_REVISION", "EVIDENCE_FRAGMENT", "ASSERTION", "EVIDENCE_EDGE"]},
+        "revision_id": {"$ref": "#/definitions/hex64"},
+        "transition_sequence": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+        "from_state": {
+          "enum": [
+            "REQUESTED", "API_VETO_ACTIVE", "TOMBSTONE_ACTIVE", "CHECKPOINT_COMMITTED",
+            "REVOCATION_KEYS_DESTROYED", "KEYS_DESTROYED", "PURGE_PENDING", "COMPLETE"
+          ]
+        },
+        "to_state": {
+          "enum": [
+            "REQUESTED", "API_VETO_ACTIVE", "TOMBSTONE_ACTIVE", "CHECKPOINT_COMMITTED",
+            "REVOCATION_KEYS_DESTROYED", "KEYS_DESTROYED", "PURGE_PENDING", "COMPLETE"
+          ]
+        },
+        "evidence_digest": {"$ref": "#/definitions/hex64"},
+        "prior_transition_hash": {"$ref": "#/definitions/nullableHex64"}
+      }
+    }
+  },
+  "oneOf": [
+    {"$ref": "#/definitions/restoreVetoLeafV1"},
+    {"$ref": "#/definitions/lifecycleTransitionLeafV1"}
+  ]
+}

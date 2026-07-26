@@ -1,0 +1,27 @@
+{
+  "cases": [
+    {
+      "body_content_digest": null,
+      "body_present": false,
+      "command_kind": "REMEMBER",
+      "expected_error": "new_consent_zero_body_rejected",
+      "expected_result": "rejected",
+      "name": "zero-body-rejected",
+      "new_consent_flag": true,
+      "prior_consent_epoch": "1",
+      "prior_deletion_phase": "COMPLETE"
+    },
+    {
+      "body_content_digest": "c9214819ee5e922f30fd3d6ae08d9e25bba8a37bb0b94cfed3b45f40d0f06657",
+      "body_present": true,
+      "command_kind": "REMEMBER",
+      "expected_result": "accepted",
+      "name": "body-bearing-accepted",
+      "new_consent_epoch": "2",
+      "new_consent_flag": true,
+      "prior_consent_epoch": "1",
+      "prior_deletion_phase": "COMPLETE"
+    }
+  ],
+  "schema": "wiki-encrypted-lifecycle-new-consent-vectors-v1"
+}

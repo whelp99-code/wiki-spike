@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://wiki-spike.local/schemas/encrypted-lifecycle/floor-state-v1.schema.json",
+  "title": "Encrypted Lifecycle Floor State v1 (R9-1, R10-1)",
+  "description": "FloorStateV1 tracks the forward-only local floor attempt state machine FLOOR_STABLE -> CHALLENGE_RESERVED -> {COUNTER_UPDATE_PREPARED | FLOOR_UPDATE_PREPARED} -> KEYCHAIN_COMMITTED -> FLOOR_STABLE, plus the R9-1/R10-1 terminal QUARANTINED_FLOOR_CONFLICT reached when any Keychain value other than the expected old floor or byte-identical candidate A appears; no adoption/supersession/convergence path exists (AC 11 replacement, R10-1). `floor_candidate` is null only at FLOOR_STABLE; once present at FLOOR_UPDATE_PREPARED its `candidate_floor` bytes are immutable and must complete unchanged despite later freshness expiry.",
+  "definitions": {
+    "decimalString": {"type": "string", "pattern": "^(0|[1-9][0-9]*)$"},
+    "hex64": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "opaqueId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,62}$"},
+    "timestamp": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "nullableHex64": {"oneOf": [{"$ref": "#/definitions/hex64"}, {"type": "null"}]},
+    "floorCandidateBytesV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["veto_set_size", "veto_set_root", "transition_size", "transition_root", "transition_head", "prior_floor_hash"],
+      "properties": {
+        "veto_set_size": {"$ref": "#/definitions/decimalString"},
+        "veto_set_root": {"$ref": "#/definitions/hex64"},
+        "transition_size": {"$ref": "#/definitions/decimalString"},
+        "transition_root": {"$ref": "#/definitions/hex64"},
+        "transition_head": {"$ref": "#/definitions/hex64"},
+        "prior_floor_hash": {"$ref": "#/definitions/hex64"}
+      }
+    },
+    "floorCandidateV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "candidate_kind", "expected_old_floor_hash", "expected_keychain_generation",
+        "candidate_floor", "candidate_floor_hash", "attempt_id", "counter", "nonce_digest",
+        "disposition", "reason_code"
+      ],
+      "properties": {
+        "schema": {"const": "wiki-floor-candidate-v1"},
+        "candidate_kind": {"enum": ["COUNTER_ONLY", "VALIDATED_ADVANCE"]},
+        "expected_old_floor_hash": {"$ref": "#/definitions/hex64"},
+        "expected_keychain_generation": {"$ref": "#/definitions/decimalString"},
+        "candidate_floor": {"$ref": "#/definitions/floorCandidateBytesV1"},
+        "candidate_floor_hash": {"$ref": "#/definitions/hex64"},
+        "attempt_id": {"$ref": "#/definitions/hex64"},
+        "counter": {"$ref": "#/definitions/decimalString"},
+        "nonce_digest": {"$ref": "#/definitions/hex64"},
+        "disposition": {"enum": ["RESERVED", "ACCEPTED_PREPARED", "COMMITTED", "REJECTED", "QUARANTINED"]},
+        "reason_code": {
+          "oneOf": [
+            {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
+            {"type": "null"}
+          ]
+        }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "workspace_id", "state", "last_challenge_counter", "floor_candidate", "updated_at"],
+  "properties": {
+    "schema": {"const": "wiki-floor-state-v1"},
+    "workspace_id": {"$ref": "#/definitions/opaqueId"},
+    "state": {
+      "enum": [
+        "FLOOR_STABLE",
+        "CHALLENGE_RESERVED",
+        "COUNTER_UPDATE_PREPARED",
+        "FLOOR_UPDATE_PREPARED",
+        "KEYCHAIN_COMMITTED",
+        "QUARANTINED_FLOOR_CONFLICT"
+      ]
+    },
+    "last_challenge_counter": {"$ref": "#/definitions/decimalString"},
+    "floor_candidate": {
+      "oneOf": [
+        {"$ref": "#/definitions/floorCandidateV1"},
+        {"type": "null"}
+      ]
+    },
+    "updated_at": {"$ref": "#/definitions/timestamp"}
+  }
+}

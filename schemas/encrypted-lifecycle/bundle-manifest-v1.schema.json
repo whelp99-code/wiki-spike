@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://wiki-spike.local/schemas/encrypted-lifecycle/bundle-manifest-v1.schema.json",
+  "title": "Encrypted Lifecycle Cross-Run Bundle Envelope + Manifest v1 (Stage 8 canonical one-pass bundle contract)",
+  "description": "Digest projection rule (frozen, acyclic): ProjectEnvelopeForBundleDigestV1 replaces BOTH self-fields with fixed JSON empty strings before any digest is computed — `artifact_name:\"\"` and `bundle_sha256:\"\"` — and no other field or byte-level value changes; null is invalid for either field. `bundle_sha256 = SHA-256(canonical manifest bytes)`; `artifact_name` is then derived as `encrypted-lifecycle-<lower-kind>-<run>-<attempt>-<first16(bundle_sha256)>` and both are written back into the stored envelope only after the manifest/digest are fixed. The manifest envelope entry records the projected canonical envelope byte length, never the stored envelope length.",
+  "definitions": {
+    "decimalString": {"type": "string", "pattern": "^(0|[1-9][0-9]*)$"},
+    "hex64": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "gitSha40": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "timestamp": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "posixRelativePath": {"type": "string", "minLength": 1, "maxLength": 240, "pattern": "^[^/\\\\][^\\\\]*$"},
+    "bundleEnvelopeV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "artifact_kind", "repository", "producer_commit", "contract_digest",
+        "toolchain_lock_digest", "workflow_file_digest", "workflow_run_id", "workflow_run_attempt",
+        "platform", "artifact_name", "payload_paths", "payload_sha256", "bundle_sha256",
+        "produced_at"
+      ],
+      "properties": {
+        "schema": {"const": "wiki-artifact-bundle-envelope-v1"},
+        "artifact_kind": {"enum": ["SQLCIPHER_FEASIBILITY", "GATE1_DECISION", "CONFORMANCE_PRE_CANARY", "CANARY_24H"]},
+        "repository": {"type": "string", "minLength": 1},
+        "producer_commit": {"$ref": "#/definitions/gitSha40"},
+        "contract_digest": {"$ref": "#/definitions/hex64"},
+        "toolchain_lock_digest": {"$ref": "#/definitions/hex64"},
+        "workflow_file_digest": {"$ref": "#/definitions/hex64"},
+        "workflow_run_id": {"$ref": "#/definitions/decimalString"},
+        "workflow_run_attempt": {"$ref": "#/definitions/decimalString"},
+        "platform": {
+          "enum": [
+            "github-hosted/ubuntu-24.04/x86_64",
+            "self-hosted/macos-15/arm64/wiki-gate1-workstation",
+            "self-hosted/macos-15/arm64/wiki-conformance-workstation",
+            "self-hosted/macos-15/arm64/wiki-canary-workstation"
+          ]
+        },
+        "artifact_name": {
+          "oneOf": [
+            {"const": ""},
+            {"type": "string", "pattern": "^encrypted-lifecycle-[a-z0-9-]+-[1-9][0-9]*-[1-9][0-9]*-[0-9a-f]{16}$"}
+          ]
+        },
+        "payload_paths": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/definitions/posixRelativePath"}
+        },
+        "payload_sha256": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/definitions/hex64"}
+        },
+        "bundle_sha256": {
+          "oneOf": [
+            {"const": ""},
+            {"$ref": "#/definitions/hex64"}
+          ]
+        },
+        "produced_at": {"$ref": "#/definitions/timestamp"}
+      }
+    },
+    "bundleManifestEntryV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "size"],
+      "properties": {
+        "path": {"$ref": "#/definitions/posixRelativePath"},
+        "sha256": {"$ref": "#/definitions/hex64"},
+        "size": {"$ref": "#/definitions/decimalString"}
+      }
+    },
+    "bundleManifestV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "entries"],
+      "properties": {
+        "schema": {"const": "wiki-artifact-bundle-manifest-v1"},
+        "entries": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/definitions/bundleManifestEntryV1"}
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {"$ref": "#/definitions/bundleEnvelopeV1"},
+    {"$ref": "#/definitions/bundleManifestV1"}
+  ]
+}

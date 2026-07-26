@@ -1,0 +1,1 @@
+{"schema":"wiki-gate6-extraction-report-v1","surface":"algorithm","suite":"tests/encrypted_lifecycle/test_gate6_extraction.py","adversarial_case_count":33,"pytest_gate6":"33 passed","pytest_full_encrypted_lifecycle":"1104 passed","blockers":[]}

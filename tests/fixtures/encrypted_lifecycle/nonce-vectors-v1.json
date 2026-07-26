@@ -1,0 +1,57 @@
+{
+  "aes_gcm_nonce_hex24": {
+    "invalid": [
+      {
+        "reason": "width_22_not_24",
+        "value": "306dbe23866d2c7bba06b8"
+      },
+      {
+        "reason": "width_26_not_24",
+        "value": "306dbe23866d2c7bba06b8ffab"
+      },
+      {
+        "reason": "non_hex_character",
+        "value": "g06dbe23866d2c7bba06b8ff"
+      }
+    ],
+    "pattern": "^[0-9a-f]{24}$",
+    "valid": [
+      "306dbe23866d2c7bba06b8ff"
+    ]
+  },
+  "challenge_nonce_hex64": {
+    "invalid": [
+      {
+        "reason": "width_62_not_64",
+        "value": "d9869fb9b8ad0c2fb9561425566f60afc456af12a1a7010e6a1de6aca34495"
+      },
+      {
+        "reason": "width_66_not_64",
+        "value": "d9869fb9b8ad0c2fb9561425566f60afc456af12a1a7010e6a1de6aca3449534ab"
+      },
+      {
+        "reason": "non_hex_character",
+        "value": "g9869fb9b8ad0c2fb9561425566f60afc456af12a1a7010e6a1de6aca3449534"
+      }
+    ],
+    "pattern": "^[0-9a-f]{64}$",
+    "valid": [
+      "d9869fb9b8ad0c2fb9561425566f60afc456af12a1a7010e6a1de6aca3449534"
+    ]
+  },
+  "cross_use_rejection": [
+    {
+      "expected": "reject",
+      "reason": "width_24_not_64_even_though_hex",
+      "tested_as": "challenge_nonce_hex64",
+      "value": "306dbe23866d2c7bba06b8ff"
+    },
+    {
+      "expected": "reject",
+      "reason": "width_64_not_24_even_though_hex",
+      "tested_as": "aes_gcm_nonce_hex24",
+      "value": "d9869fb9b8ad0c2fb9561425566f60afc456af12a1a7010e6a1de6aca3449534"
+    }
+  ],
+  "schema": "wiki-encrypted-lifecycle-nonce-vectors-v1"
+}

@@ -1,0 +1,13 @@
+{
+  "advisory_timings_ms": {},
+  "checks": [],
+  "generated_at": "2026-07-24T11:52:12Z",
+  "library": null,
+  "must_verdict": "NOT_RUN",
+  "note": "neither sqlcipher3 nor pysqlcipher3 is importable on this platform; no SQLCipher MUST checks were attempted (never treated as a MUST pass).",
+  "platform": "darwin/arm64",
+  "python_version": "3.12.3",
+  "recorded_commit": null,
+  "schema": "wiki-sqlcipher-feasibility-v1",
+  "status": "platform_unavailable"
+}
