@@ -40,7 +40,9 @@ except ImportError:  # pragma: no cover
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-PY = sys.executable if "python3.12" in sys.executable else "/usr/local/bin/python3.12"
+if sys.version_info[:2] != (3, 12):
+    raise RuntimeError("encrypted lifecycle vector tests require Python 3.12")
+PY = sys.executable
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures" / "encrypted_lifecycle"
 SCHEMA_DIR = REPO_ROOT / "schemas" / "encrypted-lifecycle"
