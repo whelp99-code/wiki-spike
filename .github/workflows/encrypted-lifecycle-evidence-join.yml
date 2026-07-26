@@ -112,7 +112,7 @@ jobs:
             --canary-run-id "${{ inputs.canary_run_id }}" --canary-run-attempt "${{ inputs.canary_run_attempt }}" --canary-repository "${{ github.repository }}" --canary-source-run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ inputs.canary_run_id }}/attempts/${{ inputs.canary_run_attempt }}" --canary-artifact-name "${{ inputs.canary_artifact_name }}" --canary-bundle-sha256 "${{ inputs.canary_bundle_sha256 }}" --canary-workflow-digest "$CANARY_WORKFLOW_DIGEST"
 
       - name: Upload Gate 8 join evidence
-        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: gate8-join-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: gate8-join/
