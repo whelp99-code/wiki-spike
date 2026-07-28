@@ -9,7 +9,7 @@ from typing import Callable, Mapping
 from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase
 from wiki_spike.memory_core.second_brain_ledger_contracts import (
     CandidateOutcomeV2, ConflictOutcomeV2, GateStateV2, LedgerCommandV2,
-    LedgerReceiptV2, RecallAuthorityV2, RecallSnapshotRequestV2,
+    LedgerReceiptV2, RecallAuthorityV2, RecallCitationV2, RecallSnapshotRequestV2,
     canonical_ledger_digest, make_recall_snapshot_v2,
 )
 from wiki_spike.memory_core.second_brain_ledger_ports import (
@@ -86,7 +86,7 @@ class LifecycleLedgerAuthority(LedgerCommandPort, AtomicRecallSnapshotPort):
             con.execute("INSERT INTO ledger_transition VALUES(?,?,?,?,?,?,?,?)", (command.command_ref, command.payload.candidate_ref, command.workspace_ref, command.payload.prior_state, command.payload.resulting_state, command.authority_epoch, command.command_digest, command.interval.recorded_from))
             for edge in command.payload.support_edges + command.payload.contradiction_edges:
                 edge_ref = "edge:" + sha256((command.command_ref + edge.edge_kind + edge.from_candidate_ref + edge.to_candidate_ref).encode()).hexdigest()
-                con.execute("INSERT INTO ledger_edge VALUES(?,?,?,?,?,?,?,?,?,?)", (edge_ref, edge.workspace_ref, edge.edge_kind, edge.from_candidate_ref, edge.to_candidate_ref, "ACTIVE", edge.interval.valid_from, edge.interval.valid_to, edge.interval.recorded_from, edge.interval.recorded_to))
+                con.execute("INSERT INTO ledger_edge VALUES(?,?,?,?,?,?,?,?,?,?)", (edge_ref, edge.workspace_ref, edge.edge_kind, edge.from_candidate_ref, edge.to_candidate_ref, "SUPERSEDED" if command.kind == "SUPERSEDE" else "ACTIVE", edge.interval.valid_from, edge.interval.valid_to, edge.interval.recorded_from, edge.interval.recorded_to))
             if command.kind in {"REVOKE", "FORGET"}:
                 self._invalidate_supported_candidates(con, command.payload.candidate_ref, command.interval.recorded_from, command.authority_epoch)
             receipt_digest = canonical_ledger_digest("receipt-v2", {"receipt_version":"second-brain-ledger-receipt-v2", "command_ref":command.command_ref, "workspace_ref":command.workspace_ref, "transaction_cut":sequence, "ledger_epoch":epoch})
@@ -157,8 +157,23 @@ class LifecycleLedgerAuthority(LedgerCommandPort, AtomicRecallSnapshotPort):
         try:
             authority = con.execute("SELECT capability_ref,authority_epoch,authority_state FROM ledger_authority WHERE workspace_ref=?", (request.workspace_ref,)).fetchone()
             allowed = authority is not None and tuple(authority) == (request.capability_ref, request.authority_epoch, "ACTIVE")
-            rows = con.execute("SELECT * FROM ledger_candidate WHERE workspace_ref=? AND candidate_state='APPROVED' AND valid_from_at<=? AND (valid_to_at IS NULL OR valid_to_at>?)", (request.workspace_ref, request.valid_at, request.valid_at)).fetchall() if allowed else []
+            rows = con.execute(
+                "SELECT * FROM ledger_candidate AS candidate WHERE workspace_ref=? AND candidate_state='APPROVED' "
+                "AND valid_from_at<=? AND (valid_to_at IS NULL OR valid_to_at>?) "
+                "AND NOT EXISTS (SELECT 1 FROM ledger_edge AS edge WHERE edge.workspace_ref=candidate.workspace_ref "
+                "AND edge.from_candidate_ref=candidate.candidate_ref AND edge.edge_state='SUPERSEDED')",
+                (request.workspace_ref, request.valid_at, request.valid_at),
+            ).fetchall() if allowed else []
             displayed = {r["candidate_ref"] for r in rows}
+            support_refs = {
+                row["candidate_ref"]: tuple(
+                    edge[0] for edge in con.execute(
+                        "SELECT to_candidate_ref FROM ledger_edge WHERE edge_kind='SUPPORT' AND from_candidate_ref=? AND edge_state='ACTIVE'",
+                        (row["candidate_ref"],),
+                    )
+                )
+                for row in rows
+            }
             conflicts = con.execute("SELECT from_candidate_ref,to_candidate_ref FROM ledger_edge WHERE workspace_ref=? AND edge_kind='CONTRADICTION' AND edge_state='ACTIVE'", (request.workspace_ref,)).fetchall() if allowed else []
             cut = str(con.execute("SELECT COUNT(*) FROM ledger_command WHERE workspace_ref=?", (request.workspace_ref,)).fetchone()[0] or 1)
         except BaseException:
@@ -168,5 +183,26 @@ class LifecycleLedgerAuthority(LedgerCommandPort, AtomicRecallSnapshotPort):
         digest = sha256((request.workspace_ref + cut).encode()).hexdigest()
         ref = lambda kind: f"{kind}:{digest}"
         gate = GateStateV2("PASS" if allowed else "DENY", request.authority_epoch, digest)
-        body = {"snapshot_version":"second-brain-recall-serve-snapshot-v2", "workspace_ref":request.workspace_ref, "capability_ref":request.capability_ref, "authority_epoch":request.authority_epoch, "query_digest":request.query_digest, "transaction_cut":cut, "valid_at":request.valid_at, "recorded_at":request.recorded_at, "scope_digest":request.scope_digest, "generation_ref":ref("generation"), "generation_digest":digest, "checkpoint_ref":ref("checkpoint"), "checkpoint_digest":digest, "freshness_digest":digest, "authority_checkpoint_digest":digest, "authorization":RecallAuthorityV2("ALLOW" if allowed else "DENY", request.capability_ref, request.authority_epoch, request.query_digest, request.workspace_ref, request.scope_digest).to_mapping(), "global_floor":gate.to_mapping(), "binding":gate.to_mapping(), "recovery":gate.to_mapping(), "route":gate.to_mapping(), "cohort":gate.to_mapping(), "deletion":gate.to_mapping(), "consent":gate.to_mapping(), "projection_digest":digest, "contract_digest":digest, "base_snapshot_digest":None, "incoming_cursor_digest":None, "incoming_continuation_ref":None, "candidates":[CandidateOutcomeV2(r['candidate_ref'], r['revision_ref'], r['candidate_state'], r['content_digest'], tuple(x[0] for x in con.execute("SELECT to_candidate_ref FROM ledger_edge WHERE edge_kind='SUPPORT' AND from_candidate_ref=? AND edge_state='ACTIVE'", (r['candidate_ref'],)).fetchall())).to_mapping() for r in rows], "conflicts":[ConflictOutcomeV2(r[0],r[1],"OPEN").to_mapping() for r in conflicts if r[0] in displayed and r[1] in displayed], "citations":[], "continuation":None}
+        candidates = tuple(
+            CandidateOutcomeV2(row["candidate_ref"], row["revision_ref"], row["candidate_state"], row["content_digest"], support_refs[row["candidate_ref"]])
+            for row in rows
+        )
+        citations = tuple(
+            RecallCitationV2(
+                "second-brain-recall-citation-v2",
+                row["candidate_ref"],
+                f"source:{row['content_digest']}",
+                canonical_ledger_digest(
+                    "citation-v2",
+                    {
+                        "candidate_ref": row["candidate_ref"],
+                        "revision_ref": row["revision_ref"],
+                        "content_digest": row["content_digest"],
+                        "transaction_cut": cut,
+                    },
+                ),
+            ).to_mapping()
+            for row in rows
+        )
+        body = {"snapshot_version":"second-brain-recall-serve-snapshot-v2", "workspace_ref":request.workspace_ref, "capability_ref":request.capability_ref, "authority_epoch":request.authority_epoch, "query_digest":request.query_digest, "transaction_cut":cut, "valid_at":request.valid_at, "recorded_at":request.recorded_at, "scope_digest":request.scope_digest, "generation_ref":ref("generation"), "generation_digest":digest, "checkpoint_ref":ref("checkpoint"), "checkpoint_digest":digest, "freshness_digest":digest, "authority_checkpoint_digest":digest, "authorization":RecallAuthorityV2("ALLOW" if allowed else "DENY", request.capability_ref, request.authority_epoch, request.query_digest, request.workspace_ref, request.scope_digest).to_mapping(), "global_floor":gate.to_mapping(), "binding":gate.to_mapping(), "recovery":gate.to_mapping(), "route":gate.to_mapping(), "cohort":gate.to_mapping(), "deletion":gate.to_mapping(), "consent":gate.to_mapping(), "projection_digest":digest, "contract_digest":digest, "base_snapshot_digest":None, "incoming_cursor_digest":None, "incoming_continuation_ref":None, "candidates":[item.to_mapping() for item in candidates], "conflicts":[ConflictOutcomeV2(r[0],r[1],"OPEN").to_mapping() for r in conflicts if r[0] in displayed and r[1] in displayed], "citations":citations, "continuation":None}
         return ValidatedRecallSnapshotAcquisitionV2(request, make_recall_snapshot_v2(body))

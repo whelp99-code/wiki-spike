@@ -1,0 +1,7 @@
+{
+  "fixture_version": "second-brain-stage3-journeys-v1",
+  "workspace": "synthetic-stage3",
+  "candidates": ["capture", "correction", "forgotten", "support"],
+  "timestamps": {"recorded_at": "2026-01-01T00:00:00Z", "recall_at": "2026-01-02T00:00:00Z"},
+  "prohibited_literals": ["real-person", "external-source"]
+}

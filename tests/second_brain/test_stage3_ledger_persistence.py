@@ -206,7 +206,10 @@ def test_all_transitions_require_explicit_review_and_preserve_correction_history
     service.append(command("REVIEW_REJECT", rejected, command_name="reject", workspace=workspace))
     assert table_count(database, "ledger_revision") == 12
     assert database.con.execute("SELECT candidate_state FROM ledger_candidate WHERE candidate_ref=?", (rejected,)).fetchone()[0] == "REJECTED"
-    assert {item.candidate_ref for item in service.acquire(request(workspace)).snapshot.candidates} == {first, second, superseded, successor}
+    assert {item.candidate_ref for item in service.acquire(request(workspace)).snapshot.candidates} == {first, second, successor}
+    assert database.con.execute(
+        "SELECT candidate_state FROM ledger_candidate WHERE candidate_ref=?", (superseded,)
+    ).fetchone()[0] == "APPROVED"
     database.close()
 
 
