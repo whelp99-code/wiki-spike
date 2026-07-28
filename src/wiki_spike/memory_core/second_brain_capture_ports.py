@@ -7,6 +7,7 @@ from .second_brain_capture_contracts import (
     CapturePersistenceAggregateV1,
     CapturedItemV1,
     CaptureItemReceiptV1,
+    EncryptedContentRefV1,
     EncryptedNativeMappingRefV1,
     SourceScopeRefV1,
 )
@@ -22,6 +23,11 @@ class ConnectorSourceReaderPort(Protocol):
 class EncryptedNativeMappingSealerPort(Protocol):
     """Seals native mappings and returns a ref bound to the supplied capture identity."""
     def seal_native_mapping(self, scope: SourceScopeRefV1, capture_ref: str, native_mapping: bytes) -> EncryptedNativeMappingRefV1: ...
+@runtime_checkable
+class EncryptedContentSealerPort(Protocol):
+    """Seals capture content and returns its authority-issued stable identity ref."""
+    def seal_content(self, scope: SourceScopeRefV1, capture_ref: str, content: bytes) -> EncryptedContentRefV1: ...
+
 
 
 @runtime_checkable

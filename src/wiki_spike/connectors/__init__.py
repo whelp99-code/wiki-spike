@@ -17,19 +17,20 @@ from typing import Any, Final
 from wiki_spike.memory_core.second_brain_capture_contracts import (
     CapturedItemV1,
     EncryptedNativeMappingRefV1,
+    EncryptedContentRefV1,
     SourceScopeRefV1,
 )
 from wiki_spike.memory_core.second_brain_capture_ports import (
     CaptureApiPort,
     ConnectorSourceReaderPort,
     EncryptedNativeMappingSealerPort,
+    EncryptedContentSealerPort,
 )
 
 _FIXTURE_VERSION: Final = "second-brain-connector-fixture-v1"
 _FIELDS: Final = frozenset({
     "fixture_version", "source_profile", "source_domain", "scope_ref", "scope_epoch",
-    "scan_epoch", "capture_ref", "encrypted_content_ref", "ciphertext_b64",
-    "native_mapping",
+    "scan_epoch", "capture_ref", "ciphertext_b64", "native_mapping",
 })
 _REF = re.compile(r"^[a-z][a-z0-9_-]{0,63}:[0-9a-f]{64}$")
 _POSITIVE_DECIMAL = re.compile(r"^[1-9][0-9]*$")
@@ -56,6 +57,7 @@ class FixtureConnectorReader(ConnectorSourceReaderPort):
     def __init__(
         self,
         fixture_client: CaptureApiPort,
+        content_sealer: EncryptedContentSealerPort,
         native_mapping_sealer: EncryptedNativeMappingSealerPort,
         fixture_request_refs: Sequence[str],
     ) -> None:
@@ -65,6 +67,7 @@ class FixtureConnectorReader(ConnectorSourceReaderPort):
         if len(set(refs)) != len(refs) or any(not isinstance(ref, str) or _REF.fullmatch(ref) is None for ref in refs):
             raise FixtureConnectorError("fixture request references must be unique keyed opaque references")
         self._fixture_client = fixture_client
+        self._content_sealer = content_sealer
         self._native_mapping_sealer = native_mapping_sealer
         self._fixture_request_refs = tuple(sorted(refs))
 
@@ -76,11 +79,14 @@ class FixtureConnectorReader(ConnectorSourceReaderPort):
         if sum(len(item[1]) for item in parsed) > _MAX_TOTAL_CIPHERTEXT_BYTES:
             raise FixtureConnectorError("fixture ciphertext total exceeds the permitted limit")
         items: list[CapturedItemV1] = []
-        for capture_ref, ciphertext, encrypted_content_ref, native_mapping in sorted(parsed, key=lambda item: (item[0], sha256(item[1]).digest())):
+        for capture_ref, ciphertext, native_mapping in sorted(parsed, key=lambda item: (item[0], sha256(item[1]).digest())):
+            sealed_content = self._content_sealer.seal_content(scope, capture_ref, ciphertext)
+            if not isinstance(sealed_content, EncryptedContentRefV1) or sealed_content.capture_ref != capture_ref:
+                raise FixtureConnectorError("content sealer must return the exact capture-bound content reference")
             sealed = self._native_mapping_sealer.seal_native_mapping(scope, capture_ref, native_mapping)
             if not isinstance(sealed, EncryptedNativeMappingRefV1) or sealed.capture_ref != capture_ref:
                 raise FixtureConnectorError("native mapping sealer must return the exact capture-bound mapping reference")
-            items.append(CapturedItemV1(capture_ref, ciphertext, encrypted_content_ref, sealed.encrypted_native_mapping_ref))
+            items.append(CapturedItemV1(capture_ref, ciphertext, sealed_content.encrypted_content_ref, sealed.encrypted_native_mapping_ref))
         return tuple(items)
 
     def _validate_scope(self, scope: SourceScopeRefV1, scan_epoch: str) -> None:
@@ -89,7 +95,7 @@ class FixtureConnectorReader(ConnectorSourceReaderPort):
         if not isinstance(scan_epoch, str) or _POSITIVE_DECIMAL.fullmatch(scan_epoch) is None:
             raise FixtureConnectorError("scan epoch must be a canonical positive epoch")
 
-    def _parse_fixture(self, payload: bytes, scope: SourceScopeRefV1, scan_epoch: str) -> tuple[str, bytes, str, bytes]:
+    def _parse_fixture(self, payload: bytes, scope: SourceScopeRefV1, scan_epoch: str) -> tuple[str, bytes, bytes]:
         if not isinstance(payload, bytes):
             raise FixtureConnectorError("fixture payload must be bytes")
         try:
@@ -109,11 +115,6 @@ class FixtureConnectorReader(ConnectorSourceReaderPort):
         if not isinstance(capture_ref, str) or not capture_ref.startswith("capture:") or _REF.fullmatch(capture_ref) is None:
             raise FixtureConnectorError("fixture capture reference must be a capture opaque reference")
         ciphertext = self._decode_ciphertext(value["ciphertext_b64"])
-        encrypted_content_ref = value["encrypted_content_ref"]
-        if (not isinstance(encrypted_content_ref, str)
-                or not encrypted_content_ref.startswith("encrypted-content:")
-                or _REF.fullmatch(encrypted_content_ref) is None):
-            raise FixtureConnectorError("fixture encrypted content reference must be an encrypted-content opaque reference")
         native_mapping = value["native_mapping"]
         if not isinstance(native_mapping, Mapping):
             raise FixtureConnectorError("fixture native mapping must be an object")
@@ -121,7 +122,7 @@ class FixtureConnectorReader(ConnectorSourceReaderPort):
             native_mapping_bytes = json.dumps(native_mapping, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
         except (TypeError, ValueError) as exc:
             raise FixtureConnectorError("fixture native mapping is not JSON-canonicalizable") from exc
-        return capture_ref, ciphertext, encrypted_content_ref, native_mapping_bytes
+        return capture_ref, ciphertext, native_mapping_bytes
 
     @staticmethod
     def _decode_ciphertext(value: Any) -> bytes:

@@ -139,6 +139,13 @@ class EncryptedNativeMappingRefV1:
         _ref(self.encrypted_native_mapping_ref, "encrypted_native_mapping_ref", kind="encrypted-native-mapping")
 
 @dataclass(frozen=True)
+class EncryptedContentRefV1:
+    """Proof that the exact capture content was sealed by the content authority."""
+    capture_ref: str; encrypted_content_ref: str
+    def __post_init__(self) -> None:
+        _ref(self.capture_ref, "capture_ref", kind="capture")
+        _ref(self.encrypted_content_ref, "encrypted_content_ref", kind="encrypted-content")
+@dataclass(frozen=True)
 class CapturedItemV1:
     """Transient connector result; native identity remains only behind its sealed ref."""
     capture_ref: str; ciphertext: bytes; encrypted_content_ref: str; encrypted_native_mapping_ref: str

@@ -365,6 +365,20 @@ CREATE TABLE IF NOT EXISTS freshness_serve_gate (
 """
 
 CAPTURE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS capture_identity_binding (
+  workspace_ref TEXT NOT NULL,
+  source_profile_state TEXT NOT NULL,
+  source_domain_state TEXT NOT NULL,
+  source_ref TEXT NOT NULL,
+  scope_ref TEXT NOT NULL,
+  scope_epoch_sequence TEXT NOT NULL,
+  capture_ref TEXT NOT NULL,
+  evidence_kind TEXT NOT NULL,
+  evidence_digest TEXT NOT NULL,
+  identity_ref TEXT NOT NULL UNIQUE,
+  cas_locator_ref TEXT NOT NULL,
+  PRIMARY KEY (workspace_ref, source_profile_state, source_domain_state, source_ref, scope_ref, scope_epoch_sequence, capture_ref, evidence_kind)
+);
 CREATE TABLE IF NOT EXISTS capture_scope (
   scope_id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
@@ -452,6 +466,7 @@ TABLE_NAMES: tuple[str, ...] = (
     "generation",
     "floor_candidate",
     "freshness_serve_gate",
+    "capture_identity_binding",
     "capture_scope",
     "capture_receipt",
     "capture_manifest",
@@ -1499,6 +1514,7 @@ class EncryptedCapturePersistence(AtomicCapturePersistencePort):
                 scope_digest,
             ):
                 raise CapturePersistenceError("conflicting durable capture_scope evidence")
+            self._validate_receipt_bindings(con, aggregate)
             existing_aggregate = con.execute(
                 "SELECT cohort_digest, aggregate_handle FROM capture_cohort "
                 "WHERE cohort_id=?",
@@ -1587,10 +1603,7 @@ class EncryptedCapturePersistence(AtomicCapturePersistencePort):
                     checkpoint.scan_epoch,
                     checkpoint.checkpoint_digest,
                 )
-                if not (
-                    same_checkpoint
-                    and aggregate.advance.previous_checkpoint_ref is None
-                ) and current[0] != aggregate.advance.previous_checkpoint_ref:
+                if not same_checkpoint and current[0] != aggregate.advance.previous_checkpoint_ref:
                     raise CapturePersistenceError("stale checkpoint compare-and-swap")
             self._upsert_checkpoint(
                 con,
@@ -1628,6 +1641,33 @@ class EncryptedCapturePersistence(AtomicCapturePersistencePort):
                 ),
             )
 
+    def _validate_receipt_bindings(self, con: sqlite3.Connection, aggregate: CapturePersistenceAggregateV1) -> None:
+        scope = aggregate.scope
+        binding_key = (
+            scope.workspace_ref, scope.source_profile, scope.source_domain, scope.source_ref,
+            scope.scope_ref, scope.scope_epoch,
+        )
+        for receipt in aggregate.receipts:
+            for evidence_kind, identity_ref, expected_digest in (
+                ("content", receipt.encrypted_content_ref, receipt.ciphertext_digest),
+                ("native-mapping", receipt.encrypted_native_mapping_ref, None),
+            ):
+                row = con.execute(
+                    "SELECT evidence_digest, identity_ref, cas_locator_ref FROM capture_identity_binding "
+                    "WHERE workspace_ref=? AND source_profile_state=? AND source_domain_state=? "
+                    "AND source_ref=? AND scope_ref=? AND scope_epoch_sequence=? AND capture_ref=? AND evidence_kind=?",
+                    (*binding_key, receipt.capture_ref, evidence_kind),
+                ).fetchone()
+                if (row is None or row[1] != identity_ref
+                        or (expected_digest is not None and row[0] != expected_digest)):
+                    raise CapturePersistenceError("receipt lacks its authority-issued durable identity binding")
+                locator_ref = row[2]
+                if not locator_ref.startswith("encrypted-cas:"):
+                    raise CapturePersistenceError("receipt binding has an invalid CAS locator")
+                try:
+                    self._cas.get(locator_ref.removeprefix("encrypted-cas:"))
+                except Exception as exc:
+                    raise CapturePersistenceError("receipt binding CAS object is unavailable") from exc
     @staticmethod
     def _insert_or_match(con: sqlite3.Connection, table: str, key_column: str, key: str, values: tuple[str, ...]) -> None:
         row = con.execute(f"SELECT * FROM {table} WHERE {key_column}=?", (key,)).fetchone()

@@ -69,10 +69,6 @@
           "minLength": 1,
           "type": "string"
         },
-        "encrypted_content_ref": {
-          "pattern": "^encrypted-content:[0-9a-f]{64}$",
-          "type": "string"
-        },
         "fixture_version": {
           "const": "second-brain-connector-fixture-v1"
         },
@@ -113,7 +109,6 @@
         "scope_epoch",
         "scan_epoch",
         "capture_ref",
-        "encrypted_content_ref",
         "ciphertext_b64",
         "native_mapping"
       ],

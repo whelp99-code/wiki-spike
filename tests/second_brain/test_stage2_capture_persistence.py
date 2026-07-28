@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore
+from wiki_spike.infrastructure.fixture_capture_clients import FixtureEncryptedContentSealer, FixtureNativeMappingSealer
 from wiki_spike.infrastructure.lifecycle_db import (
     CapturePersistenceError,
     EncryptedCapturePersistence,
@@ -15,7 +16,7 @@ from wiki_spike.infrastructure.lifecycle_db import (
     fixture_capture_database,
     table_columns,
 )
-from wiki_spike.memory_core.second_brain_capture_contracts import CapturePersistenceAggregateV1, canonical_identity_body_digest
+from wiki_spike.memory_core.second_brain_capture_contracts import CapturePersistenceAggregateV1, SourceScopeRefV1, canonical_identity_body_digest
 
 DEK = bytes(range(32))
 PROFILES = (("Codex", "codex"), ("Claude/Memory Bank", "claude-memory-bank"), ("Git", "git"), ("Markdown", "markdown"))
@@ -35,10 +36,15 @@ def bound(domain: str, value: dict, field: str) -> dict:
     return value
 
 
-def aggregate(profile: str, domain: str, *, epoch: str = "1", previous: str | None = None, cohort_entries: list[dict] | None = None, cohort_label: str | None = None) -> CapturePersistenceAggregateV1:
+def aggregate(profile: str, domain: str, *, content_sealer: FixtureEncryptedContentSealer, mapping_sealer: FixtureNativeMappingSealer, epoch: str = "1", previous: str | None = None, cohort_entries: list[dict] | None = None, cohort_label: str | None = None) -> CapturePersistenceAggregateV1:
     label = f"{domain}-{epoch}"
     scope = {"scope_version": "second-brain-source-scope-ref-v1", "source_profile": profile, "source_domain": domain, "source_ref": ref(f"{domain}-source", domain), "workspace_ref": ref("workspace", "stage2"), "scope_ref": ref(f"{domain}-scope", domain), "scope_epoch": "1"}
-    receipt = {"receipt_version": "second-brain-capture-item-receipt-v1", "scope": scope, "scan_epoch": epoch, "capture_ref": ref("capture", label), "encrypted_content_ref": ref("encrypted-content", label), "encrypted_native_mapping_ref": ref("encrypted-native-mapping", label), "ciphertext_digest": digest("ciphertext-" + label), "disposition": "ACCEPTED"}
+    capture_ref = ref("capture", label)
+    ciphertext = ("ciphertext-" + label).encode()
+    resolved_scope = SourceScopeRefV1.from_mapping(scope)
+    sealed_content = content_sealer.seal_content(resolved_scope, capture_ref, ciphertext)
+    sealed_mapping = mapping_sealer.seal_native_mapping(resolved_scope, capture_ref, ("native-mapping-" + label).encode())
+    receipt = {"receipt_version": "second-brain-capture-item-receipt-v1", "scope": scope, "scan_epoch": epoch, "capture_ref": capture_ref, "encrypted_content_ref": sealed_content.encrypted_content_ref, "encrypted_native_mapping_ref": sealed_mapping.encrypted_native_mapping_ref, "ciphertext_digest": sha256(ciphertext).hexdigest(), "disposition": "ACCEPTED"}
     manifest = bound("manifest-v1", {"manifest_version": "second-brain-capture-scan-manifest-v1", "scope": scope, "scan_epoch": epoch, "checkpoint_ref": previous or ref("checkpoint", "initial-" + label), "receipt_refs": [receipt["capture_ref"]], "manifest_ref": ref("manifest", label), "manifest_digest": ""}, "manifest_digest")
     reconciliation = bound("reconciliation-v1", {"reconciliation_version": "second-brain-capture-reconciliation-v1", "scope": scope, "scan_epoch": epoch, "manifest_ref": manifest["manifest_ref"], "reconciliation_ref": ref("reconciliation", label), "reconciliation_epoch": epoch, "completion": "COMPLETE", "outcome": "RECONCILED", "expected_receipt_count": "1", "accounted_receipt_count": "1", "disposition_counts": {"ACCEPTED": "1", "DUPLICATE": "0", "TOMBSTONE": "0", "SKIPPED": "0", "QUARANTINED": "0"}, "reconciliation_digest": ""}, "reconciliation_digest")
     checkpoint = bound("checkpoint-v1", {"checkpoint_version": "second-brain-scan-checkpoint-v1", "scope": scope, "scan_epoch": epoch, "checkpoint_ref": ref("checkpoint", label), "checkpoint_digest": "", "manifest_ref": manifest["manifest_ref"], "reconciliation_ref": reconciliation["reconciliation_ref"], "reconciliation_digest": reconciliation["reconciliation_digest"], "reconciliation_epoch": epoch, "reconciliation_completion": "COMPLETE", "reconciliation_outcome": "RECONCILED"}, "checkpoint_digest")
@@ -51,11 +57,14 @@ def aggregate(profile: str, domain: str, *, epoch: str = "1", previous: str | No
     return CapturePersistenceAggregateV1.from_mapping(bound("aggregate-v1", value, "aggregate_digest"))
 
 
-def store(tmp_path: Path) -> tuple[LifecycleDatabase, EncryptedContentStore, EncryptedCapturePersistence]:
+def store(tmp_path: Path) -> tuple[LifecycleDatabase, EncryptedContentStore, EncryptedCapturePersistence, object]:
     database = fixture_capture_database(tmp_path / "fixture.sqlite")
     database.initialize()
     cas = EncryptedContentStore(tmp_path / "cas")
-    return database, cas, EncryptedCapturePersistence(database, cas, DEK)
+    content_sealer = FixtureEncryptedContentSealer(database, cas, DEK)
+    mapping_sealer = FixtureNativeMappingSealer(database, cas, DEK)
+    factory = lambda profile, domain, **kwargs: aggregate(profile, domain, content_sealer=content_sealer, mapping_sealer=mapping_sealer, **kwargs)
+    return database, cas, EncryptedCapturePersistence(database, cas, DEK), factory
 def test_fixture_capture_schema_has_only_allowlisted_ref_columns(tmp_path: Path):
     database = fixture_capture_database(tmp_path / "fixture.sqlite")
     database.initialize()
@@ -76,7 +85,7 @@ def test_fixture_capture_schema_has_only_allowlisted_ref_columns(tmp_path: Path)
 
 
 def test_four_source_capture_identities_are_atomic_encrypted_and_restart_idempotent(tmp_path: Path):
-    database, cas, persistence = store(tmp_path)
+    database, cas, persistence, aggregate = store(tmp_path)
     values = [aggregate(profile, domain) for profile, domain in PROFILES]
     for value in values:
         persistence.persist_capture_aggregate(value)
@@ -96,7 +105,7 @@ def test_four_source_capture_identities_are_atomic_encrypted_and_restart_idempot
 
 @pytest.mark.parametrize("failure_call", range(1, 7))
 def test_each_sqlite_phase_rolls_back_without_partial_rows_or_authoritative_cas_refs(tmp_path: Path, monkeypatch, failure_call: int):
-    database, cas, persistence = store(tmp_path)
+    database, cas, persistence, aggregate = store(tmp_path)
     original = persistence._insert_or_match
     calls = 0
     def fail_after_phase(*args, **kwargs):
@@ -110,10 +119,10 @@ def test_each_sqlite_phase_rolls_back_without_partial_rows_or_authoritative_cas_
         persistence.persist_capture_aggregate(aggregate("Git", "git"))
     assert all(database.con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0 for table in TABLES)
     assert not database.con.execute("SELECT 1 FROM capture_scope WHERE aggregate_handle LIKE 'encrypted-capture:%'").fetchall()
-    assert len(tuple(cas.objects.iterdir())) == 1  # CAS may retain only an unreferenced encrypted blob.
+    assert len(tuple(cas.objects.iterdir())) == 3  # Two bound evidence objects and one unreferenced aggregate blob may remain.
     database.close()
 def test_identical_retry_after_sqlite_rollback_publishes_one_complete_aggregate(tmp_path: Path, monkeypatch):
-    database, _, persistence = store(tmp_path)
+    database, _, persistence, aggregate = store(tmp_path)
     value = aggregate("Git", "git")
     original = persistence._insert_or_match
     failed = False
@@ -134,8 +143,8 @@ def test_identical_retry_after_sqlite_rollback_publishes_one_complete_aggregate(
     assert database.con.execute("SELECT COUNT(*) FROM capture_scope").fetchone()[0] == 1
     assert database.con.execute("SELECT COUNT(*) FROM capture_receipt").fetchone()[0] == 1
     database.close()
-def test_scan_epoch_two_remains_valid_under_unchanged_scope_epoch_one(tmp_path: Path):
-    database, _, persistence = store(tmp_path)
+def test_exact_epoch_two_aggregate_replay_is_stable_before_and_after_database_reopen(tmp_path: Path):
+    database, cas, persistence, aggregate = store(tmp_path)
     first = aggregate("Git", "git", epoch="1")
     persistence.persist_capture_aggregate(first)
     second = aggregate(
@@ -146,6 +155,9 @@ def test_scan_epoch_two_remains_valid_under_unchanged_scope_epoch_one(tmp_path: 
     )
 
     persistence.persist_capture_aggregate(second)
+    object_count = len(tuple(cas.objects.iterdir()))
+    persistence.persist_capture_aggregate(second)
+    assert len(tuple(cas.objects.iterdir())) == object_count
 
     assert second.scope.scope_epoch == "1"
     assert second.manifest.scan_epoch == "2"
@@ -154,13 +166,18 @@ def test_scan_epoch_two_remains_valid_under_unchanged_scope_epoch_one(tmp_path: 
         (second.scope.scope_ref,),
     ).fetchone()[0] == "2"
     database.close()
+    reopened = fixture_capture_database(tmp_path / "fixture.sqlite")
+    reopened.initialize()
+    EncryptedCapturePersistence(reopened, cas, DEK).persist_capture_aggregate(second)
+    assert len(tuple(cas.objects.iterdir())) == object_count
+    reopened.close()
 
 
 
 
 
 def test_stale_quarantined_and_missing_reconciliation_never_publish_checkpoint(tmp_path: Path):
-    database, _, persistence = store(tmp_path)
+    database, _, persistence, aggregate = store(tmp_path)
     first = aggregate("Markdown", "markdown")
     persistence.persist_capture_aggregate(first)
     stale = aggregate("Markdown", "markdown", epoch="2", previous=None)
@@ -179,7 +196,7 @@ def test_stale_quarantined_and_missing_reconciliation_never_publish_checkpoint(t
 
 
 def test_full_cohort_requires_exact_durable_reconciliation_checkpoint_and_epoch(tmp_path: Path):
-    database, _, persistence = store(tmp_path)
+    database, _, persistence, aggregate = store(tmp_path)
     aggregates = [aggregate(profile, domain) for profile, domain in PROFILES]
     for value in aggregates[1:]:
         persistence.persist_capture_aggregate(value)
@@ -192,7 +209,7 @@ def test_full_cohort_requires_exact_durable_reconciliation_checkpoint_and_epoch(
 def test_preexisting_cohort_roster_rejects_mismatched_durable_manifest_or_registration(
     tmp_path: Path, field: str,
 ):
-    database, _, persistence = store(tmp_path)
+    database, _, persistence, aggregate = store(tmp_path)
     aggregates = [aggregate(profile, domain) for profile, domain in PROFILES]
     for value in aggregates[1:]:
         persistence.persist_capture_aggregate(value)
@@ -222,7 +239,7 @@ def test_preexisting_cohort_roster_rejects_mismatched_durable_manifest_or_regist
 
 
 def test_sqlite_stores_only_bound_encrypted_refs_and_no_raw_payload(tmp_path: Path):
-    database, cas, persistence = store(tmp_path)
+    database, cas, persistence, aggregate = store(tmp_path)
     value = aggregate("Codex", "codex")
     persistence.persist_capture_aggregate(value)
     receipt = database.con.execute(
@@ -252,8 +269,23 @@ def test_production_database_never_installs_capture_tables_or_accepts_mode_mutat
     database.close()
 
 
+def test_substituted_or_absent_durable_binding_is_rejected_before_aggregate_cas_put(tmp_path: Path):
+    database, cas, persistence, aggregate = store(tmp_path)
+    value = aggregate("Codex", "codex")
+    before = len(tuple(cas.objects.iterdir()))
+    database.con.execute(
+        "DELETE FROM capture_identity_binding WHERE capture_ref=? AND evidence_kind='native-mapping'",
+        (value.receipts[0].capture_ref,),
+    )
+    database.con.commit()
+    with pytest.raises(CapturePersistenceError, match="authority-issued durable identity binding"):
+        persistence.persist_capture_aggregate(value)
+    assert len(tuple(cas.objects.iterdir())) == before
+    database.close()
+
+
 def test_writer_reparses_forged_complete_aggregate_before_writing(tmp_path: Path):
-    database, _, persistence = store(tmp_path)
+    database, _, persistence, aggregate = store(tmp_path)
     value = aggregate("Codex", "codex")
     forged = CapturePersistenceAggregateV1(
         value.aggregate_version, value.scope, value.receipts, value.manifest,

@@ -12,7 +12,9 @@ from wiki_spike.memory_core.second_brain_capture_contracts import (
     CapturePersistenceAggregateV1,
     CaptureReconciliationV1,
     CaptureScanManifestV1,
+    EncryptedContentRefV1,
     EncryptedNativeMappingRefV1,
+    SourceScopeRefV1,
     InvalidContractValue,
     NonServingCaptureCohortV1,
     ReconciledCheckpointAdvanceV1,
@@ -112,9 +114,19 @@ class FixtureClient:
     def read_fixture_payload(self, request_ref): return self.payloads[request_ref]
 
 
+class ExactContentSealer:
+    def seal_content(self, scope, capture_ref, ciphertext):
+        return EncryptedContentRefV1(capture_ref, REF("encrypted-content"))
+
+
 class ExactSealer:
     def seal_native_mapping(self, scope, capture_ref, native_mapping):
         return EncryptedNativeMappingRefV1(capture_ref, REF("encrypted-native-mapping"))
+
+
+class SwappingContentSealer:
+    def seal_content(self, scope, capture_ref, ciphertext):
+        return EncryptedContentRefV1(f"capture:{'b' * 64}", REF("encrypted-content"))
 
 
 class SwappingSealer:
@@ -123,12 +135,12 @@ class SwappingSealer:
 
 
 def fixture(capture_ref=REF("capture")):
-    return json.dumps({"fixture_version": "second-brain-connector-fixture-v1", "source_profile": "Codex", "source_domain": "codex", "scope_ref": REF("codex-scope"), "scope_epoch": "1", "scan_epoch": "1", "capture_ref": capture_ref, "encrypted_content_ref": REF("encrypted-content"), "ciphertext_b64": base64.b64encode(b"ciphertext").decode(), "native_mapping": {"fixture_only": "opaque"}}).encode()
+    return json.dumps({"fixture_version": "second-brain-connector-fixture-v1", "source_profile": "Codex", "source_domain": "codex", "scope_ref": REF("codex-scope"), "scope_epoch": "1", "scan_epoch": "1", "capture_ref": capture_ref, "ciphertext_b64": base64.b64encode(b"ciphertext").decode(), "native_mapping": {"fixture_only": "opaque"}}).encode()
 
 
 def test_connector_returns_complete_identity_bound_transient_items():
-    connector = CodexFixtureConnector(FixtureClient({REF("request"): fixture()}), ExactSealer(), [REF("request")])
-    items = connector.read_fixture_capture_items(__import__("wiki_spike.memory_core.second_brain_capture_contracts", fromlist=["SourceScopeRefV1"]).SourceScopeRefV1.from_mapping(scope()), "1")
+    connector = CodexFixtureConnector(FixtureClient({REF("request"): fixture()}), ExactContentSealer(), ExactSealer(), [REF("request")])
+    items = connector.read_fixture_capture_items(SourceScopeRefV1.from_mapping(scope()), "1")
     assert len(items) == 1
     assert items[0].capture_ref == REF("capture")
     assert items[0].ciphertext == b"ciphertext"
@@ -136,15 +148,21 @@ def test_connector_returns_complete_identity_bound_transient_items():
     assert items[0].encrypted_native_mapping_ref == REF("encrypted-native-mapping")
 
 
+def test_connector_rejects_a_swapped_sealed_content_identity():
+    connector = CodexFixtureConnector(FixtureClient({REF("request"): fixture()}), SwappingContentSealer(), ExactSealer(), [REF("request")])
+    with pytest.raises(FixtureConnectorError, match="content sealer must return the exact capture-bound"):
+        connector.read_fixture_capture_items(SourceScopeRefV1.from_mapping(scope()), "1")
+
+
 def test_connector_rejects_a_swapped_sealed_native_mapping_identity():
-    connector = CodexFixtureConnector(FixtureClient({REF("request"): fixture()}), SwappingSealer(), [REF("request")])
-    source_scope = __import__("wiki_spike.memory_core.second_brain_capture_contracts", fromlist=["SourceScopeRefV1"]).SourceScopeRefV1.from_mapping(scope())
+    connector = CodexFixtureConnector(FixtureClient({REF("request"): fixture()}), ExactContentSealer(), SwappingSealer(), [REF("request")])
+    source_scope = SourceScopeRefV1.from_mapping(scope())
     with pytest.raises(FixtureConnectorError):
         connector.read_fixture_capture_items(source_scope, "1")
 def test_connector_rejects_changed_scope_epoch_with_identical_scope_identity():
-    connector = CodexFixtureConnector(FixtureClient({REF("request"): fixture()}), ExactSealer(), [REF("request")])
+    connector = CodexFixtureConnector(FixtureClient({REF("request"): fixture()}), ExactContentSealer(), ExactSealer(), [REF("request")])
     changed_scope_epoch = {**scope(), "scope_epoch": "2"}
-    source_scope = __import__("wiki_spike.memory_core.second_brain_capture_contracts", fromlist=["SourceScopeRefV1"]).SourceScopeRefV1.from_mapping(changed_scope_epoch)
+    source_scope = SourceScopeRefV1.from_mapping(changed_scope_epoch)
     with pytest.raises(FixtureConnectorError):
         connector.read_fixture_capture_items(source_scope, "1")
 
