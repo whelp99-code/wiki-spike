@@ -107,6 +107,8 @@ COLUMN_KIND_EXACT_ALLOWLIST: tuple[str, ...] = (
     "consent_epoch",
     "retention_epoch",
     "revision_number",
+    "authority_epoch",
+    "ledger_epoch",
     "sensitivity",
 )
 
@@ -362,6 +364,35 @@ CREATE TABLE IF NOT EXISTS freshness_serve_gate (
   reason_state TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS ledger_candidate (
+  candidate_ref TEXT PRIMARY KEY, workspace_ref TEXT NOT NULL, candidate_state TEXT NOT NULL,
+  revision_ref TEXT NOT NULL, content_digest TEXT NOT NULL, authority_epoch TEXT NOT NULL,
+  valid_from_at TEXT NOT NULL, valid_to_at TEXT, recorded_from_at TEXT NOT NULL, recorded_to_at TEXT
+);
+CREATE TABLE IF NOT EXISTS ledger_revision (
+  revision_ref TEXT PRIMARY KEY, candidate_ref TEXT NOT NULL, workspace_ref TEXT NOT NULL,
+  content_digest TEXT NOT NULL, revision_state TEXT NOT NULL, recorded_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ledger_transition (
+  command_ref TEXT PRIMARY KEY, candidate_ref TEXT NOT NULL, workspace_ref TEXT NOT NULL,
+  prior_state TEXT NOT NULL, resulting_state TEXT NOT NULL, authority_epoch TEXT NOT NULL,
+  command_digest TEXT NOT NULL, recorded_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ledger_edge (
+  edge_ref TEXT PRIMARY KEY, workspace_ref TEXT NOT NULL, edge_kind TEXT NOT NULL,
+  from_candidate_ref TEXT NOT NULL, to_candidate_ref TEXT NOT NULL, edge_state TEXT NOT NULL,
+  valid_from_at TEXT NOT NULL, valid_to_at TEXT, recorded_from_at TEXT NOT NULL, recorded_to_at TEXT,
+  UNIQUE (workspace_ref, edge_kind, from_candidate_ref, to_candidate_ref, recorded_from_at)
+);
+CREATE TABLE IF NOT EXISTS ledger_command (
+  command_ref TEXT PRIMARY KEY, workspace_ref TEXT NOT NULL, command_digest TEXT NOT NULL,
+  receipt_digest TEXT NOT NULL, transaction_sequence TEXT NOT NULL, ledger_epoch TEXT NOT NULL,
+  command_state TEXT NOT NULL, recorded_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ledger_authority (
+  workspace_ref TEXT PRIMARY KEY, capability_ref TEXT NOT NULL, authority_epoch TEXT NOT NULL,
+  authority_state TEXT NOT NULL, updated_at TEXT NOT NULL
+);
 """
 
 CAPTURE_SCHEMA = """
@@ -474,6 +505,12 @@ TABLE_NAMES: tuple[str, ...] = (
     "capture_checkpoint",
     "migration_registration",
     "capture_cohort",
+    "ledger_candidate",
+    "ledger_revision",
+    "ledger_transition",
+    "ledger_edge",
+    "ledger_command",
+    "ledger_authority",
 )
 
 EVENT_LOG_DOMAIN = "wiki-spike.lifecycle-db.event-log.v1"
