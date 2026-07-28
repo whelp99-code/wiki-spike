@@ -1661,11 +1661,22 @@ class EncryptedCapturePersistence(AtomicCapturePersistencePort):
                 "SELECT checkpoint_id, checkpoint_sequence FROM capture_checkpoint WHERE scope_id=?",
                 (entry.scope_ref,),
             ).fetchone()
-            if (scope is None or tuple(scope) != (aggregate.cohort.final_workspace_ref, entry.source_ref)
-                    or manifest is None or registration is None
-                    or reconciliation is None or reconciliation[0] != entry.reconciliation_epoch
-                    or checkpoint is None or checkpoint[0] != entry.checkpoint_ref
-                    or checkpoint[1] != entry.checkpoint_epoch):
+            if (
+                scope is None
+                or tuple(scope) != (
+                    aggregate.cohort.final_workspace_ref,
+                    entry.source_ref,
+                )
+                or manifest is None
+                or manifest[0] != entry.reconciliation_epoch
+                or registration is None
+                or registration[0] != entry.reconciliation_epoch
+                or reconciliation is None
+                or reconciliation[0] != entry.reconciliation_epoch
+                or checkpoint is None
+                or checkpoint[0] != entry.checkpoint_ref
+                or checkpoint[1] != entry.checkpoint_epoch
+            ):
                 raise CapturePersistenceError("cohort requires exact durable registration, manifest, reconciliation, and checkpoint evidence")
     @staticmethod
     def _upsert_checkpoint(con: sqlite3.Connection, scope_id: str, checkpoint_id: str, sequence: str, digest: str, locator: str) -> None:

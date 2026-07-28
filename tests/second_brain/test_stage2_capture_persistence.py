@@ -204,13 +204,14 @@ def test_preexisting_cohort_roster_rejects_mismatched_durable_manifest_or_regist
     )
     persistence.persist_capture_aggregate(git_epoch_two)
     entries = [value.cohort.source_roster[0].to_mapping() for value in aggregates]
-    replacement = (
-        git_epoch_two.manifest.manifest_ref
+    entries[2] = git_epoch_two.cohort.source_roster[0].to_mapping()
+    stale_ref = (
+        aggregates[2].manifest.manifest_ref
         if field == "manifest_ref"
-        else git_epoch_two.registration.registration_ref
+        else aggregates[2].registration.registration_ref
     )
-    entries[2][field] = replacement
-    entries[2]["ownership_binding"][field] = entries[2][field]
+    entries[2][field] = stale_ref
+    entries[2]["ownership_binding"][field] = stale_ref
     final = aggregate("Codex", "codex", cohort_entries=entries, cohort_label=f"bad-{field}")
 
     with pytest.raises(CapturePersistenceError, match="exact durable registration, manifest"):
