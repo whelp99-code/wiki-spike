@@ -8,6 +8,7 @@ from .second_brain_ledger_contracts import (
     LedgerCommandV2,
     LedgerReceiptV2,
     RecallServeSnapshotV2,
+    RecallTrustAuthorityV2,
     RecallContinuationV2,
     RecallSnapshotRequestV2,
     make_recall_continuation_v2,
@@ -34,11 +35,11 @@ class ValidatedRecallSnapshotAcquisitionV2:
     _request: RecallSnapshotRequestV2
     _snapshot: RecallServeSnapshotV2
 
-    def __init__(self, request: RecallSnapshotRequestV2, snapshot: RecallServeSnapshotV2) -> None:
+    def __init__(self, request: RecallSnapshotRequestV2, snapshot: RecallServeSnapshotV2, authority: RecallTrustAuthorityV2) -> None:
         if not isinstance(request, RecallSnapshotRequestV2):
             raise TypeError("request must be RecallSnapshotRequestV2")
         object.__setattr__(self, "_request", request)
-        object.__setattr__(self, "_snapshot", validate_recall_snapshot_acquisition(request, snapshot))
+        object.__setattr__(self, "_snapshot", validate_recall_snapshot_acquisition(request, snapshot, authority))
 
     @property
     def request(self) -> RecallSnapshotRequestV2:
@@ -55,8 +56,8 @@ class CanonicalRecallSnapshotFactoryV2(Protocol):
     def acquire(self, request: RecallSnapshotRequestV2) -> ValidatedRecallSnapshotAcquisitionV2: ...
 
     @staticmethod
-    def validated(request: RecallSnapshotRequestV2, result: RecallServeSnapshotV2) -> ValidatedRecallSnapshotAcquisitionV2:
-        return ValidatedRecallSnapshotAcquisitionV2(request, result)
+    def validated(request: RecallSnapshotRequestV2, result: RecallServeSnapshotV2, authority: RecallTrustAuthorityV2) -> ValidatedRecallSnapshotAcquisitionV2:
+        return ValidatedRecallSnapshotAcquisitionV2(request, result, authority)
 
     @staticmethod
     def continuation(body: Mapping[str, Any]) -> RecallContinuationV2:
