@@ -35,7 +35,7 @@ def scope():
 
 
 def receipt():
-    return {"receipt_version": "second-brain-capture-item-receipt-v1", "scope": scope(), "scan_epoch": "1", "capture_ref": REF("capture"), "ciphertext_digest": sha256(b"ciphertext").hexdigest(), "disposition": "ACCEPTED"}
+    return {"receipt_version": "second-brain-capture-item-receipt-v1", "scope": scope(), "scan_epoch": "1", "capture_ref": REF("capture"), "encrypted_content_ref": REF("encrypted-content"), "encrypted_native_mapping_ref": REF("encrypted-native-mapping"), "ciphertext_digest": sha256(b"ciphertext").hexdigest(), "disposition": "ACCEPTED"}
 
 
 def manifest():
@@ -123,7 +123,7 @@ class SwappingSealer:
 
 
 def fixture(capture_ref=REF("capture")):
-    return json.dumps({"fixture_version": "second-brain-connector-fixture-v1", "source_profile": "Codex", "source_domain": "codex", "scope_ref": REF("codex-scope"), "scan_epoch": "1", "capture_ref": capture_ref, "ciphertext_b64": base64.b64encode(b"ciphertext").decode(), "native_mapping": {"fixture_only": "opaque"}}).encode()
+    return json.dumps({"fixture_version": "second-brain-connector-fixture-v1", "source_profile": "Codex", "source_domain": "codex", "scope_ref": REF("codex-scope"), "scan_epoch": "1", "capture_ref": capture_ref, "encrypted_content_ref": REF("encrypted-content"), "ciphertext_b64": base64.b64encode(b"ciphertext").decode(), "native_mapping": {"fixture_only": "opaque"}}).encode()
 
 
 def test_connector_returns_complete_identity_bound_transient_items():
@@ -132,6 +132,7 @@ def test_connector_returns_complete_identity_bound_transient_items():
     assert len(items) == 1
     assert items[0].capture_ref == REF("capture")
     assert items[0].ciphertext == b"ciphertext"
+    assert items[0].encrypted_content_ref == REF("encrypted-content")
     assert items[0].encrypted_native_mapping_ref == REF("encrypted-native-mapping")
 
 

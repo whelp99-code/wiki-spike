@@ -389,6 +389,14 @@
           "pattern": "^capture:[0-9a-f]{64}$",
           "type": "string"
         },
+        "encrypted_content_ref": {
+          "pattern": "^encrypted-content:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "encrypted_native_mapping_ref": {
+          "pattern": "^encrypted-native-mapping:[0-9a-f]{64}$",
+          "type": "string"
+        },
         "ciphertext_digest": {
           "$ref": "#/$defs/digest"
         },
@@ -416,6 +424,8 @@
         "scope",
         "scan_epoch",
         "capture_ref",
+        "encrypted_content_ref",
+        "encrypted_native_mapping_ref",
         "ciphertext_digest",
         "disposition"
       ],

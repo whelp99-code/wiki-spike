@@ -14,7 +14,7 @@ from .second_brain_capture_contracts import (
 
 @runtime_checkable
 class ConnectorSourceReaderPort(Protocol):
-    """Connector boundary returning exact identity-bound transient capture items."""
+    """Connector boundary returning exact capture identity and ciphertext evidence for a scan epoch."""
     def read_fixture_capture_items(self, scope: SourceScopeRefV1, scan_epoch: str) -> tuple[CapturedItemV1, ...]: ...
 
 

@@ -78,17 +78,22 @@ class FixtureNativeMappingSealer:
         if not isinstance(cas, EncryptedContentStore) or len(dek) != 32:
             raise FixtureCaptureClientError("encrypted CAS and a 32-byte mapping key are required")
         self._cas, self._dek = cas, bytes(dek)
-        self._sealed: dict[str, str] = {}
+        self._sealed: dict[tuple[str, str], tuple[str, str]] = {}
 
     def seal_native_mapping(self, scope: SourceScopeRefV1, capture_ref: str, native_mapping: bytes) -> EncryptedNativeMappingRefV1:
         if not isinstance(scope, SourceScopeRefV1) or not isinstance(capture_ref, str) or not isinstance(native_mapping, bytes) or not native_mapping:
             raise FixtureCaptureClientError("invalid fixture native mapping")
+        mapping_digest = sha256(native_mapping).hexdigest()
+        identity = (scope.scope_ref, capture_ref)
+        existing = self._sealed.get(identity)
+        if existing is not None:
+            if existing[0] != mapping_digest:
+                raise FixtureCaptureClientError("capture identity is already bound to different sealed evidence")
+            return EncryptedNativeMappingRefV1(capture_ref, existing[1])
         aad = ("second-brain-capture/native-mapping/" + scope.scope_ref + "/" + capture_ref).encode("ascii")
         nonce = secrets.token_bytes(12).hex()
         ciphertext_hex, tag_hex = aes_gcm_seal(self._dek, nonce, native_mapping, aad)
         blob = self._cas.put(bytes.fromhex(nonce + ciphertext_hex + tag_hex))
         sealed_ref = "encrypted-native-mapping:" + blob
-        existing = self._sealed.setdefault(capture_ref, sealed_ref)
-        if existing != sealed_ref:
-            raise FixtureCaptureClientError("capture identity is already bound to different sealed evidence")
+        self._sealed[identity] = (mapping_digest, sealed_ref)
         return EncryptedNativeMappingRefV1(capture_ref, sealed_ref)

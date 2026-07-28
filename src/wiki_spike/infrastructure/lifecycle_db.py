@@ -360,6 +360,9 @@ CREATE TABLE IF NOT EXISTS freshness_serve_gate (
   reason_state TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+"""
+
+CAPTURE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS capture_scope (
   scope_id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
@@ -374,6 +377,8 @@ CREATE TABLE IF NOT EXISTS capture_receipt (
   capture_sequence TEXT NOT NULL,
   receipt_state TEXT NOT NULL,
   receipt_digest TEXT NOT NULL,
+  encrypted_content_ref TEXT NOT NULL,
+  encrypted_native_mapping_ref TEXT NOT NULL,
   aggregate_handle TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS capture_manifest (
@@ -415,7 +420,6 @@ CREATE TABLE IF NOT EXISTS capture_cohort (
   cohort_digest TEXT NOT NULL,
   aggregate_handle TEXT NOT NULL
 );
-
 """
 
 # Tables in declaration order, used for both DDL introspection and the
@@ -1136,29 +1140,31 @@ class UnitOfWork:
         return event_digest
 
 
-@dataclass
 class LifecycleDatabase:
-    """The encrypted-lifecycle SQLite unit-of-work database (schema-of-record).
+    """The encrypted-lifecycle SQLite unit-of-work database (schema-of-record)."""
 
-    A NEW, standalone database file — separate from the legacy
-    ``wiki_spike.controlplane.ControlPlane`` control plane. Construct with a
-    path and call :meth:`initialize` before use.
-    """
+    def __init__(self, db_path: Path, fixture_capture_mode: bool = False) -> None:
+        self.db_path = db_path
+        self.con: sqlite3.Connection | None = None
+        # Retained as an ignored compatibility argument. A caller cannot grant
+        # fixture capability by passing or mutating a public mode flag.
+        self._fixture_capture_capability = False
 
-    db_path: Path
-    fixture_capture_mode: bool = False
-    con: sqlite3.Connection | None = None
+    @property
+    def fixture_capture_mode(self) -> bool:
+        return self._fixture_capture_capability
 
     def initialize(self) -> None:
-        """Open (creating if absent) ``db_path``, apply the contract PRAGMAs,
-        and create the full DDL. Idempotent: safe to call repeatedly and safe
-        to call again after a process restart against the same file."""
+        """Open (creating if absent) ``db_path```, apply the contract PRAGMAs,
+        and create ordinary production DDL."""
         self.con = sqlite3.connect(str(self.db_path), isolation_level=None)
         self.con.execute("PRAGMA journal_mode=WAL")
         self.con.execute("PRAGMA synchronous=FULL")
         self.con.execute("PRAGMA foreign_keys=ON")
         self.con.execute("PRAGMA busy_timeout=5000")
         self.con.executescript(SCHEMA)
+        if self._fixture_capture_capability:
+            self.con.executescript(CAPTURE_SCHEMA)
         self.assert_contract_pragmas()
 
     def assert_contract_pragmas(self) -> None:
@@ -1412,6 +1418,19 @@ class LifecycleDatabase:
         self.close()
 
 
+class FixtureCaptureLifecycleDatabase(LifecycleDatabase):
+    """Dedicated immutable synthetic-store type; never enabled by a public flag."""
+
+    def __init__(self, db_path: Path) -> None:
+        super().__init__(db_path)
+        self._fixture_capture_capability = True
+
+
+def fixture_capture_database(db_path: Path) -> FixtureCaptureLifecycleDatabase:
+    """Construct the only database type permitted to install fixture capture DDL."""
+    return FixtureCaptureLifecycleDatabase(db_path)
+
+
 def table_columns(con: sqlite3.Connection, table: str) -> list[str]:
     """Introspect column names for ``table`` via ``PRAGMA table_info``."""
     return [row[1] for row in con.execute(f"PRAGMA table_info({table})")]
@@ -1447,8 +1466,12 @@ class EncryptedCapturePersistence(AtomicCapturePersistencePort):
     def persist_capture_aggregate(self, aggregate: CapturePersistenceAggregateV1) -> None:
         if not isinstance(aggregate, CapturePersistenceAggregateV1):
             raise CapturePersistenceError("only a complete capture persistence aggregate is accepted")
-        if not self._database.fixture_capture_mode:
+        if not isinstance(self._database, FixtureCaptureLifecycleDatabase):
             raise CapturePersistenceError("fixture capture persistence is prohibited for production databases")
+        try:
+            aggregate = CapturePersistenceAggregateV1.from_mapping(aggregate.to_mapping())
+        except (TypeError, ValueError) as exc:
+            raise CapturePersistenceError("capture aggregate fails canonical contract validation") from exc
         self._validate(aggregate)
         with self._database.unit_of_work() as uow:
             con = uow._con
@@ -1502,13 +1525,15 @@ class EncryptedCapturePersistence(AtomicCapturePersistencePort):
                     "capture_receipt",
                     "capture_id",
                     receipt.capture_ref,
-                    (
+(
                         aggregate.scope.scope_ref,
                         receipt.scan_epoch,
                         receipt.disposition,
                         receipt.ciphertext_digest,
+                        receipt.encrypted_content_ref,
+                        receipt.encrypted_native_mapping_ref,
                         locator,
-                    ),
+                    )
                 )
             self._insert_or_match(
                 con,

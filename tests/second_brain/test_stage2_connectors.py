@@ -57,6 +57,7 @@ class NativeMappingSealer:
 
 def fixture(name: str) -> tuple[str, bytes, dict[str, object]]:
     value = json.loads((FIXTURES / name).read_text())
+    value["encrypted_content_ref"] = encrypted_content_ref(value["capture_ref"])
     return REF("fixture-request"), json.dumps(value, sort_keys=True).encode(), value
 
 
@@ -70,6 +71,10 @@ def scope(profile: str, domain: str) -> SourceScopeRefV1:
         "scope_ref": REF(f"{domain}-scope"),
         "scope_epoch": "1",
     })
+
+
+def encrypted_content_ref(capture_ref: str) -> str:
+    return f"encrypted-content:{sha256(capture_ref.encode()).hexdigest()}"
 
 
 def encrypted_native_mapping_ref(capture_ref: str) -> str:
@@ -95,9 +100,19 @@ def test_typed_fixture_connector_maps_exact_profile_deterministically(
     expected_ciphertext = base64.b64decode(value["ciphertext_b64"])
     assert first == second
     assert tuple(
-        (item.capture_ref, item.ciphertext, item.encrypted_native_mapping_ref)
+        (
+            item.capture_ref,
+            item.ciphertext,
+            item.encrypted_content_ref,
+            item.encrypted_native_mapping_ref,
+        )
         for item in first
-    ) == ((expected_capture_ref, expected_ciphertext, encrypted_native_mapping_ref(expected_capture_ref)),)
+    ) == ((
+        expected_capture_ref,
+        expected_ciphertext,
+        encrypted_content_ref(expected_capture_ref),
+        encrypted_native_mapping_ref(expected_capture_ref),
+    ),)
     with pytest.raises(FrozenInstanceError):
         first[0].ciphertext = b"swapped"
     assert client.requests == [request_ref, request_ref]
@@ -115,10 +130,16 @@ def test_connector_rejects_malformed_wrong_source_and_bad_scope(
     source_scope = scope(profile, domain)
     connector = connector_type(FixtureClient({request_ref: payload}), NativeMappingSealer(), [request_ref])
 
-    malformed = dict(value)
-    del malformed["capture_ref"]
+    malformed_capture_ref = dict(value)
+    del malformed_capture_ref["capture_ref"]
+    malformed_encrypted_content_ref = dict(value)
+    del malformed_encrypted_content_ref["encrypted_content_ref"]
     wrong_source = dict(value, source_domain="git" if domain != "git" else "markdown")
-    for candidate in (malformed, wrong_source):
+    for candidate in (
+        malformed_capture_ref,
+        malformed_encrypted_content_ref,
+        wrong_source,
+    ):
         bad = json.dumps(candidate).encode()
         connector = connector_type(FixtureClient({request_ref: bad}), NativeMappingSealer(), [request_ref])
         with pytest.raises(ValueError):
@@ -155,6 +176,7 @@ def test_connector_rejects_swapped_ciphertext_native_mapping_identity(
     second_ref = REF("second-fixture-request")
     second_value = dict(value)
     second_value["capture_ref"] = f"capture:{'b' * 64}"
+    second_value["encrypted_content_ref"] = encrypted_content_ref(second_value["capture_ref"])
     second_value["ciphertext_b64"] = base64.b64encode(b"other-ciphertext").decode()
     second_value["native_mapping"] = {"native": "other"}
     second_payload = json.dumps(second_value, sort_keys=True).encode()

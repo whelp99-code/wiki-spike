@@ -9,8 +9,8 @@ import pytest
 from scripts.check_architecture_boundaries import lint_boundaries
 from wiki_spike.composition.second_brain_capture import CaptureCompositionError, compose_non_serving_fixture_capture
 from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore
-from wiki_spike.infrastructure.fixture_capture_clients import FixtureCaptureClients
-from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase
+from wiki_spike.infrastructure.fixture_capture_clients import FixtureCaptureClients, FixtureCaptureClientError, FixtureNativeMappingSealer
+from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase, fixture_capture_database
 from wiki_spike.memory_core.second_brain_capture_contracts import SourceScopeRefV1
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "second_brain" / "capture"
@@ -29,7 +29,7 @@ def resolved_scope() -> SourceScopeRefV1:
 def test_moved_non_serving_composition_wires_four_fixture_sources_without_activation_or_serving(tmp_path: Path):
     request_refs = {profile: [ref("fixture-request", profile)] for profile in PROFILES}
     payloads = {request_refs[profile][0]: json.dumps(json.loads((FIXTURES / name).read_text()), sort_keys=True).encode() for profile, name in zip(PROFILES, ("codex.json", "claude_memory_bank.json", "git.json", "markdown.json"))}
-    database = LifecycleDatabase(tmp_path / "fixture.sqlite", fixture_capture_mode=True)
+    database = fixture_capture_database(tmp_path / "fixture.sqlite")
     database.initialize()
     composition = compose_non_serving_fixture_capture(database=database, cas=EncryptedContentStore(tmp_path / "cas"), encryption_key=DEK, fixture_clients=FixtureCaptureClients(payloads=payloads), fixture_request_refs=request_refs, read_only_migration_capabilities={})
     assert tuple(composition.connectors) == PROFILES
@@ -48,6 +48,20 @@ def test_fixture_composition_rejects_production_database_and_scope_unbound_capab
     with pytest.raises(Exception, match="scope"):
         clients.verify_read_only_migration_capability(capability, ref("unified-db-migration", "one"), SourceScopeRefV1.from_mapping({**resolved_scope().to_mapping(), "scope_epoch": "2"}))
     production.close()
+
+
+def test_native_mapping_seal_is_idempotent_and_rejects_changed_evidence_before_cas_write(tmp_path: Path):
+    cas = EncryptedContentStore(tmp_path / "cas")
+    sealer = FixtureNativeMappingSealer(cas, DEK)
+    scope = resolved_scope()
+    capture_ref = ref("capture", "one")
+    first = sealer.seal_native_mapping(scope, capture_ref, b'{"native":"one"}')
+    second = sealer.seal_native_mapping(scope, capture_ref, b'{"native":"one"}')
+    assert second == first
+    assert len(tuple(cas.objects.iterdir())) == 1
+    with pytest.raises(FixtureCaptureClientError, match="different sealed evidence"):
+        sealer.seal_native_mapping(scope, capture_ref, b'{"native":"changed"}')
+    assert len(tuple(cas.objects.iterdir())) == 1
 
 
 def test_architecture_checker_has_one_rule_per_stage2_boundary(tmp_path: Path):

@@ -51,9 +51,25 @@ class FixtureCaptureService:
         self._capability_verifier.verify_read_only_migration_capability(
             migration_capability, aggregate.registration.migration_ref, scope
         )
-        items = reader.read_fixture_capture_items(scope, scope.scope_epoch)
-        observed = {item.capture_ref: sha256(item.ciphertext).hexdigest() for item in items}
-        expected = {receipt.capture_ref: receipt.ciphertext_digest for receipt in aggregate.receipts}
+        items = reader.read_fixture_capture_items(scope, aggregate.manifest.scan_epoch)
+        if len({item.capture_ref for item in items}) != len(items):
+            raise FixtureCaptureServiceError("connector returned duplicate capture references")
+        observed = {
+            item.capture_ref: (
+                item.encrypted_content_ref,
+                item.encrypted_native_mapping_ref,
+                sha256(item.ciphertext).hexdigest(),
+            )
+            for item in items
+        }
+        expected = {
+            receipt.capture_ref: (
+                receipt.encrypted_content_ref,
+                receipt.encrypted_native_mapping_ref,
+                receipt.ciphertext_digest,
+            )
+            for receipt in aggregate.receipts
+        }
         if observed != expected:
-            raise FixtureCaptureServiceError("fixture ciphertext evidence does not exactly match receipts")
+            raise FixtureCaptureServiceError("fixture capture identity and ciphertext evidence does not exactly match receipts")
         self._persistence.persist_capture_aggregate(aggregate)

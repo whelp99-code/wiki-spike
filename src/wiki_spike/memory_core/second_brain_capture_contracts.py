@@ -1,6 +1,7 @@
 """Fixture-only, non-serving Stage-2 source-capture contracts."""
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
 from hashlib import sha256
@@ -140,11 +141,12 @@ class EncryptedNativeMappingRefV1:
 @dataclass(frozen=True)
 class CapturedItemV1:
     """Transient connector result; native identity remains only behind its sealed ref."""
-    capture_ref: str; ciphertext: bytes; encrypted_native_mapping_ref: str
+    capture_ref: str; ciphertext: bytes; encrypted_content_ref: str; encrypted_native_mapping_ref: str
     def __post_init__(self) -> None:
         _ref(self.capture_ref, "capture_ref", kind="capture")
         if not isinstance(self.ciphertext, bytes) or not self.ciphertext:
             raise InvalidContractValue("ciphertext must be non-empty bytes")
+        _ref(self.encrypted_content_ref, "encrypted_content_ref", kind="encrypted-content")
         _ref(self.encrypted_native_mapping_ref, "encrypted_native_mapping_ref", kind="encrypted-native-mapping")
 
 
@@ -167,14 +169,14 @@ class ScanCheckpointV1:
 
 @dataclass(frozen=True)
 class CaptureItemReceiptV1:
-    receipt_version: str; scope: SourceScopeRefV1; scan_epoch: str; capture_ref: str; ciphertext_digest: str; disposition: str
-    FIELDS: ClassVar[set[str]] = {"receipt_version", "scope", "scan_epoch", "capture_ref", "ciphertext_digest", "disposition"}
+    receipt_version: str; scope: SourceScopeRefV1; scan_epoch: str; capture_ref: str; encrypted_content_ref: str; encrypted_native_mapping_ref: str; ciphertext_digest: str; disposition: str
+    FIELDS: ClassVar[set[str]] = {"receipt_version", "scope", "scan_epoch", "capture_ref", "encrypted_content_ref", "encrypted_native_mapping_ref", "ciphertext_digest", "disposition"}
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "CaptureItemReceiptV1":
         v = _strict(data, cls.FIELDS); _version(v["receipt_version"], CAPTURE_ITEM_RECEIPT_VERSION, "receipt_version")
-        return cls(CAPTURE_ITEM_RECEIPT_VERSION, _scope(v["scope"]), _decimal(v["scan_epoch"], "scan_epoch", positive=True), _ref(v["capture_ref"], "capture_ref", kind="capture"), _digest(v["ciphertext_digest"], "ciphertext_digest"), _closed(v["disposition"], CAPTURE_DISPOSITIONS, "disposition"))
+        return cls(CAPTURE_ITEM_RECEIPT_VERSION, _scope(v["scope"]), _decimal(v["scan_epoch"], "scan_epoch", positive=True), _ref(v["capture_ref"], "capture_ref", kind="capture"), _ref(v["encrypted_content_ref"], "encrypted_content_ref", kind="encrypted-content"), _ref(v["encrypted_native_mapping_ref"], "encrypted_native_mapping_ref", kind="encrypted-native-mapping"), _digest(v["ciphertext_digest"], "ciphertext_digest"), _closed(v["disposition"], CAPTURE_DISPOSITIONS, "disposition"))
     def to_mapping(self) -> dict[str, Any]:
-        return {"receipt_version": self.receipt_version, "scope": self.scope.to_mapping(), "scan_epoch": self.scan_epoch, "capture_ref": self.capture_ref, "ciphertext_digest": self.ciphertext_digest, "disposition": self.disposition}
+        return {"receipt_version": self.receipt_version, "scope": self.scope.to_mapping(), "scan_epoch": self.scan_epoch, "capture_ref": self.capture_ref, "encrypted_content_ref": self.encrypted_content_ref, "encrypted_native_mapping_ref": self.encrypted_native_mapping_ref, "ciphertext_digest": self.ciphertext_digest, "disposition": self.disposition}
 
 
 @dataclass(frozen=True)
@@ -282,8 +284,23 @@ class CapturePersistenceAggregateV1:
         v = _strict(data, cls.FIELDS); _version(v["aggregate_version"], CAPTURE_PERSISTENCE_AGGREGATE_VERSION, "aggregate_version")
         if not isinstance(v["receipts"], list) or not v["receipts"]: raise InvalidContractValue("receipts must be a non-empty array")
         scope = _scope(v["scope"]); receipts = tuple(CaptureItemReceiptV1.from_mapping(item) for item in v["receipts"]); manifest = CaptureScanManifestV1.from_mapping(v["manifest"]); registration = MigrationRegistrationV1.from_mapping(v["registration"]); advance = ReconciledCheckpointAdvanceV1.from_mapping(v["advance"]); cohort = NonServingCaptureCohortV1.from_mapping(v["cohort"])
-        if len({receipt.capture_ref for receipt in receipts}) != len(receipts) or any(receipt.scope != scope or receipt.scan_epoch != manifest.scan_epoch for receipt in receipts) or manifest.scope != scope or registration.scope != scope or advance.checkpoint.scope != scope or set(manifest.receipt_refs) != {receipt.capture_ref for receipt in receipts}:
-            raise InvalidContractValue("aggregate evidence must bind one exact scope and complete receipt manifest")
+        reconciliation = advance.reconciliation; checkpoint = advance.checkpoint
+        receipt_counts = Counter(receipt.disposition for receipt in receipts)
+        if (
+            len({receipt.capture_ref for receipt in receipts}) != len(receipts)
+            or any(receipt.scope != scope or receipt.scan_epoch != manifest.scan_epoch for receipt in receipts)
+            or manifest.scope != scope
+            or reconciliation.scope != scope
+            or checkpoint.scope != scope
+            or registration.scope != scope
+            or reconciliation.scan_epoch != manifest.scan_epoch
+            or checkpoint.scan_epoch != manifest.scan_epoch
+            or set(manifest.receipt_refs) != {receipt.capture_ref for receipt in receipts}
+            or reconciliation.expected_receipt_count != str(len(receipts))
+            or reconciliation.accounted_receipt_count != str(len(receipts))
+            or dict(reconciliation.disposition_counts) != {disposition: str(receipt_counts[disposition]) for disposition in CAPTURE_DISPOSITIONS}
+        ):
+            raise InvalidContractValue("aggregate evidence must bind one exact scope, scan epoch, receipt manifest, and reconciliation")
         body = {key: value for key, value in v.items() if key != "aggregate_digest"}
         return cls(CAPTURE_PERSISTENCE_AGGREGATE_VERSION, scope, receipts, manifest, registration, advance, cohort, _bound_digest(v["aggregate_digest"], "aggregate_digest", "aggregate-v1", body))
     def to_mapping(self) -> dict[str, Any]:
