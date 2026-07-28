@@ -112,6 +112,41 @@ def _matches(module: str, forbidden: str) -> bool:
     return module == forbidden or module.startswith(forbidden + ".")
 
 
+def _stage2_rules(relative_path: str) -> list[dict[str, object]]:
+    """Return Stage-2 ownership rules not expressible in the legacy config."""
+    normalized = relative_path.replace("\\", "/")
+    if normalized.startswith("src/wiki_spike/connectors/"):
+        return [{
+            "from_layers": ["application"],
+            "forbidden_modules": ["wiki_spike.infrastructure"],
+            "reason": "Fixture connectors may use Core ports and injected fixture clients, never Infrastructure directly.",
+        }]
+    if normalized.startswith("src/wiki_spike/memory_core/"):
+        return [{
+            "from_layers": ["core"],
+            "forbidden_modules": [
+                "wiki_spike.infrastructure",
+                "wiki_spike.composition",
+                "wiki_spike.memory_runtime",
+                "wiki_spike.applications",
+                "wiki_spike.connectors",
+                "wiki_spike.ui",
+            ],
+            "reason": "Core may not import outer Application, Connector, Infrastructure, Runtime, or composition layers.",
+        }]
+    if normalized == "src/wiki_spike/applications/capture_composition.py":
+        return [{
+            "from_layers": ["application"],
+            "forbidden_modules": [
+                "wiki_spike.memory_runtime",
+                "wiki_spike.runtime",
+                "wiki_spike.composition",
+            ],
+            "reason": "Stage-2 fixture composition must not couple to activation, serving, or Gate8 runtime layers.",
+        }]
+    return []
+
+
 def _classify_layer(relative_path: str, layers: dict[str, list[str]]) -> str | None:
     # Longest matching prefix wins so memory_core/runtime/application override the
     # broad storage prefix ``src/wiki_spike``.
@@ -136,7 +171,7 @@ def lint_boundaries(repo: Path, config_path: Path) -> list[Violation]:
     scan_roots = config.get("scan_roots")
     if not isinstance(layers, dict) or not isinstance(rules, list) or not isinstance(scan_roots, list):
         raise PreflightError("malformed architecture boundary config")
-    protected_layers = {layer for rule in rules for layer in rule.get("from_layers", [])}
+    protected_layers = {layer for rule in rules for layer in rule.get("from_layers", [])} | {"core", "application"}
 
     violations: list[Violation] = []
     for scan_root in scan_roots:
@@ -164,7 +199,7 @@ def lint_boundaries(repo: Path, config_path: Path) -> list[Violation]:
                         )
                     )
                     continue
-                for rule in rules:
+                for rule in [*rules, *_stage2_rules(relative)]:
                     if layer not in rule.get("from_layers", []):
                         continue
                     for forbidden in rule.get("forbidden_modules", []):
