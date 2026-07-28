@@ -20,6 +20,7 @@ from wiki_spike.memory_core.second_brain_source_fixture import (
     SourceFixtureEntry,
     VerifiedSourceFixtureManifest,
 )
+from wiki_spike.memory_core.second_brain_capture_ports import CaptureFilesystemPort
 
 
 @dataclass(frozen=True)
@@ -172,3 +173,18 @@ class FixtureSourceSandbox:
     @staticmethod
     def _quarantine(reason: str) -> FixtureSandboxResult:
         return FixtureSandboxResult(SourceSandboxDisposition.QUARANTINED, False, (), reason)
+
+
+class SandboxFixtureCaptureFilesystem(CaptureFilesystemPort):
+    """Fixture-only filesystem port built from an accepted sandbox result."""
+
+    def __init__(self, result: FixtureSandboxResult) -> None:
+        if not result.accepted:
+            raise FixtureSandboxError("quarantined fixture result cannot become a capture client")
+        self._items = {item.source_fixture_ref: item.content for item in result.items}
+
+    def read_fixture_ciphertext(self, fixture_ref: str) -> bytes:
+        try:
+            return self._items[fixture_ref]
+        except KeyError as exc:
+            raise FixtureSandboxError("unknown fixture reference") from exc

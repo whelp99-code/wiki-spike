@@ -61,6 +61,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
+import json
 
 from wiki_spike.memory_core.contracts import canonical_bytes
 from wiki_spike.memory_core.recovery import (
@@ -68,6 +69,11 @@ from wiki_spike.memory_core.recovery import (
     AppliedDeletionOverlayToken,
     VerifiedDeletionOverlay,
     SignedDeletionOverlay,
+)
+from wiki_spike.memory_core.second_brain_capture_contracts import (
+    CaptureItemReceiptV1, CaptureReconciliationV1, CaptureScanManifestV1,
+    MigrationRegistrationV1, NonServingCaptureCohortV1,
+    ReconciledCheckpointAdvanceV1, ScanCheckpointV1, SourceScopeRefV1,
 )
 
 # --------------------------------------------------------------------------- #
@@ -352,6 +358,63 @@ CREATE TABLE IF NOT EXISTS freshness_serve_gate (
   reason_state TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS capture_scope (
+  scope_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  source_kind TEXT NOT NULL,
+  scope_state TEXT NOT NULL,
+  scope_digest TEXT NOT NULL,
+  scope_hex TEXT NOT NULL,
+  UNIQUE (workspace_id, source_id, scope_id)
+);
+CREATE TABLE IF NOT EXISTS capture_receipt (
+  capture_id TEXT PRIMARY KEY,
+  scope_id TEXT NOT NULL,
+  capture_sequence TEXT NOT NULL,
+  receipt_state TEXT NOT NULL,
+  receipt_digest TEXT NOT NULL,
+  receipt_hex TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS capture_manifest (
+  manifest_id TEXT PRIMARY KEY,
+  scope_id TEXT NOT NULL,
+  manifest_sequence TEXT NOT NULL,
+  manifest_state TEXT NOT NULL,
+  manifest_digest TEXT NOT NULL,
+  manifest_hex TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS capture_reconciliation (
+  reconciliation_id TEXT PRIMARY KEY,
+  scope_id TEXT NOT NULL,
+  reconciliation_sequence TEXT NOT NULL,
+  reconciliation_state TEXT NOT NULL,
+  reconciliation_digest TEXT NOT NULL,
+  reconciliation_hex TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS capture_checkpoint (
+  scope_id TEXT PRIMARY KEY,
+  checkpoint_id TEXT NOT NULL,
+  checkpoint_sequence TEXT NOT NULL,
+  checkpoint_state TEXT NOT NULL,
+  checkpoint_digest TEXT NOT NULL,
+  checkpoint_hex TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS migration_registration (
+  registration_id TEXT PRIMARY KEY,
+  scope_id TEXT NOT NULL,
+  registration_sequence TEXT NOT NULL,
+  registration_state TEXT NOT NULL,
+  registration_digest TEXT NOT NULL,
+  registration_hex TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS capture_cohort (
+  cohort_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  cohort_state TEXT NOT NULL,
+  cohort_digest TEXT NOT NULL,
+  cohort_hex TEXT NOT NULL
+);
 """
 
 # Tables in declaration order, used for both DDL introspection and the
@@ -382,6 +445,13 @@ TABLE_NAMES: tuple[str, ...] = (
     "generation",
     "floor_candidate",
     "freshness_serve_gate",
+    "capture_scope",
+    "capture_receipt",
+    "capture_manifest",
+    "capture_reconciliation",
+    "capture_checkpoint",
+    "migration_registration",
+    "capture_cohort",
 )
 
 EVENT_LOG_DOMAIN = "wiki-spike.lifecycle-db.event-log.v1"
@@ -1354,3 +1424,127 @@ def assert_no_plaintext_columns(con: sqlite3.Connection) -> None:
                 raise LifecycleDbError(
                     f"non-allowlisted (potential plaintext) column {table}.{column}"
                 )
+
+
+class CapturePersistenceError(LifecycleDbError):
+    """Durable Stage-2 capture evidence violates an ownership or CAS invariant."""
+
+
+class EncryptedCapturePersistence:
+    """Opaque, transactional implementation of the frozen Stage-2 capture ports."""
+
+    def __init__(self, database: LifecycleDatabase) -> None:
+        self._database = database
+
+    @staticmethod
+    def _pack(value: object) -> tuple[str, str]:
+        raw = canonical_bytes(value.to_mapping())  # type: ignore[attr-defined]
+        return hashlib.sha256(raw).hexdigest(), raw.hex()
+
+    @staticmethod
+    def _unpack(value_hex: str, cls: object) -> object:
+        return cls.from_mapping(json.loads(bytes.fromhex(value_hex)))  # type: ignore[attr-defined]
+
+    def record_scope(self, scope: SourceScopeRefV1) -> None:
+        digest, packed = self._pack(scope)
+        with self._database.unit_of_work() as uow:
+            row = uow._con.execute("SELECT workspace_id,source_id,scope_hex FROM capture_scope WHERE scope_id=?", (scope.scope_ref,)).fetchone()
+            if row is not None:
+                if tuple(row) != (scope.workspace_ref, scope.source_ref, packed):
+                    raise CapturePersistenceError("scope reference ownership mismatch")
+                return
+            uow._con.execute("INSERT INTO capture_scope VALUES (?,?,?,?,?,?,?)", (scope.scope_ref, scope.workspace_ref, scope.source_ref, scope.source_domain, "NON_SERVING", digest, packed))
+
+    def source_scope(self, scope_ref: str) -> SourceScopeRefV1 | None:
+        assert self._database.con is not None, "initialize() not called"
+        row = self._database.con.execute("SELECT scope_hex FROM capture_scope WHERE scope_id=?", (scope_ref,)).fetchone()
+        return None if row is None else self._unpack(row[0], SourceScopeRefV1)  # type: ignore[return-value]
+
+    def _scope(self, con: sqlite3.Connection, scope: SourceScopeRefV1) -> None:
+        _, packed = self._pack(scope)
+        row = con.execute("SELECT workspace_id,source_id,scope_hex FROM capture_scope WHERE scope_id=?", (scope.scope_ref,)).fetchone()
+        if row is None or tuple(row) != (scope.workspace_ref, scope.source_ref, packed):
+            raise CapturePersistenceError("unregistered or mismatched source scope")
+
+    @staticmethod
+    def _insert(con: sqlite3.Connection, table: str, key: str, values: tuple[str, ...], packed: str) -> None:
+        key_column = {"capture_receipt": "capture_id", "capture_manifest": "manifest_id", "migration_registration": "registration_id"}[table]
+        row = con.execute(f"SELECT {table.split('_')[-1]}_hex FROM {table} WHERE {key_column}=?", (key,)).fetchone()
+        if row is not None:
+            if row[0] != packed:
+                raise CapturePersistenceError(f"conflicting {table} reference")
+            return
+        con.execute(f"INSERT INTO {table} VALUES ({','.join('?' for _ in (key, *values))})", (key, *values))
+
+    def record_capture_receipt(self, receipt: CaptureItemReceiptV1) -> None:
+        digest, packed = self._pack(receipt)
+        with self._database.unit_of_work() as uow:
+            self._scope(uow._con, receipt.scope)
+            self._insert(uow._con, "capture_receipt", receipt.capture_ref, (receipt.scope.scope_ref, receipt.scan_epoch, receipt.disposition, digest, packed), packed)
+
+    def read_capture_receipt(self, capture_ref: str) -> CaptureItemReceiptV1 | None:
+        assert self._database.con is not None, "initialize() not called"
+        row = self._database.con.execute("SELECT receipt_hex FROM capture_receipt WHERE capture_id=?", (capture_ref,)).fetchone()
+        return None if row is None else self._unpack(row[0], CaptureItemReceiptV1)  # type: ignore[return-value]
+
+    def record_capture_manifest(self, manifest: CaptureScanManifestV1) -> None:
+        digest, packed = self._pack(manifest)
+        with self._database.unit_of_work() as uow:
+            self._scope(uow._con, manifest.scope)
+            self._insert(uow._con, "capture_manifest", manifest.manifest_ref, (manifest.scope.scope_ref, manifest.scan_epoch, "SEALED", digest, packed), packed)
+
+    def record_migration_registration(self, registration: MigrationRegistrationV1) -> None:
+        digest, packed = self._pack(registration)
+        with self._database.unit_of_work() as uow:
+            self._scope(uow._con, registration.scope)
+            self._insert(uow._con, "migration_registration", registration.registration_ref, (registration.scope.scope_ref, registration.migration_epoch, "READ_ONLY", digest, packed), packed)
+
+    def read_scan_checkpoint(self, scope_ref: str) -> ScanCheckpointV1 | None:
+        assert self._database.con is not None, "initialize() not called"
+        row = self._database.con.execute("SELECT checkpoint_hex FROM capture_checkpoint WHERE scope_id=?", (scope_ref,)).fetchone()
+        return None if row is None else self._unpack(row[0], ScanCheckpointV1)  # type: ignore[return-value]
+
+    def reconcile_and_advance_checkpoint(self, advance: ReconciledCheckpointAdvanceV1) -> None:
+        reconciliation, checkpoint = advance.reconciliation, advance.checkpoint
+        if reconciliation.disposition_counts["QUARANTINED"] != "0":
+            raise CapturePersistenceError("quarantine blocks checkpoint advancement")
+        rdigest, rpacked = self._pack(reconciliation); cdigest, cpacked = self._pack(checkpoint)
+        with self._database.unit_of_work() as uow:
+            self._scope(uow._con, checkpoint.scope)
+            manifest_row = uow._con.execute("SELECT manifest_hex FROM capture_manifest WHERE manifest_id=? AND scope_id=?", (reconciliation.manifest_ref, checkpoint.scope.scope_ref)).fetchone()
+            if manifest_row is None:
+                raise CapturePersistenceError("reconciliation manifest is not durable")
+            manifest = self._unpack(manifest_row[0], CaptureScanManifestV1)
+            rows = uow._con.execute("SELECT capture_id,receipt_state FROM capture_receipt WHERE scope_id=? AND capture_sequence=?", (checkpoint.scope.scope_ref, checkpoint.scan_epoch)).fetchall()
+            counts = {name: 0 for name in reconciliation.disposition_counts}
+            for _, disposition in rows:
+                counts[disposition] += 1
+            if (manifest.scan_epoch != checkpoint.scan_epoch
+                    or set(row[0] for row in rows) != set(manifest.receipt_refs)
+                    or len(rows) != int(reconciliation.expected_receipt_count)
+                    or any(str(counts[name]) != reconciliation.disposition_counts[name] for name in counts)):
+                raise CapturePersistenceError("reconciliation receipt set is incomplete or mismatched")
+            current = uow._con.execute("SELECT checkpoint_id FROM capture_checkpoint WHERE scope_id=?", (checkpoint.scope.scope_ref,)).fetchone()
+            if (current[0] if current else None) != advance.previous_checkpoint_ref:
+                raise CapturePersistenceError("stale checkpoint compare-and-swap")
+            existing = uow._con.execute("SELECT reconciliation_hex FROM capture_reconciliation WHERE reconciliation_id=?", (reconciliation.reconciliation_ref,)).fetchone()
+            if existing is not None and existing[0] != rpacked:
+                raise CapturePersistenceError("conflicting reconciliation reference")
+            if existing is None:
+                uow._con.execute("INSERT INTO capture_reconciliation VALUES (?,?,?,?,?,?)", (reconciliation.reconciliation_ref, checkpoint.scope.scope_ref, reconciliation.scan_epoch, "COMPLETE", rdigest, rpacked))
+            uow._con.execute("INSERT INTO capture_checkpoint VALUES (?,?,?,?,?,?) ON CONFLICT(scope_id) DO UPDATE SET checkpoint_id=excluded.checkpoint_id,checkpoint_sequence=excluded.checkpoint_sequence,checkpoint_state=excluded.checkpoint_state,checkpoint_digest=excluded.checkpoint_digest,checkpoint_hex=excluded.checkpoint_hex", (checkpoint.scope.scope_ref, checkpoint.checkpoint_ref, checkpoint.scan_epoch, "NON_SERVING", cdigest, cpacked))
+
+    def record_non_serving_capture_cohort(self, cohort: NonServingCaptureCohortV1) -> None:
+        digest, packed = self._pack(cohort)
+        with self._database.unit_of_work() as uow:
+            for entry in cohort.source_roster:
+                scope = uow._con.execute("SELECT workspace_id,source_id FROM capture_scope WHERE scope_id=?", (entry.scope_ref,)).fetchone()
+                manifest = uow._con.execute("SELECT manifest_id FROM capture_manifest WHERE manifest_id=? AND scope_id=?", (entry.manifest_ref, entry.scope_ref)).fetchone()
+                registration = uow._con.execute("SELECT registration_id FROM migration_registration WHERE registration_id=? AND scope_id=?", (entry.registration_ref, entry.scope_ref)).fetchone()
+                if scope is None or scope[0] != cohort.final_workspace_ref or scope[1] != entry.source_ref or manifest is None or registration is None:
+                    raise CapturePersistenceError("cohort ownership binding lacks durable evidence")
+            existing = uow._con.execute("SELECT cohort_hex FROM capture_cohort WHERE cohort_id=?", (cohort.cohort_ref,)).fetchone()
+            if existing is not None:
+                if existing[0] != packed: raise CapturePersistenceError("conflicting cohort reference")
+                return
+            uow._con.execute("INSERT INTO capture_cohort VALUES (?,?,?,?,?)", (cohort.cohort_ref, cohort.final_workspace_ref, "NON_SERVING", digest, packed))
