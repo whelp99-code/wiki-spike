@@ -1,7 +1,7 @@
 # DB-02 — Live capture sources
 
 - **Record version:** 1
-- **Canonical scope:** `source-profile:<source>:<profile>`; one independently resolved scope for each of `codex`, `claude-memory-bank`, `git`, and `markdown`.
+- **Canonical scope inventory:** four DB-02 `source_profile` scope names, exactly `Claude/Memory Bank`, `Codex`, `Git`, and `Markdown`; each is independently resolved.
 - **Scope class:** Source-scoped
 - **Owner:** Data Steward
 - **Approver:** Privacy
@@ -13,7 +13,7 @@
 
 **Original intent (verbatim):** “Codex, Claude/Memory Bank, Git, and Markdown are all intended first-release sources, but each remains disabled until its source-specific consent, retention, deletion, capability, and fixture evidence resolves GO.”
 
-**Reconciled intended decision:** Codex, Claude/Memory Bank, Git, and Markdown are intended live sources, not enabled sources. Each exact source/profile is independently disabled by default and becomes eligible only after its own source capability, consent, retention, deletion, and fixture evidence is approved `GO`. Approval for one source/profile does not approve another profile, source, or provider.
+**Reconciled intended decision:** the configured DB-02 manifest is exactly `Claude/Memory Bank`, `Codex`, `Git`, and `Markdown`. They are intended live sources, not enabled sources. Each exact source/profile is independently disabled by default and becomes eligible only after its own source capability, consent, retention, deletion, and fixture evidence is approved `GO`. Approval for one source/profile does not approve another profile, source, or provider.
 
 ## Required signed decision
 

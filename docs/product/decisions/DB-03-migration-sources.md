@@ -1,7 +1,7 @@
 # DB-03 — Migration sources
 
 - **Record version:** 1
-- **Canonical scope:** `migration-source:<source>`; one independently resolved scope for `unified-db`, `legacy-mem0-rag`, and `me-wiki`.
+- **Canonical scope inventory:** three DB-03 `migration_source` scope names, exactly `legacy Mem0/RAG`, `me-wiki`, and `unified-db`; each is independently resolved.
 - **Scope class:** Source-scoped
 - **Owner:** Migration
 - **Approver:** Security
@@ -13,7 +13,7 @@
 
 **Original intent (verbatim):** “unified-db, legacy Mem0/RAG, and me-wiki are all intended read-only migration sources. Each must independently satisfy export, identity, revision, watermark, deletion-history, and fixture requirements; no runtime fallback is allowed.”
 
-**Reconciled intended decision:** `unified-db`, `legacy-mem0-rag`, and `me-wiki` are intended read-only migration inputs only. They are never serving authorities or runtime fallback paths. Each source independently requires verified export, identity, revision, watermark, deletion/history, and fixture evidence before it may enter a migration cohort.
+**Reconciled intended decision:** the configured DB-03 manifest is exactly `legacy Mem0/RAG`, `me-wiki`, and `unified-db`. They are intended read-only migration inputs only. They are never serving authorities or runtime fallback paths. Each source independently requires verified export, identity, revision, watermark, deletion/history, and fixture evidence before it may enter a migration cohort.
 
 ## Required signed decision
 

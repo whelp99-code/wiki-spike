@@ -58,6 +58,8 @@ First-release publication is limited to managed internal projections. External e
 
 - Stage 0 requires every DB-01..08 record to be validly resolved; DB-01, DB-04, DB-05, and DB-07 require global GO. Scoped NO_GO for DB-02, DB-03, DB-06, or DB-08 disables only the named source/profile, migration cohort, provider route, or export destination and never enables fallback.
 - `ResolvedScopeV1` and its signed contract digest bind decision versions/digests, enabled and disabled sources, allowed cohorts, feature flags, destinations, and mandatory-release constraints. Scope changes require supersession and rereview.
+- Every signed DB record carries a positive record revision, decision timestamp, verbatim original interview question plus reconciliation, and either no supersession for revision 1 or an exact prior-revision digest linkage for the same decision scope. These lifecycle fields are signed and included in decision and aggregate digests.
+- The Stage-0 manifest fixes DB-02 to `Codex`, `Claude/Memory Bank`, `Git`, and `Markdown`, and DB-03 to `unified-db`, `legacy Mem0/RAG`, and `me-wiki`; DB-06 and DB-08 require explicit signed configured scopes. The resolved feature set is closed and exactly derived from valid global GO decisions; mandatory release constraints are non-empty.
 - No implementation, capture, listener, egress, publication, route switch, release certification, or product evidence claim is authorized by this ADR alone.
 - Existing ADR-0026 and ADR-0027 remain binding for identity, binding, deletion, floor, recovery, and freshness; this ADR does not weaken them.
 

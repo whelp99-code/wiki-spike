@@ -24,11 +24,11 @@ from .claims import DeterministicMockExtractor
 from .controlplane import LeaseError
 from .ingest import IngestService
 from .workspace import Workspace
-from .workspace_format import WorkspaceRootError, prepare_workspace_root
+from .workspace_format import LegacyWorkspaceRoot, WorkspaceRootError
 
 
-def _phase1a_service(root: Path) -> IngestService:
-    return IngestService(ContentAddressedStore(root / "cas"), DeterministicMockExtractor())
+def _phase1a_service(cas_root: Path) -> IngestService:
+    return IngestService(ContentAddressedStore(cas_root), DeterministicMockExtractor())
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -48,30 +48,30 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     root = Path(args.root)
     try:
-        prepare_workspace_root(root)
+        boundary = LegacyWorkspaceRoot.open(root)
     except WorkspaceRootError as exc:
         print(str(exc), file=sys.stderr)
         return 1
 
     # --- Phase 1a primitives (no publication surface) ---
     if args.cmd in ("receive", "compile", "status"):
-        svc = _phase1a_service(root)
-        if args.cmd == "receive":
-            path = Path(args.path)
-            if not path.exists():
-                print(f"path not found: {path}", file=sys.stderr)
-                return 66
-            res = svc.receive(path)
-            print(f"source_id={res.source_id}\nstatus={res.status}")
-            return 4 if res.idempotent else 0
-        if args.cmd == "compile":
-            res = svc.compile(args.source_id)
-            for c in res.claims:
-                print(f"{c.identity.claim_id[:12]}  {c.identity.subject_id} "
-                      f"{c.identity.predicate_id} {c.identity.obj} [{c.identity.polarity}]")
-            print(f"claims={len(res.claims)} status={res.status}")
-            return 0 if res.claims else 5
-        if args.cmd == "status":
+        try:
+            svc = _phase1a_service(boundary.child("cas"))
+            if args.cmd == "receive":
+                path = Path(args.path)
+                if not path.exists():
+                    print(f"path not found: {path}", file=sys.stderr)
+                    return 66
+                res = svc.receive(path)
+                print(f"source_id={res.source_id}\nstatus={res.status}")
+                return 4 if res.idempotent else 0
+            if args.cmd == "compile":
+                res = svc.compile(args.source_id)
+                for c in res.claims:
+                    print(f"{c.identity.claim_id[:12]}  {c.identity.subject_id} "
+                          f"{c.identity.predicate_id} {c.identity.obj} [{c.identity.polarity}]")
+                print(f"claims={len(res.claims)} status={res.status}")
+                return 0 if res.claims else 5
             try:
                 print(svc.manifest(args.source_id).status)
                 return 0
@@ -79,6 +79,9 @@ def main(argv: list[str] | None = None) -> int:
                 # Phase 1a keeps manifest state in memory only; a fresh process has none.
                 print("unknown (no persistent manifest in phase 1a)", file=sys.stderr)
                 return 1
+        except WorkspaceRootError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
 
     # --- Integrated pipeline + SUB-07 ---
     ws = Workspace(root)

@@ -23,7 +23,7 @@ from .mirror import RemoteMirror
 from .publish import PublishResult, PublishService
 from .search import SearchResponse, SearchService
 from .signing import Keyring
-from .workspace_format import prepare_workspace_root
+from .workspace_format import LegacyWorkspaceRoot
 
 KEY_ID = "k1"
 LEASE_TTL = 30
@@ -40,26 +40,25 @@ class IngestPublishResult:
 
 class Workspace:
     def __init__(self, root: str | Path, holder: str | None = None, extractor=None) -> None:
-        self.root = Path(root)
-        prepare_workspace_root(self.root)
+        self._root_boundary = LegacyWorkspaceRoot.open(root)
+        self.root = self._root_boundary.path
         # Unique holder per process/instance (fixes the shared-"cli" lease bug).
         self.holder = holder or f"cli-{uuid.uuid4()}"
-
-        gitdir = self.root / "repo.git"
+        gitdir = self._root_boundary.child("repo.git")
         self.repo = GitRepo.init_bare(gitdir) if not (gitdir / "HEAD").exists() else GitRepo(gitdir)
 
         self.keyring = Keyring()
-        self.keyring.load_or_create(KEY_ID, self.root / "signing.key")
+        self.keyring.load_or_create(KEY_ID, self._root_boundary.child("signing.key"))
 
-        self.cp = ControlPlane(self.root / "control.sqlite")
-        self.cas = ContentAddressedStore(self.root / "cas")
+        self.cp = ControlPlane(self._root_boundary.child("control.sqlite"))
+        self.cas = ContentAddressedStore(self._root_boundary.child("cas"))
         # Pluggable extractor: default deterministic mock; a real LLMExtractor can be
         # injected once an exact model id is locked (P0).
         self.ingest = IngestService(self.cas, extractor or DeterministicMockExtractor())
         self.builder = GenerationBuilder(self.repo, self.keyring, KEY_ID)
         self.publisher = PublishService(self.builder, self.cp)
         self.search = SearchService(self.cp)
-        self.mirror = RemoteMirror(self.repo, self.root / "remote.git")
+        self.mirror = RemoteMirror(self.repo, self._root_boundary.child("remote.git"))
 
     def ingest_and_publish(self, path: str | Path) -> IngestPublishResult:
         now = int(time.time())
