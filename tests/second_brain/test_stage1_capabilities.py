@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 from test_decision_contracts import TRUSTED, aggregate, expected, records, scope
-from wiki_spike.memory_core.second_brain_contracts import ResolvedScopeV1, resolve_second_brain_contract
+from wiki_spike.memory_core.second_brain_contracts import ResolvedScopeV1
 
 from wiki_spike.infrastructure.capability_store import CapabilityStore
 from wiki_spike.memory_core.operability import RetryBudget
@@ -32,15 +32,19 @@ CREDENTIAL_ACTION = "source.read"
 def authority():
     items = records()
     envelope = aggregate(items)
-    resolution = resolve_second_brain_contract(
-        items, ResolvedScopeV1.from_mapping(scope()), expected(), envelope, trusted_keys=TRUSTED
+    return mint_security_context_authority(
+        items, ResolvedScopeV1.from_mapping(scope()), expected(), envelope, TRUSTED
     )
-    return mint_security_context_authority(resolution, envelope, TRUSTED)
 def test_authority_rejects_unresolved_and_direct_forgery():
     with pytest.raises(Exception):
-        mint_security_context_authority(None, None, None)
+        mint_security_context_authority(None, None, None, None, None)  # type: ignore[arg-type]
     with pytest.raises(Exception):
-        SecurityContextAuthority(object(), None, None, None)  # type: ignore[arg-type]
+        SecurityContextAuthority(object(), (), None, None, None, None)  # type: ignore[arg-type]
+def test_authority_minted_before_expiry_denies_use_after_expiry():
+    minted = authority()
+    assert minted.require(now=datetime(2029, 1, 1, tzinfo=timezone.utc)).outcome == "RESOLVED"
+    with pytest.raises(Exception):
+        minted.require(now=datetime(2031, 1, 1, tzinfo=timezone.utc))
 
 
 def root() -> TrustRootV1:

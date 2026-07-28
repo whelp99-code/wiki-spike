@@ -56,22 +56,37 @@ class _StoredEgressReceipt:
     policy_revision: str
     retention_revision: str
     receipt_ref: str
+    authority_body: bytes
+    authority_body_digest: str
+    external_model_route: str
+    route_ref: str
+    contract_digest: str
 
     @classmethod
     def mint(
         cls, mint: object, *, receipt_id: str, policy: EgressPolicyV1,
         consent: SourceConsentRetentionV1, capability: CapabilityReceiptV1,
+        route_ref: str, external_model_route: str, contract_digest: str,
     ) -> "_StoredEgressReceipt":
         if mint is not _RECEIPT_MINT:
             raise InvalidContractValue("egress receipts must be minted by EgressAuthorityStore")
         policy_body = canonical_bytes(policy.to_mapping())
         consent_body = canonical_bytes(consent.to_mapping())
         capability_body = canonical_bytes(capability.to_mapping())
+        authority_body = canonical_bytes(
+            {
+                "route_ref": route_ref,
+                "external_model_route": external_model_route,
+                "contract_digest": contract_digest,
+            }
+        )
         return cls(
             receipt_id, policy_body, consent_body, capability_body,
             sha256(policy_body).hexdigest(), sha256(consent_body).hexdigest(),
             sha256(capability_body).hexdigest(), policy.policy_revision,
-            consent.retention_revision, capability.receipt_ref,
+            consent.retention_revision, capability.receipt_ref, authority_body,
+            sha256(authority_body).hexdigest(), external_model_route, route_ref,
+            contract_digest,
         )
 
 
@@ -89,18 +104,25 @@ class EgressAuthorityStore:
 
     def mint_receipt(
         self, policy: EgressPolicyV1, consent: SourceConsentRetentionV1,
-        capability: CapabilityReceiptV1,
+        capability: CapabilityReceiptV1, *, route_ref: str, external_model_route: str,
     ) -> str:
         """Persist parsed canonical bodies and return an opaque receipt identifier."""
+        resolution = self.__authority.require(
+            scope_kind="external_model_route", scope_name=external_model_route
+        )
+        assert resolution.contract is not None
         policy = EgressPolicyV1.from_mapping(policy.to_mapping())
         consent = SourceConsentRetentionV1.from_mapping(consent.to_mapping())
         capability = CapabilityReceiptV1.from_mapping(capability.to_mapping())
+        if route_ref not in policy.allowed_scope_refs or route_ref not in capability.authorized_scope_refs:
+            raise InvalidContractValue("egress receipt route is not authorized by policy and capability")
         if policy.policy_digest != consent.policy_digest:
             raise InvalidContractValue("policy and consent digests must match")
         receipt_id = token_urlsafe(32)
         record = _StoredEgressReceipt.mint(
             _RECEIPT_MINT, receipt_id=receipt_id, policy=policy, consent=consent,
-            capability=capability,
+            capability=capability, route_ref=route_ref,
+            external_model_route=external_model_route, contract_digest=resolution.contract.digest,
         )
         self.__receipts[receipt_id] = record
         self.__current_revisions[(policy.policy_ref, consent.consent_ref)] = (
@@ -119,6 +141,7 @@ class EgressAuthorityStore:
             sha256(record.policy_body).hexdigest() != record.policy_body_digest
             or sha256(record.consent_body).hexdigest() != record.consent_body_digest
             or sha256(record.capability_body).hexdigest() != record.capability_body_digest
+            or sha256(record.authority_body).hexdigest() != record.authority_body_digest
         ):
             return None
         try:
@@ -126,6 +149,20 @@ class EgressAuthorityStore:
             policy = EgressPolicyV1.from_mapping(json.loads(record.policy_body))
             consent = SourceConsentRetentionV1.from_mapping(json.loads(record.consent_body))
             capability = CapabilityReceiptV1.from_mapping(json.loads(record.capability_body), now=now)
+            authority_body = json.loads(record.authority_body)
+            if authority_body != {
+                "route_ref": record.route_ref,
+                "external_model_route": record.external_model_route,
+                "contract_digest": record.contract_digest,
+            }:
+                return None
+            if request.route_ref != record.route_ref:
+                return None
+            resolution = self.__authority.require(
+                scope_kind="external_model_route", scope_name=record.external_model_route, now=now
+            )
+            if resolution.contract is None or resolution.contract.digest != record.contract_digest:
+                return None
             if self.__current_revisions.get((policy.policy_ref, consent.consent_ref)) != (
                 record.policy_revision, record.retention_revision,
             ):
@@ -170,9 +207,6 @@ class LocalFirstEgressPolicy:
             _digest(request.policy_digest, "policy_digest")
             if not isinstance(self.__store, EgressAuthorityStore) or not isinstance(self.__receipt_id, str):
                 return EgressAuthorizationDecision(False, "local_only_default")
-            require_security_context_authority(
-                self.authority, scope_kind="external_model_route", scope_name=request.route_ref, now=current,
-            )
             records = self.__store._load_current(self.__receipt_id, request, now=current)
             if records is None:
                 return EgressAuthorizationDecision(False, "db06_route_unverified")

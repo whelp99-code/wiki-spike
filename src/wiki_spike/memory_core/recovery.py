@@ -42,7 +42,6 @@ DELETION_OVERLAY_SIGNING_DOMAIN = "wiki.recovery.deletion-overlay.v2"
 HEX40_OR_64 = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$")
-_APPLIED_DELETION_OVERLAY_RECEIPT_TOKEN = object()
 
 
 class RecoveryError(RuntimeError):
@@ -1149,9 +1148,20 @@ class VerifiedDeletionOverlay:
     overlay: SignedDeletionOverlay
     deleted_artifact_refs: frozenset[str]
     chain: tuple[SignedDeletionOverlay, ...] = ()
+
+
 @dataclass(frozen=True)
-class AppliedDeletionOverlayReceipt:
-    """Immutable proof that a concrete lifecycle store atomically applied an overlay."""
+class AppliedDeletionOverlayToken:
+    """Opaque, store-authenticated capability for one applied overlay."""
+
+    _secret: str
+    def __post_init__(self) -> None:
+        _require_nonempty(self._secret, "deletion overlay token")
+
+
+@dataclass(frozen=True)
+class AppliedDeletionOverlayEvidence:
+    """Immutable evidence redeemed from the concrete lifecycle persistence store."""
 
     overlay_id: str
     workspace_id: str
@@ -1159,36 +1169,20 @@ class AppliedDeletionOverlayReceipt:
     sequence: str
     previous_overlay_id: str | None
     deleted_artifact_refs: frozenset[str]
-    _mint_token: object
 
     def __post_init__(self) -> None:
-        if self._mint_token is not _APPLIED_DELETION_OVERLAY_RECEIPT_TOKEN:
-            raise InvalidContractValue("deletion overlay receipt was not minted by persistence")
         _require_hex64(self.overlay_id, "overlay_id")
         _require_nonempty(self.workspace_id, "workspace_id")
         _require_hex64(self.manifest_id, "manifest_id")
         _canonical_nonnegative_integer(self.sequence, "sequence")
         if int(self.sequence) == 0:
             if self.previous_overlay_id is not None:
-                raise InvalidContractValue("initial deletion overlay receipt cannot name a predecessor")
+                raise InvalidContractValue("initial deletion overlay evidence cannot name a predecessor")
         else:
             _require_hex64(self.previous_overlay_id, "previous_overlay_id")
         if not isinstance(self.deleted_artifact_refs, frozenset):
             raise InvalidContractValue("deleted_artifact_refs must be a frozenset")
         _sorted_unique(tuple(sorted(self.deleted_artifact_refs)), "deleted_artifact_refs", allow_empty=True)
-
-    @classmethod
-    def _mint(cls, overlay: VerifiedDeletionOverlay) -> "AppliedDeletionOverlayReceipt":
-        return cls(
-            overlay_id=overlay.overlay.overlay_id,
-            workspace_id=overlay.overlay.workspace_id,
-            manifest_id=overlay.overlay.manifest_id,
-            sequence=overlay.overlay.sequence,
-            previous_overlay_id=overlay.overlay.previous_overlay_id,
-            deleted_artifact_refs=overlay.deleted_artifact_refs,
-            _mint_token=_APPLIED_DELETION_OVERLAY_RECEIPT_TOKEN,
-        )
-
 
 class DeletionOverlayProvider(Protocol):
     def signed_deletion_overlay(self, workspace_id: str) -> SignedDeletionOverlay: ...
@@ -1218,14 +1212,18 @@ class WriteFreezePort(Protocol):
     def release(self, workspace_id: str, token: str) -> None: ...
 
 
+class DeletionOverlayPersistencePort(Protocol):
+    def apply_verified_overlay(self, overlay: VerifiedDeletionOverlay) -> AppliedDeletionOverlayToken: ...
+
+    def redeem_applied_overlay(
+        self, token: AppliedDeletionOverlayToken
+    ) -> AppliedDeletionOverlayEvidence: ...
+
+
 class RecoveryTarget(Protocol):
     def begin_restore(self, manifest: RecoveryManifest) -> str: ...
 
     def stage_item(self, session_id: str, item: RecoveryItem, payload: bytes) -> None: ...
-
-    def apply_deletion_overlay(
-        self, session_id: str, overlay: VerifiedDeletionOverlay
-    ) -> AppliedDeletionOverlayReceipt: ...
 
     def restore_authoritative(self, session_id: str, manifest: RecoveryManifest) -> str: ...
 
@@ -1260,6 +1258,7 @@ class RecoveryCoordinator:
         target: RecoveryTarget | None = None,
         freeze: WriteFreezePort | None = None,
         deletion_overlay_provider: DeletionOverlayProvider | None = None,
+        deletion_overlay_persistence: DeletionOverlayPersistencePort | None = None,
         completed_at: str,
     ) -> None:
         self.source = source
@@ -1267,11 +1266,17 @@ class RecoveryCoordinator:
         self.target = target
         self.freeze = freeze
         self.deletion_overlay_provider = deletion_overlay_provider
+        self.deletion_overlay_persistence = deletion_overlay_persistence
         self._source_version = self._source_version(source)
         if self._source_version == "v2" and deletion_overlay_provider is None:
             raise RecoveryError(
                 "deletion_overlay_provider_missing",
                 "V2 recovery sources require a deletion overlay provider",
+            )
+        if self._source_version == "v2" and deletion_overlay_persistence is None:
+            raise RecoveryError(
+                "deletion_overlay_persistence_missing",
+                "V2 recovery sources require deletion overlay persistence",
             )
         self.completed_at = _require_timestamp(completed_at, "completed_at")
 
@@ -1303,13 +1308,20 @@ class RecoveryCoordinator:
                 raise RecoveryError("write_freeze_unavailable", "could not acquire recovery write freeze")
             verified = self._verify_bundle(workspace_id, expected_signed=preview)
             manifest = verified.signed.manifest
-            session_id = self.target.begin_restore(manifest)
             if verified.deletion_overlay is not None:
-                receipt = self.target.apply_deletion_overlay(session_id, verified.deletion_overlay)
-                self._verify_applied_deletion_overlay_receipt(verified.deletion_overlay, receipt)
-                deleted_refs = receipt.deleted_artifact_refs
+                persistence = self.deletion_overlay_persistence
+                if persistence is None:
+                    raise RecoveryError(
+                        "deletion_overlay_persistence_missing",
+                        "V2 recovery sources require deletion overlay persistence",
+                    )
+                applied = persistence.apply_verified_overlay(verified.deletion_overlay)
+                evidence = persistence.redeem_applied_overlay(applied)
+                self._verify_applied_deletion_overlay_evidence(verified.deletion_overlay, evidence)
+                deleted_refs = evidence.deleted_artifact_refs
             else:
                 deleted_refs = frozenset()
+            session_id = self.target.begin_restore(manifest)
             for item in manifest.items:
                 if item.item_id not in deleted_refs:
                     self.target.stage_item(session_id, item, verified.payloads[item.item_id])
@@ -1364,25 +1376,25 @@ class RecoveryCoordinator:
                         ) from exc
 
     @staticmethod
-    def _verify_applied_deletion_overlay_receipt(
-        overlay: VerifiedDeletionOverlay, receipt: object
+    def _verify_applied_deletion_overlay_evidence(
+        overlay: VerifiedDeletionOverlay, evidence: object
     ) -> None:
-        if not isinstance(receipt, AppliedDeletionOverlayReceipt):
+        if not isinstance(evidence, AppliedDeletionOverlayEvidence):
             raise RecoveryError(
                 "deletion_overlay_persistence_unverified",
-                "recovery target did not return a concrete deletion overlay receipt",
+                "concrete deletion overlay persistence did not return evidence",
             )
         if (
-            receipt.overlay_id != overlay.overlay.overlay_id
-            or receipt.workspace_id != overlay.overlay.workspace_id
-            or receipt.manifest_id != overlay.overlay.manifest_id
-            or receipt.sequence != overlay.overlay.sequence
-            or receipt.previous_overlay_id != overlay.overlay.previous_overlay_id
-            or receipt.deleted_artifact_refs != overlay.deleted_artifact_refs
+            evidence.overlay_id != overlay.overlay.overlay_id
+            or evidence.workspace_id != overlay.overlay.workspace_id
+            or evidence.manifest_id != overlay.overlay.manifest_id
+            or evidence.sequence != overlay.overlay.sequence
+            or evidence.previous_overlay_id != overlay.overlay.previous_overlay_id
+            or evidence.deleted_artifact_refs != overlay.deleted_artifact_refs
         ):
             raise RecoveryError(
                 "deletion_overlay_persistence_mismatch",
-                "deletion overlay receipt does not match verified deletion truth",
+                "deletion overlay evidence does not match verified deletion truth",
             )
     def _abort_safely(self, session_id: str) -> None:
         assert self.target is not None

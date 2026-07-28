@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+from pathlib import Path
 import socket
 
 import pytest
+from jsonschema import Draft202012Validator
 
 from wiki_spike.infrastructure.source_sandbox import FixtureLimitPolicy, FixtureSourceSandbox, SourceSandboxDisposition
 from wiki_spike.memory_core.policy import Sensitivity
@@ -15,6 +17,11 @@ from wiki_spike.memory_core.contracts import canonical_bytes
 NOW = "2030-01-01T00:00:00Z"
 FUTURE = "2030-02-01T00:00:00Z"
 REF = "fixture:" + "a" * 64
+
+SOURCE_FIXTURE_SCHEMA = json.loads(
+    (Path(__file__).resolve().parents[2] / "schemas" / "second-brain" / "source-fixture-manifest-v1.schema.json").read_text()
+)
+SOURCE_FIXTURE_VALIDATOR = Draft202012Validator(SOURCE_FIXTURE_SCHEMA)
 
 
 def current():
@@ -55,11 +62,38 @@ def test_normal_fixture_is_local_only_and_never_advances_checkpoint(tmp_path, mo
     assert not result.checkpoint_advanced
 
 
-@pytest.mark.parametrize("path", ["../secret", "https://example.test/a", "$HOME/token", "file:///tmp/x"])
-def test_traversal_url_and_environment_routes_are_rejected(path):
-    with pytest.raises(SourceFixtureVerificationError):
-        SourceFixtureVerifier().verify(manifest([entry(path, b"x")]))
+PATH_CASES = (
+    ("normal.json", True),
+    ("fixtures/2026/report-v1.2.pdf", True),
+    ("directory_name/file_2.txt", True),
+    ("double//separator.txt", False),
+    ("./current.txt", False),
+    ("directory/./current.txt", False),
+    ("../parent.txt", False),
+    ("directory/../parent.txt", False),
+    ("/absolute/path.txt", False),
+    (r"backslash\path.txt", False),
+    ("scheme:path.txt", False),
+    ("https://example.test/path.txt", False),
+    ("has space.txt", False),
+    ("fragment#.txt", False),
+    ("query?.txt", False),
+)
 
+
+@pytest.mark.parametrize(("path", "accepted"), PATH_CASES)
+def test_source_fixture_path_schema_and_runtime_have_exact_parity(path, accepted):
+    candidate = manifest([entry(path, b"x")])
+    schema_accepted = not list(SOURCE_FIXTURE_VALIDATOR.iter_errors(candidate))
+    try:
+        SourceFixtureVerifier().verify(candidate)
+    except SourceFixtureVerificationError:
+        runtime_accepted = False
+    else:
+        runtime_accepted = True
+    assert schema_accepted is accepted
+    assert runtime_accepted is accepted
+    assert schema_accepted is runtime_accepted
 
 def test_malformed_and_oversized_manifests_cannot_read(tmp_path):
     content = b"x" * 10

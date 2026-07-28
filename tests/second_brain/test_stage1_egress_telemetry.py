@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 from test_decision_contracts import TRUSTED, aggregate, expected, records, scope
-from wiki_spike.memory_core.second_brain_contracts import ResolvedScopeV1, resolve_second_brain_contract
+from wiki_spike.memory_core.second_brain_contracts import ResolvedScopeV1
 
 from wiki_spike.memory_core.operability import (
     AuditRecorder,
@@ -37,10 +37,10 @@ def ref(kind: str, digit: str) -> str:
 def egress_authority():
     items = records()
     envelope = aggregate(items)
-    resolution = resolve_second_brain_contract(
-        items, ResolvedScopeV1.from_mapping(scope()), expected(), envelope, trusted_keys=TRUSTED,
+    return mint_security_context_authority(
+        items, ResolvedScopeV1.from_mapping(scope()), expected(), envelope, TRUSTED,
+        now=datetime(2026, 7, 28, tzinfo=timezone.utc),
     )
-    return mint_security_context_authority(resolution, envelope, TRUSTED)
 
 
 def stored_records():
@@ -174,7 +174,9 @@ def test_egress_store_rejects_forged_store_receipt_body_and_revision():
         EgressAuthorityStore(object(), object())  # type: ignore[arg-type]
 
     store = mint_egress_authority_store(egress_authority())
-    receipt_id = store.mint_receipt(*stored_records())
+    receipt_id = store.mint_receipt(
+        *stored_records(), route_ref=ref("route", "4"), external_model_route="model-a"
+    )
     request = EgressAuthorizationRequest("class:1", "provider:1", "route:1", "consent:1", "capability:1", HASH, "receipt:1")
     now = datetime(2026, 7, 28, tzinfo=timezone.utc)
     assert store._load_current("forged-receipt", request, now=now) is None
@@ -183,7 +185,9 @@ def test_egress_store_rejects_forged_store_receipt_body_and_revision():
     object.__setattr__(record, "policy_body", b"{}")
     assert store._load_current(receipt_id, request, now=now) is None
 
-    receipt_id = store.mint_receipt(*stored_records())
+    receipt_id = store.mint_receipt(
+        *stored_records(), route_ref=ref("route", "4"), external_model_route="model-a"
+    )
     record = store._EgressAuthorityStore__receipts[receipt_id]
     store._EgressAuthorityStore__current_revisions[(record.policy_body and stored_records()[0].policy_ref, stored_records()[1].consent_ref)] = ("2", "1")
     assert store._load_current(receipt_id, request, now=now) is None

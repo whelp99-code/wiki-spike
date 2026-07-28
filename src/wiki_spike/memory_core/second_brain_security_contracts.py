@@ -1,7 +1,7 @@
 """Strict, inert Stage-1 security wire contracts for the Second Brain."""
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields
 from datetime import datetime, timezone
 import re
@@ -10,8 +10,13 @@ from typing import Any, Callable, ClassVar, TypeVar
 from .errors import InvalidContractValue, UnsupportedContractVersion
 from .second_brain_contracts import (
     ContractResolutionV1,
+    DecisionRecordV1,
+    ExpectedScopeManifestV1,
+    ResolvedScopeV1,
     SignedSecondBrainContractEnvelopeV1,
+    TrustedAuthorityBindingsV1,
     TrustedDecisionKeyBindingsV1,
+    resolve_second_brain_contract,
     _digest,
     _names,
     _positive_decimal,
@@ -199,37 +204,87 @@ _AUTHORITY_MINT = object()
 class SecurityContextAuthority:
     """Opaque, revalidating authority for Stage-1 security operations."""
 
-    __slots__ = ("__resolution", "__aggregate", "__trusted_keys")
+    __slots__ = ("__decisions", "__scope", "__expected_scopes", "__aggregate", "__trusted_keys")
 
     def __init__(
         self,
         mint: object,
-        resolution: ContractResolutionV1,
+        decisions: tuple[DecisionRecordV1, ...],
+        scope: ResolvedScopeV1,
+        expected_scopes: ExpectedScopeManifestV1,
         aggregate: SignedSecondBrainContractEnvelopeV1,
         trusted_keys: TrustedDecisionKeyBindingsV1,
     ) -> None:
         if mint is not _AUTHORITY_MINT:
             raise InvalidContractValue("SecurityContextAuthority must be minted")
-        self.__resolution = resolution
+        self.__decisions = decisions
+        self.__scope = scope
+        self.__expected_scopes = expected_scopes
         self.__aggregate = aggregate
         self.__trusted_keys = trusted_keys
 
     def require(self, **scope: Any) -> ContractResolutionV1:
-        """Revalidate the complete Stage-0 evidence for every protected operation."""
+        """Reparse and resolve all Stage-0 evidence for every protected operation."""
+        current = scope.pop("now", None)
+        resolution = resolve_second_brain_contract(
+            self.__decisions,
+            self.__scope,
+            self.__expected_scopes,
+            self.__aggregate,
+            trusted_keys=self.__trusted_keys,
+            now=current,
+        )
         return require_resolved_security_context(
-            self.__resolution, self.__aggregate, self.__trusted_keys, **scope
+            resolution, self.__aggregate, self.__trusted_keys, now=current, **scope
         )
 
 
 def mint_security_context_authority(
-    resolution: ContractResolutionV1 | None,
-    aggregate: SignedSecondBrainContractEnvelopeV1 | None,
-    trusted_keys: TrustedDecisionKeyBindingsV1 | None,
+    decisions: Sequence[DecisionRecordV1],
+    scope: ResolvedScopeV1,
+    expected_scopes: ExpectedScopeManifestV1,
+    aggregate: SignedSecondBrainContractEnvelopeV1,
+    trusted_keys: TrustedDecisionKeyBindingsV1,
+    *,
+    now: datetime | None = None,
 ) -> SecurityContextAuthority:
-    """Mint opaque authority only after validating current Stage-0 evidence."""
-    require_resolved_security_context(resolution, aggregate, trusted_keys)
-    assert resolution is not None and aggregate is not None and trusted_keys is not None
-    return SecurityContextAuthority(_AUTHORITY_MINT, resolution, aggregate, trusted_keys)
+    """Mint opaque authority from canonical Stage-0 evidence."""
+    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    canonical_decisions = tuple(
+        DecisionRecordV1.from_mapping(decision.to_mapping(), now=current)
+        for decision in decisions
+    )
+    canonical_scope = ResolvedScopeV1.from_mapping(scope.to_mapping())
+    canonical_expected_scopes = ExpectedScopeManifestV1.from_mapping(expected_scopes.to_mapping())
+    canonical_aggregate = SignedSecondBrainContractEnvelopeV1.from_mapping(aggregate.to_mapping())
+    canonical_trusted_keys = TrustedDecisionKeyBindingsV1(
+        dict(trusted_keys.decision_bindings),
+        TrustedAuthorityBindingsV1(
+            trusted_keys.aggregate_bindings.approver_key_id,
+            trusted_keys.aggregate_bindings.approver_public_key_b64,
+            trusted_keys.aggregate_bindings.owner_key_id,
+            trusted_keys.aggregate_bindings.owner_public_key_b64,
+        ),
+    )
+    resolution = resolve_second_brain_contract(
+        canonical_decisions,
+        canonical_scope,
+        canonical_expected_scopes,
+        canonical_aggregate,
+        trusted_keys=canonical_trusted_keys,
+        now=current,
+    )
+    require_resolved_security_context(
+        resolution, canonical_aggregate, canonical_trusted_keys, now=current
+    )
+    return SecurityContextAuthority(
+        _AUTHORITY_MINT,
+        canonical_decisions,
+        canonical_scope,
+        canonical_expected_scopes,
+        canonical_aggregate,
+        canonical_trusted_keys,
+    )
 
 
 def require_security_context_authority(authority: object, **scope: Any) -> SecurityContextAuthority:
@@ -241,11 +296,15 @@ def require_security_context_authority(authority: object, **scope: Any) -> Secur
 
 def invoke_with_resolved_security_context(
     operation: Callable[[], _Result],
-    resolution: ContractResolutionV1 | None,
-    aggregate: SignedSecondBrainContractEnvelopeV1 | None,
-    trusted_keys: TrustedDecisionKeyBindingsV1 | None,
-    **scope: Any,
+    decisions: Sequence[DecisionRecordV1],
+    scope: ResolvedScopeV1,
+    expected_scopes: ExpectedScopeManifestV1,
+    aggregate: SignedSecondBrainContractEnvelopeV1,
+    trusted_keys: TrustedDecisionKeyBindingsV1,
+    **required_scope: Any,
 ) -> _Result:
     """Compatibility helper that mints and immediately uses opaque authority."""
-    mint_security_context_authority(resolution, aggregate, trusted_keys).require(**scope)
+    mint_security_context_authority(
+        decisions, scope, expected_scopes, aggregate, trusted_keys
+    ).require(**required_scope)
     return operation()

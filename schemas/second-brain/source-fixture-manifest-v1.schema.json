@@ -11,7 +11,7 @@
     "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "positive": {"type": "string", "pattern": "^[1-9][0-9]*$"},
     "decimal": {"type": "string", "pattern": "^(0|[1-9][0-9]*)$"},
-    "path": {"type": "string", "pattern": "^(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!/)(?!.*[:\\\\])[A-Za-z0-9][A-Za-z0-9._/-]*$"},
+    "path": {"type": "string", "pattern": "^(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!/)(?!.*//)(?!.*[:\\\\])[A-Za-z0-9][A-Za-z0-9._/-]*$"},
     "entry": {
       "type": "object", "additionalProperties": false,
       "required": ["source_fixture_ref", "path", "sha256", "byte_count", "page_count"],

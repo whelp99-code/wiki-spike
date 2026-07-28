@@ -9,7 +9,11 @@ from wiki_spike.infrastructure.deletion import (
     persist_verified_recovery_deletion_overlay,
 )
 from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase, LifecycleDbError
-from wiki_spike.memory_core.recovery import SignedDeletionOverlay, VerifiedDeletionOverlay
+from wiki_spike.memory_core.recovery import (
+    AppliedDeletionOverlayToken,
+    SignedDeletionOverlay,
+    VerifiedDeletionOverlay,
+)
 
 DIGEST = "a" * 64
 
@@ -96,3 +100,15 @@ def test_replay_rejects_a_changed_veto_set(tmp_path):
     with pytest.raises(LifecycleDbError, match="persisted veto set"):
         with database.unit_of_work() as uow:
             persist_verified_recovery_deletion_overlay(uow, overlay=changed_refs)
+def test_overlay_redemption_requires_a_store_issued_token(tmp_path):
+    database = LifecycleDatabase(tmp_path / "lifecycle.sqlite")
+    database.initialize()
+    initial = verified_overlay(seed=b"a", refs=frozenset({"artifact-deleted"}))
+
+    token = database.apply_verified_overlay(initial)
+    evidence = database.redeem_applied_overlay(token)
+    assert evidence.overlay_id == initial.overlay.overlay_id
+    assert evidence.deleted_artifact_refs == initial.deleted_artifact_refs
+
+    with pytest.raises(LifecycleDbError, match="token is invalid"):
+        database.redeem_applied_overlay(AppliedDeletionOverlayToken("forged"))

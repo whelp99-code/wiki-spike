@@ -37,7 +37,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .lifecycle_db import UnitOfWork
 from wiki_spike.memory_core.recovery import (
-    AppliedDeletionOverlayReceipt,
+    AppliedDeletionOverlayEvidence,
     SignedDeletionOverlay,
     VerifiedDeletionOverlay,
 )
@@ -394,8 +394,8 @@ def persist_verified_recovery_deletion_overlay(
     uow: "UnitOfWork",
     *,
     overlay: VerifiedDeletionOverlay,
-) -> AppliedDeletionOverlayReceipt:
-    """Atomically persist verified deletion truth and return its store receipt.
+) -> AppliedDeletionOverlayEvidence:
+    """Atomically persist verified deletion truth and return immutable evidence.
 
     The lifecycle cache stores only overlay metadata and vetoed artifact refs;
     it never receives artifact bodies and makes no provider-erasure claim.

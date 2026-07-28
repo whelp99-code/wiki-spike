@@ -55,6 +55,7 @@ as of its own atomic acquisition and is never retroactively invalid.
 from __future__ import annotations
 
 import hashlib
+import secrets
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -62,7 +63,12 @@ from pathlib import Path
 from typing import Iterator
 
 from wiki_spike.memory_core.contracts import canonical_bytes
-from wiki_spike.memory_core.recovery import AppliedDeletionOverlayReceipt, VerifiedDeletionOverlay
+from wiki_spike.memory_core.recovery import (
+    AppliedDeletionOverlayEvidence,
+    AppliedDeletionOverlayToken,
+    VerifiedDeletionOverlay,
+    SignedDeletionOverlay,
+)
 
 # --------------------------------------------------------------------------- #
 # Column-kind allowlist (no plaintext columns anywhere in this schema).
@@ -239,6 +245,12 @@ CREATE TABLE IF NOT EXISTS recovery_deletion_veto (
   PRIMARY KEY (overlay_id, artifact_id),
   FOREIGN KEY (overlay_id) REFERENCES recovery_deletion_overlay(overlay_id)
 );
+CREATE TABLE IF NOT EXISTS recovery_deletion_overlay_token (
+  token_digest TEXT PRIMARY KEY,
+  overlay_id TEXT NOT NULL,
+  token_state TEXT NOT NULL,
+  FOREIGN KEY (overlay_id) REFERENCES recovery_deletion_overlay(overlay_id)
+);
 CREATE TABLE IF NOT EXISTS source_deletion_recovery_map (
   map_id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
@@ -359,6 +371,7 @@ TABLE_NAMES: tuple[str, ...] = (
     "deletion_state",
     "recovery_deletion_overlay",
     "recovery_deletion_veto",
+    "recovery_deletion_overlay_token",
     "source_deletion_recovery_map",
     "binding_leaf",
     "binding_checkpoint",
@@ -692,7 +705,7 @@ class UnitOfWork:
 
     def persist_verified_recovery_deletion_overlay(
         self, overlay: VerifiedDeletionOverlay
-    ) -> AppliedDeletionOverlayReceipt:
+    ) -> AppliedDeletionOverlayEvidence:
         """Atomically persist verified overlay metadata and its complete veto set."""
         signed = overlay.overlay
         deleted_artifact_refs = tuple(sorted(overlay.deleted_artifact_refs))
@@ -720,7 +733,14 @@ class UnitOfWork:
             )
             if persisted_refs != deleted_artifact_refs:
                 raise LifecycleDbError("recovery deletion overlay id conflicts with persisted veto set")
-            return AppliedDeletionOverlayReceipt._mint(overlay)
+            return AppliedDeletionOverlayEvidence(
+                signed.overlay_id,
+                signed.workspace_id,
+                signed.manifest_id,
+                signed.sequence,
+                signed.previous_overlay_id,
+                overlay.deleted_artifact_refs,
+            )
         head = self._con.execute(
             "SELECT overlay_id, overlay_sequence FROM recovery_deletion_overlay "
             "WHERE workspace_id=? AND manifest_id=? "
@@ -755,7 +775,14 @@ class UnitOfWork:
             "INSERT INTO recovery_deletion_veto (overlay_id, artifact_id, veto_state) VALUES (?,?,?)",
             [(signed.overlay_id, artifact_id, "ACTIVE") for artifact_id in deleted_artifact_refs],
         )
-        return AppliedDeletionOverlayReceipt._mint(overlay)
+        return AppliedDeletionOverlayEvidence(
+            signed.overlay_id,
+            signed.workspace_id,
+            signed.manifest_id,
+            signed.sequence,
+            signed.previous_overlay_id,
+            overlay.deleted_artifact_refs,
+        )
 
     def recovery_deletion_vetoed(self, artifact_id: str) -> bool:
         return self._con.execute(
@@ -1096,6 +1123,64 @@ class LifecycleDatabase:
             raise
         else:
             con.execute("COMMIT")
+    def apply_verified_overlay(self, overlay: VerifiedDeletionOverlay) -> AppliedDeletionOverlayToken:
+        """Persist an overlay and issue a bearer token authenticated by this store."""
+        assert self.con is not None, "initialize() not called"
+        if (
+            not isinstance(overlay, VerifiedDeletionOverlay)
+            or not isinstance(overlay.overlay, SignedDeletionOverlay)
+            or not isinstance(overlay.deleted_artifact_refs, frozenset)
+            or any(not isinstance(ref, str) or not ref for ref in overlay.deleted_artifact_refs)
+        ):
+            raise LifecycleDbError("verified recovery deletion overlay is invalid")
+        with self.unit_of_work() as uow:
+            evidence = uow.persist_verified_recovery_deletion_overlay(overlay)
+            while True:
+                secret = secrets.token_urlsafe(32)
+                token_digest = hashlib.sha256(secret.encode("ascii")).hexdigest()
+                try:
+                    uow._con.execute(
+                        "INSERT INTO recovery_deletion_overlay_token "
+                        "(token_digest, overlay_id, token_state) VALUES (?,?,?)",
+                        (token_digest, evidence.overlay_id, "ACTIVE"),
+                    )
+                except sqlite3.IntegrityError:
+                    continue
+                return AppliedDeletionOverlayToken(secret)
+
+    def redeem_applied_overlay(
+        self, token: AppliedDeletionOverlayToken
+    ) -> AppliedDeletionOverlayEvidence:
+        """Redeem an authenticated token for immutable persisted overlay evidence."""
+        assert self.con is not None, "initialize() not called"
+        if not isinstance(token, AppliedDeletionOverlayToken):
+            raise LifecycleDbError("recovery deletion overlay token is invalid")
+        token_digest = hashlib.sha256(token._secret.encode("ascii")).hexdigest()
+        self.con.row_factory = sqlite3.Row
+        overlay = self.con.execute(
+            "SELECT overlay.* FROM recovery_deletion_overlay_token AS token "
+            "JOIN recovery_deletion_overlay AS overlay ON overlay.overlay_id=token.overlay_id "
+            "WHERE token.token_digest=? AND token.token_state='ACTIVE'",
+            (token_digest,),
+        ).fetchone()
+        if overlay is None:
+            raise LifecycleDbError("recovery deletion overlay token is invalid")
+        refs = frozenset(
+            row[0]
+            for row in self.con.execute(
+                "SELECT artifact_id FROM recovery_deletion_veto "
+                "WHERE overlay_id=? AND veto_state='ACTIVE' ORDER BY artifact_id",
+                (overlay["overlay_id"],),
+            )
+        )
+        return AppliedDeletionOverlayEvidence(
+            overlay["overlay_id"],
+            overlay["workspace_id"],
+            overlay["manifest_id"],
+            overlay["overlay_sequence"],
+            overlay["previous_overlay_id"],
+            refs,
+        )
 
     # -- checked-snapshot read (linearization point; see module docstring) --- #
 

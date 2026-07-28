@@ -10,7 +10,7 @@ from wiki_spike.memory_core.second_brain_security_contracts import (
     CapabilityRequestV1,
     DeviceEnrollmentV1,
     EgressPolicyV1,
-    invoke_with_resolved_security_context,
+    require_security_context_authority,
 )
 
 D = "a" * 64
@@ -45,8 +45,8 @@ def test_unresolved_context_denies_before_test_port_invocation():
     def port() -> None:
         nonlocal called
         called = True
-    with pytest.raises(InvalidContractValue, match="RESOLVED"):
-        invoke_with_resolved_security_context(port, None, None, None)
+    with pytest.raises(InvalidContractValue, match="minted SecurityContextAuthority"):
+        require_security_context_authority(None)
     assert not called
 
 
