@@ -115,21 +115,26 @@ def _matches(module: str, forbidden: str) -> bool:
 def _stage2_rules(relative_path: str) -> list[dict[str, object]]:
     """Return Stage-2 ownership rules not expressible in the legacy config."""
     normalized = relative_path.replace("\\", "/")
+    if normalized == "src/wiki_spike/applications/fixture_capture_service.py":
+        return [{
+            "from_layers": ["application"],
+            "forbidden_modules": ["wiki_spike.infrastructure"],
+            "reason": "Stage-2 Application must depend on Core ports, not concrete Infrastructure.",
+        }]
     if normalized.startswith("src/wiki_spike/connectors/"):
         return [{
             "from_layers": ["application"],
             "forbidden_modules": ["wiki_spike.infrastructure"],
             "reason": "Fixture connectors may use Core ports and injected fixture clients, never Infrastructure directly.",
         }]
-    if normalized == "src/wiki_spike/applications/capture_composition.py":
+    if normalized == "src/wiki_spike/composition/second_brain_capture.py":
         return [{
-            "from_layers": ["application"],
+            "from_layers": ["composition"],
             "forbidden_modules": [
                 "wiki_spike.memory_runtime",
                 "wiki_spike.runtime",
-                "wiki_spike.composition",
             ],
-            "reason": "Stage-2 fixture composition must not couple to activation, serving, or Gate8 runtime layers.",
+            "reason": "Stage-2 fixture composition may wire Infrastructure but must not couple to activation, serving, or Gate8 runtime layers.",
         }]
     return []
 

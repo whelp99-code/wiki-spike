@@ -4,22 +4,24 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from .second_brain_capture_contracts import (
-    CaptureItemReceiptV1, CaptureReconciliationV1, CaptureScanManifestV1,
-    MigrationRegistrationV1, NonServingCaptureCohortV1, ReconciledCheckpointAdvanceV1,
-    ScanCheckpointV1, SourceScopeRefV1,
+    CapturePersistenceAggregateV1,
+    CapturedItemV1,
+    CaptureItemReceiptV1,
+    EncryptedNativeMappingRefV1,
+    SourceScopeRefV1,
 )
 
 
 @runtime_checkable
 class ConnectorSourceReaderPort(Protocol):
-    """Connector boundary: source identity is typed; native values stay transient."""
-    def read_fixture_ciphertexts(self, scope: SourceScopeRefV1, scan_epoch: str) -> tuple[bytes, ...]: ...
+    """Connector boundary returning exact identity-bound transient capture items."""
+    def read_fixture_capture_items(self, scope: SourceScopeRefV1, scan_epoch: str) -> tuple[CapturedItemV1, ...]: ...
 
 
 @runtime_checkable
 class EncryptedNativeMappingSealerPort(Protocol):
-    """Seals transient connector-native mappings before only an opaque ref is retained."""
-    def seal_native_mapping(self, scope: SourceScopeRefV1, capture_ref: str, native_mapping: bytes) -> str: ...
+    """Seals native mappings and returns a ref bound to the supplied capture identity."""
+    def seal_native_mapping(self, scope: SourceScopeRefV1, capture_ref: str, native_mapping: bytes) -> EncryptedNativeMappingRefV1: ...
 
 
 @runtime_checkable
@@ -28,32 +30,9 @@ class CaptureReaderPort(Protocol):
 
 
 @runtime_checkable
-class CaptureCheckpointPort(Protocol):
-    """Checkpoint authority is only available through atomic reconciliation advancement.
-
-    Implementations atomically read the checkpoint stored for
-    ``advance.checkpoint.scope.scope_ref`` and persist both embedded contracts.
-    A ``None`` previous_checkpoint_ref requires no stored checkpoint; a non-None
-    reference requires that exact stored checkpoint ref. Missing or mismatched
-    stored state must reject without persisting either contract.
-    """
-    def read_scan_checkpoint(self, scope_ref: str) -> ScanCheckpointV1 | None: ...
-    def reconcile_and_advance_checkpoint(self, advance: ReconciledCheckpointAdvanceV1) -> None: ...
-
-@runtime_checkable
-class EncryptedCaptureMappingPort(Protocol):
-    def record_capture_receipt(self, receipt: CaptureItemReceiptV1) -> None: ...
-    def record_migration_registration(self, registration: MigrationRegistrationV1) -> None: ...
-
-
-@runtime_checkable
-class CaptureManifestPort(Protocol):
-    def record_capture_manifest(self, manifest: CaptureScanManifestV1) -> None: ...
-
-
-@runtime_checkable
-class NonServingCaptureCohortPort(Protocol):
-    def record_non_serving_capture_cohort(self, cohort: NonServingCaptureCohortV1) -> None: ...
+class AtomicCapturePersistencePort(Protocol):
+    """The sole application-facing write operation for a complete capture aggregate."""
+    def persist_capture_aggregate(self, aggregate: CapturePersistenceAggregateV1) -> None: ...
 
 
 @runtime_checkable

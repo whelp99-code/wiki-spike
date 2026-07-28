@@ -1,215 +1,156 @@
 from __future__ import annotations
 
+import base64
 import json
-from pathlib import Path
+from copy import deepcopy
+from hashlib import sha256
 
 import pytest
-from jsonschema import Draft202012Validator
 
-from wiki_spike.memory_core.errors import InvalidContractValue, UnknownContractField, UnsupportedContractVersion
+from wiki_spike.connectors import CodexFixtureConnector, FixtureConnectorError
 from wiki_spike.memory_core.second_brain_capture_contracts import (
-    CaptureItemReceiptV1, CaptureReconciliationV1, CaptureScanManifestV1,
-    MigrationRegistrationV1, NonServingCaptureCohortV1, ReconciledCheckpointAdvanceV1,
-    ScanCheckpointV1, SourceScopeRefV1,
+    CapturePersistenceAggregateV1,
+    CaptureReconciliationV1,
+    CaptureScanManifestV1,
+    EncryptedNativeMappingRefV1,
+    InvalidContractValue,
+    NonServingCaptureCohortV1,
+    ReconciledCheckpointAdvanceV1,
+    ScanCheckpointV1,
+    canonical_identity_body_digest,
 )
+from wiki_spike.memory_core.second_brain_capture_ports import AtomicCapturePersistencePort
 
 REF = lambda key: key + ":" + "a" * 64
 DIGEST = "b" * 64
-SCHEMA = Draft202012Validator(json.loads((Path(__file__).resolve().parents[2] / "schemas" / "second-brain" / "source-capture-v1.schema.json").read_text()))
 
 
-def scope(**changes):
-    value = {"scope_version": "second-brain-source-scope-ref-v1", "source_profile": "Codex", "source_domain": "codex", "source_ref": REF("codex-source"), "workspace_ref": REF("workspace"), "scope_ref": REF("codex-scope"), "scope_epoch": "1"}
-    value.update(changes)
+def bound(domain, value, digest_field):
+    value[digest_field] = canonical_identity_body_digest(domain, {key: item for key, item in value.items() if key != digest_field})
     return value
 
 
-def receipt(**changes):
-    value = {"receipt_version": "second-brain-capture-item-receipt-v1", "scope": scope(), "scan_epoch": "1", "capture_ref": REF("capture"), "ciphertext_digest": DIGEST, "disposition": "ACCEPTED"}
-    value.update(changes)
-    return value
+def scope():
+    return {"scope_version": "second-brain-source-scope-ref-v1", "source_profile": "Codex", "source_domain": "codex", "source_ref": REF("codex-source"), "workspace_ref": REF("workspace"), "scope_ref": REF("codex-scope"), "scope_epoch": "1"}
 
 
-def reconciliation(**changes):
-    value = {"reconciliation_version": "second-brain-capture-reconciliation-v1", "scope": scope(), "scan_epoch": "1", "manifest_ref": REF("manifest"), "reconciliation_ref": REF("reconciliation"), "reconciliation_epoch": "1", "completion": "COMPLETE", "outcome": "RECONCILED", "expected_receipt_count": "2", "accounted_receipt_count": "2", "disposition_counts": {"ACCEPTED": "1", "DUPLICATE": "1", "TOMBSTONE": "0", "SKIPPED": "0", "QUARANTINED": "0"}, "reconciliation_digest": DIGEST}
-    value.update(changes)
-    return value
+def receipt():
+    return {"receipt_version": "second-brain-capture-item-receipt-v1", "scope": scope(), "scan_epoch": "1", "capture_ref": REF("capture"), "ciphertext_digest": sha256(b"ciphertext").hexdigest(), "disposition": "ACCEPTED"}
 
 
-def checkpoint(**changes):
-    value = {"checkpoint_version": "second-brain-scan-checkpoint-v1", "scope": scope(), "scan_epoch": "1", "checkpoint_ref": REF("checkpoint"), "checkpoint_digest": DIGEST, "manifest_ref": REF("manifest"), "reconciliation_ref": REF("reconciliation"), "reconciliation_digest": DIGEST, "reconciliation_epoch": "1", "reconciliation_completion": "COMPLETE", "reconciliation_outcome": "RECONCILED"}
-    value.update(changes)
-    return value
+def manifest():
+    return bound("manifest-v1", {"manifest_version": "second-brain-capture-scan-manifest-v1", "scope": scope(), "scan_epoch": "1", "checkpoint_ref": REF("checkpoint"), "receipt_refs": [REF("capture")], "manifest_ref": REF("manifest"), "manifest_digest": ""}, "manifest_digest")
 
 
-def manifest(**changes):
-    value = {"manifest_version": "second-brain-capture-scan-manifest-v1", "scope": scope(), "scan_epoch": "1", "checkpoint_ref": REF("checkpoint"), "receipt_refs": [REF("capture")], "manifest_ref": REF("manifest"), "manifest_digest": DIGEST}
-    value.update(changes)
-    return value
+def reconciliation():
+    return bound("reconciliation-v1", {"reconciliation_version": "second-brain-capture-reconciliation-v1", "scope": scope(), "scan_epoch": "1", "manifest_ref": REF("manifest"), "reconciliation_ref": REF("reconciliation"), "reconciliation_epoch": "1", "completion": "COMPLETE", "outcome": "RECONCILED", "expected_receipt_count": "1", "accounted_receipt_count": "1", "disposition_counts": {"ACCEPTED": "1", "DUPLICATE": "0", "TOMBSTONE": "0", "SKIPPED": "0", "QUARANTINED": "0"}, "reconciliation_digest": ""}, "reconciliation_digest")
 
 
-def migration(**changes):
-    value = {"registration_version": "second-brain-migration-registration-v1", "migration_source": "unified-db", "migration_ref": REF("unified-db-migration"), "migration_scope_ref": REF("unified-db-migration-scope"), "scope": scope(), "migration_epoch": "1", "registration_ref": REF("migration-registration"), "ciphertext_digest": DIGEST}
-    value.update(changes)
-    return value
+def checkpoint():
+    reconciled = reconciliation()
+    return bound("checkpoint-v1", {"checkpoint_version": "second-brain-scan-checkpoint-v1", "scope": scope(), "scan_epoch": "1", "checkpoint_ref": REF("checkpoint"), "checkpoint_digest": "", "manifest_ref": REF("manifest"), "reconciliation_ref": REF("reconciliation"), "reconciliation_digest": reconciled["reconciliation_digest"], "reconciliation_epoch": "1", "reconciliation_completion": "COMPLETE", "reconciliation_outcome": "RECONCILED"}, "checkpoint_digest")
 
 
-def cohort(**changes):
-    value = {"cohort_version": "second-brain-non-serving-capture-cohort-v1", "cohort_ref": REF("cohort"), "final_workspace_ref": REF("workspace"), "state": "NON_SERVING", "source_roster": [{"source_domain": "codex", "source_ref": REF("codex-source"), "registration_ref": REF("migration-registration"), "scope_ref": REF("codex-scope"), "manifest_ref": REF("manifest"), "ownership_binding": {"workspace_ref": REF("workspace"), "source_ref": REF("codex-source"), "registration_ref": REF("migration-registration"), "scope_ref": REF("codex-scope"), "manifest_ref": REF("manifest")}}], "cohort_digest": DIGEST}
-    value.update(changes)
-    return value
+def cohort():
+    entry = {"source_domain": "codex", "source_ref": REF("codex-source"), "registration_ref": REF("migration-registration"), "scope_ref": REF("codex-scope"), "manifest_ref": REF("manifest"), "reconciliation_ref": REF("reconciliation"), "reconciliation_epoch": "1", "checkpoint_ref": REF("checkpoint"), "checkpoint_epoch": "1"}
+    entry["ownership_binding"] = {
+        "workspace_ref": REF("workspace"),
+        **{key: value for key, value in entry.items() if key != "source_domain"},
+    }
+    return bound("cohort-v1", {"cohort_version": "second-brain-non-serving-capture-cohort-v1", "cohort_ref": REF("cohort"), "final_workspace_ref": REF("workspace"), "state": "NON_SERVING", "source_roster": [entry], "cohort_digest": ""}, "cohort_digest")
 
 
-def runtime_valid(parser, value):
-    try:
-        parser.from_mapping(value)
-    except (InvalidContractValue, UnknownContractField, UnsupportedContractVersion):
-        return False
-    return True
-
-
-@pytest.mark.parametrize(("parser", "value"), [
-    (SourceScopeRefV1, scope()), (ScanCheckpointV1, checkpoint()),
-    (CaptureItemReceiptV1, receipt()), (CaptureScanManifestV1, manifest()),
-    (CaptureReconciliationV1, reconciliation()), (MigrationRegistrationV1, migration()),
-    (NonServingCaptureCohortV1, cohort()),
-])
-def test_all_seven_wire_contracts_accept_the_same_valid_fixture(parser, value):
-    assert not list(SCHEMA.iter_errors(value))
-    assert parser.from_mapping(value).to_mapping() == value
-
-
-@pytest.mark.parametrize(("parser", "value"), [
-    (SourceScopeRefV1, scope(source_domain="git")),
-    (ScanCheckpointV1, checkpoint(reconciliation_completion="INCOMPLETE")),
-    (CaptureItemReceiptV1, receipt(disposition="RAW")),
-    (CaptureScanManifestV1, manifest(checkpoint_ref=REF("manifest"))),
-    (CaptureReconciliationV1, reconciliation(completion="PARTIAL")),
-    (MigrationRegistrationV1, migration(migration_source="unknown")),
-    (NonServingCaptureCohortV1, cohort(state="SERVING")),
-])
-def test_all_seven_wire_contracts_reject_closed_invalid_values(parser, value):
-    assert list(SCHEMA.iter_errors(value))
-    assert not runtime_valid(parser, value)
-
-
-@pytest.mark.parametrize("forbidden", ["native_id", "path", "revision", "cursor", "body", "locator", "label", "url", "credential", "activation", "gate8"])
-@pytest.mark.parametrize(("parser", "factory"), [
-    (SourceScopeRefV1, scope), (ScanCheckpointV1, checkpoint), (CaptureItemReceiptV1, receipt),
-    (CaptureScanManifestV1, manifest), (CaptureReconciliationV1, reconciliation),
-    (MigrationRegistrationV1, migration), (NonServingCaptureCohortV1, cohort),
-])
-def test_all_durable_wire_contracts_deny_raw_and_activation_fields(parser, factory, forbidden):
-    candidate = factory(**{forbidden: "raw-source-value"})
-    assert list(SCHEMA.iter_errors(candidate))
-    assert not runtime_valid(parser, candidate)
-
-
-@pytest.mark.parametrize(("profile", "domain"), [("Claude/Memory Bank", "claude-memory-bank"), ("Git", "git"), ("Markdown", "markdown")])
-def test_source_scope_accepts_each_closed_profile_with_its_typed_domain(profile, domain):
-    candidate = scope(source_profile=profile, source_domain=domain, source_ref=REF(f"{domain}-source"), scope_ref=REF(f"{domain}-scope"))
-    assert not list(SCHEMA.iter_errors(candidate))
-    assert runtime_valid(SourceScopeRefV1, candidate)
-
-
-@pytest.mark.parametrize("changes", [
-    {"source_domain": "git"}, {"source_ref": REF("git-source")}, {"scope_ref": REF("git-scope")}, {"workspace_ref": REF("project")},
-])
-def test_source_scope_rejects_cross_domain_and_workspace_substitution(changes):
-    candidate = scope(**changes)
-    assert list(SCHEMA.iter_errors(candidate))
-    assert not runtime_valid(SourceScopeRefV1, candidate)
-
-
-@pytest.mark.parametrize("changes", [
-    {"reconciliation_epoch": "2"}, {"completion": "INCOMPLETE"}, {"outcome": "FAILED"},
-    {"expected_receipt_count": "3"}, {"accounted_receipt_count": "1"},
-    {"disposition_counts": {"ACCEPTED": "1", "DUPLICATE": "0", "TOMBSTONE": "0", "SKIPPED": "0", "QUARANTINED": "0"}},
-])
-def test_reconciliation_rejects_incomplete_failed_or_unaccounted_epochs(changes):
-    candidate = reconciliation(**changes)
-    assert not runtime_valid(CaptureReconciliationV1, candidate)
-
-
-@pytest.mark.parametrize(("changes", "schema_rejects"), [
-    ({"reconciliation_epoch": "2"}, False),
-    ({"reconciliation_completion": "INCOMPLETE"}, True),
-    ({"reconciliation_outcome": "FAILED"}, True),
-])
-def test_checkpoint_advancement_requires_complete_reconciled_matching_epoch(changes, schema_rejects):
-    candidate = checkpoint(**changes)
-    assert bool(list(SCHEMA.iter_errors(candidate))) is schema_rejects
-    assert not runtime_valid(ScanCheckpointV1, candidate)
-
-
-@pytest.mark.parametrize(("source", "domain"), [("legacy Mem0/RAG", "legacy-mem0-rag"), ("me-wiki", "me-wiki")])
-def test_migration_requires_exact_source_identity_and_migration_scope(source, domain):
-    candidate = migration(migration_source=source, migration_ref=REF(f"{domain}-migration"), migration_scope_ref=REF(f"{domain}-migration-scope"))
-    assert not list(SCHEMA.iter_errors(candidate))
-    assert runtime_valid(MigrationRegistrationV1, candidate)
-    substituted = dict(candidate, migration_scope_ref=REF("unified-db-migration-scope"))
-    assert list(SCHEMA.iter_errors(substituted))
-    assert not runtime_valid(MigrationRegistrationV1, substituted)
-
-
-def test_non_serving_cohort_binds_final_workspace_and_exact_unique_roster():
-    assert runtime_valid(NonServingCaptureCohortV1, cohort())
-    wrong_workspace = cohort(final_workspace_ref=REF("project"))
-    duplicate_registration = cohort(source_roster=[cohort()["source_roster"][0], {"source_domain": "git", "source_ref": REF("git-source"), "registration_ref": REF("migration-registration"), "scope_ref": REF("git-scope"), "manifest_ref": REF("manifest-2")}])
-    for candidate in (wrong_workspace, duplicate_registration):
-        assert not runtime_valid(NonServingCaptureCohortV1, candidate)
-    assert list(SCHEMA.iter_errors(wrong_workspace))
-def advance(**changes):
-    value = {"advance_version": "second-brain-reconciled-checkpoint-advance-v1", "previous_checkpoint_ref": None, "reconciliation": reconciliation(), "checkpoint": checkpoint()}
-    value.update(changes)
-    return value
-
-
-def test_checkpoint_advance_authoritatively_correlates_reconciliation():
-    candidate = advance()
-    assert not list(SCHEMA.iter_errors(candidate))
-    assert ReconciledCheckpointAdvanceV1.from_mapping(candidate).to_mapping() == candidate
-    for field, value in (("scope", scope(scope_epoch="2")), ("manifest_ref", REF("manifest-other")), ("reconciliation_ref", REF("reconciliation-other")), ("reconciliation_digest", "c" * 64), ("scan_epoch", "2")):
-        assert not runtime_valid(ReconciledCheckpointAdvanceV1, advance(checkpoint=checkpoint(**{field: value})))
-
-
-def test_cohort_ownership_binding_rejects_same_kind_substitutions():
-    binding = dict(cohort()["source_roster"][0]["ownership_binding"])
-    for field, value in (("workspace_ref", REF("workspace-other")), ("source_ref", REF("codex-source-other")), ("registration_ref", REF("migration-registration-other")), ("manifest_ref", REF("manifest-other"))):
-        candidate = cohort(source_roster=[dict(cohort()["source_roster"][0], ownership_binding=dict(binding, **{field: value}))])
-        assert not runtime_valid(NonServingCaptureCohortV1, candidate)
-
-
-def test_reconciliation_counts_are_deeply_immutable_and_serialized_by_copy():
-    parsed = CaptureReconciliationV1.from_mapping(reconciliation())
-    with pytest.raises(TypeError):
-        parsed.disposition_counts["ACCEPTED"] = "9"
-    serialized = parsed.to_mapping()
-    serialized["disposition_counts"]["ACCEPTED"] = "9"
-    assert parsed.disposition_counts["ACCEPTED"] == "1"
+def advance():
+    reconciled = reconciliation()
+    checked = checkpoint()
+    checked["reconciliation_digest"] = reconciled["reconciliation_digest"]
+    bound("checkpoint-v1", checked, "checkpoint_digest")
+    return {"advance_version": "second-brain-reconciled-checkpoint-advance-v1", "previous_checkpoint_ref": None, "reconciliation": reconciled, "checkpoint": checked}
 
 
 @pytest.mark.parametrize(("parser", "factory", "field"), [
-    (SourceScopeRefV1, scope, "source_profile"),
-    (CaptureItemReceiptV1, receipt, "disposition"),
-    (MigrationRegistrationV1, migration, "migration_source"),
-    (NonServingCaptureCohortV1, cohort, "state"),
+    (CaptureScanManifestV1, manifest, "receipt_refs"),
+    (CaptureReconciliationV1, reconciliation, "manifest_ref"),
+    (ScanCheckpointV1, checkpoint, "manifest_ref"),
+    (NonServingCaptureCohortV1, cohort, "final_workspace_ref"),
 ])
-@pytest.mark.parametrize("malformed", [[], {}, 1])
-def test_non_string_closed_values_raise_invalid_contract_value(parser, factory, field, malformed):
+def test_identity_body_digest_rejects_each_mutated_authoritative_field(parser, factory, field):
+    value = factory()
+    parser.from_mapping(value)
+    value[field] = [] if field == "receipt_refs" else REF("substituted")
     with pytest.raises(InvalidContractValue):
-        parser.from_mapping(factory(**{field: malformed}))
+        parser.from_mapping(value)
 
 
-def test_package_exports_connector_reader_and_native_mapping_sealer():
-    from wiki_spike.memory_core.second_brain_capture import (
-        ConnectorSourceReaderPort,
-        EncryptedNativeMappingSealerPort,
-    )
+def test_digest_is_domain_separated_even_for_the_same_canonical_body():
+    body = {"identity": REF("capture")}
+    assert canonical_identity_body_digest("manifest-v1", body) != canonical_identity_body_digest("reconciliation-v1", body)
 
-    assert ConnectorSourceReaderPort.__name__ == "ConnectorSourceReaderPort"
-    assert EncryptedNativeMappingSealerPort.__name__ == "EncryptedNativeMappingSealerPort"
-def test_cohort_rejects_duplicate_source_with_distinct_registration():
-    first = cohort()["source_roster"][0]
-    second = dict(first, registration_ref=REF("migration-registration-other"), ownership_binding=dict(first["ownership_binding"], registration_ref=REF("migration-registration-other")))
-    assert not runtime_valid(NonServingCaptureCohortV1, cohort(source_roster=[first, second]))
+
+def test_cohort_owns_exact_reconciled_checkpoint_and_reconciliation_refs_and_epochs():
+    value = cohort()
+    NonServingCaptureCohortV1.from_mapping(value)
+    for field, replacement in (("checkpoint_ref", REF("other-checkpoint")), ("reconciliation_ref", REF("other-reconciliation")), ("checkpoint_epoch", "2"), ("reconciliation_epoch", "2")):
+        candidate = deepcopy(value)
+        candidate["source_roster"][0][field] = replacement
+        candidate["source_roster"][0]["ownership_binding"][field] = replacement
+        with pytest.raises(InvalidContractValue):
+            NonServingCaptureCohortV1.from_mapping(candidate)
+
+
+def test_checkpoint_advance_requires_exact_bound_reconciliation_digest():
+    value = advance()
+    ReconciledCheckpointAdvanceV1.from_mapping(value)
+    value["checkpoint"]["reconciliation_digest"] = DIGEST
+    bound("checkpoint-v1", value["checkpoint"], "checkpoint_digest")
+    with pytest.raises(InvalidContractValue):
+        ReconciledCheckpointAdvanceV1.from_mapping(value)
+
+
+class FixtureClient:
+    def __init__(self, payloads): self.payloads = payloads
+    def read_fixture_payload(self, request_ref): return self.payloads[request_ref]
+
+
+class ExactSealer:
+    def seal_native_mapping(self, scope, capture_ref, native_mapping):
+        return EncryptedNativeMappingRefV1(capture_ref, REF("encrypted-native-mapping"))
+
+
+class SwappingSealer:
+    def seal_native_mapping(self, scope, capture_ref, native_mapping):
+        return EncryptedNativeMappingRefV1(f"capture:{'b' * 64}", REF("encrypted-native-mapping"))
+
+
+def fixture(capture_ref=REF("capture")):
+    return json.dumps({"fixture_version": "second-brain-connector-fixture-v1", "source_profile": "Codex", "source_domain": "codex", "scope_ref": REF("codex-scope"), "scan_epoch": "1", "capture_ref": capture_ref, "ciphertext_b64": base64.b64encode(b"ciphertext").decode(), "native_mapping": {"fixture_only": "opaque"}}).encode()
+
+
+def test_connector_returns_complete_identity_bound_transient_items():
+    connector = CodexFixtureConnector(FixtureClient({REF("request"): fixture()}), ExactSealer(), [REF("request")])
+    items = connector.read_fixture_capture_items(__import__("wiki_spike.memory_core.second_brain_capture_contracts", fromlist=["SourceScopeRefV1"]).SourceScopeRefV1.from_mapping(scope()), "1")
+    assert len(items) == 1
+    assert items[0].capture_ref == REF("capture")
+    assert items[0].ciphertext == b"ciphertext"
+    assert items[0].encrypted_native_mapping_ref == REF("encrypted-native-mapping")
+
+
+def test_connector_rejects_a_swapped_sealed_native_mapping_identity():
+    connector = CodexFixtureConnector(FixtureClient({REF("request"): fixture()}), SwappingSealer(), [REF("request")])
+    source_scope = __import__("wiki_spike.memory_core.second_brain_capture_contracts", fromlist=["SourceScopeRefV1"]).SourceScopeRefV1.from_mapping(scope())
+    with pytest.raises(FixtureConnectorError):
+        connector.read_fixture_capture_items(source_scope, "1")
+
+
+def test_atomic_persistence_port_exposes_only_one_complete_aggregate_operation():
+    assert hasattr(AtomicCapturePersistencePort, "persist_capture_aggregate")
+    assert not hasattr(AtomicCapturePersistencePort, "record_capture_receipt")
+
+
+def test_aggregate_requires_complete_matching_receipt_manifest_scope():
+    value = {"aggregate_version": "second-brain-capture-persistence-aggregate-v1", "scope": scope(), "receipts": [receipt()], "manifest": manifest(), "registration": {"registration_version": "second-brain-migration-registration-v1", "migration_source": "unified-db", "migration_ref": REF("unified-db-migration"), "migration_scope_ref": REF("unified-db-migration-scope"), "scope": scope(), "migration_epoch": "1", "registration_ref": REF("migration-registration"), "ciphertext_digest": DIGEST}, "advance": advance(), "cohort": cohort(), "aggregate_digest": ""}
+    bound("aggregate-v1", value, "aggregate_digest")
+    CapturePersistenceAggregateV1.from_mapping(value)
+    value["manifest"]["receipt_refs"] = [REF("other-capture")]
+    with pytest.raises(InvalidContractValue):
+        CapturePersistenceAggregateV1.from_mapping(value)

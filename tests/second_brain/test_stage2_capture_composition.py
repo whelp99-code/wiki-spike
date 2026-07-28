@@ -7,105 +7,61 @@ from pathlib import Path
 import pytest
 
 from scripts.check_architecture_boundaries import lint_boundaries
-from wiki_spike.applications.capture_composition import (
-    CaptureCompositionError,
-    compose_non_serving_fixture_capture,
-)
-from wiki_spike.connectors import (
-    ClaudeMemoryBankFixtureConnector,
-    CodexFixtureConnector,
-    GitFixtureConnector,
-    MarkdownFixtureConnector,
-)
-from wiki_spike.infrastructure.fixture_capture_clients import (
-    FixtureCaptureClients,
-    FixtureNativeMappingSealer,
-)
+from wiki_spike.composition.second_brain_capture import CaptureCompositionError, compose_non_serving_fixture_capture
+from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore
+from wiki_spike.infrastructure.fixture_capture_clients import FixtureCaptureClients
 from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase
-
+from wiki_spike.memory_core.second_brain_capture_contracts import SourceScopeRefV1
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "second_brain" / "capture"
-PROFILES = {
-    "Codex": ("codex.json", CodexFixtureConnector),
-    "Claude/Memory Bank": ("claude_memory_bank.json", ClaudeMemoryBankFixtureConnector),
-    "Git": ("git.json", GitFixtureConnector),
-    "Markdown": ("markdown.json", MarkdownFixtureConnector),
-}
+PROFILES = ("Codex", "Claude/Memory Bank", "Git", "Markdown")
+DEK = bytes(range(32))
 
 
-def ref(label: str) -> str:
-    return "fixture-request:" + sha256(label.encode("ascii")).hexdigest()
+def ref(kind: str, value: str) -> str:
+    return f"{kind}:{sha256(value.encode()).hexdigest()}"
 
 
-def test_composition_wires_exactly_four_fixture_sources_and_no_runtime_entrypoint(tmp_path: Path):
-    payloads = {}
-    request_refs = {}
-    for profile, (fixture_name, _) in PROFILES.items():
-        request_ref = ref(profile)
-        payloads[request_ref] = json.dumps(json.loads((FIXTURES / fixture_name).read_text()), sort_keys=True).encode()
-        request_refs[profile] = [request_ref]
-    database = LifecycleDatabase(tmp_path / "fixture.sqlite")
+def resolved_scope() -> SourceScopeRefV1:
+    return SourceScopeRefV1.from_mapping({"scope_version": "second-brain-source-scope-ref-v1", "source_profile": "Codex", "source_domain": "codex", "source_ref": ref("codex-source", "scope"), "workspace_ref": ref("workspace", "stage2"), "scope_ref": ref("codex-scope", "scope"), "scope_epoch": "1"})
+
+
+def test_moved_non_serving_composition_wires_four_fixture_sources_without_activation_or_serving(tmp_path: Path):
+    request_refs = {profile: [ref("fixture-request", profile)] for profile in PROFILES}
+    payloads = {request_refs[profile][0]: json.dumps(json.loads((FIXTURES / name).read_text()), sort_keys=True).encode() for profile, name in zip(PROFILES, ("codex.json", "claude_memory_bank.json", "git.json", "markdown.json"))}
+    database = LifecycleDatabase(tmp_path / "fixture.sqlite", fixture_capture_mode=True)
     database.initialize()
-
-    composition = compose_non_serving_fixture_capture(
-        database=database,
-        fixture_clients=FixtureCaptureClients(payloads=payloads),
-        native_mapping_sealer=FixtureNativeMappingSealer(),
-        fixture_request_refs=request_refs,
-        read_only_migration_capabilities={},
-    )
-
-    assert {name: type(connector) for name, connector in composition.connectors.items()} == {
-        name: connector_type for name, (_, connector_type) in PROFILES.items()
-    }
-    assert not hasattr(composition, "activate")
-    assert not hasattr(composition, "serve")
+    composition = compose_non_serving_fixture_capture(database=database, cas=EncryptedContentStore(tmp_path / "cas"), encryption_key=DEK, fixture_clients=FixtureCaptureClients(payloads=payloads), fixture_request_refs=request_refs, read_only_migration_capabilities={})
+    assert tuple(composition.connectors) == PROFILES
+    assert not hasattr(composition, "activate") and not hasattr(composition, "serve")
     database.close()
 
 
-def test_migration_capability_registry_is_read_only_and_client_gated(tmp_path: Path):
-    database = LifecycleDatabase(tmp_path / "fixture.sqlite")
-    database.initialize()
-    migration_ref = "migration:" + sha256(b"readonly").hexdigest()
+def test_fixture_composition_rejects_production_database_and_scope_unbound_capability(tmp_path: Path):
+    production = LifecycleDatabase(tmp_path / "production.sqlite")
+    production.initialize()
     clients = FixtureCaptureClients()
-    capability = clients.issue_read_only_migration_capability(migration_ref)
-
-    composition = compose_non_serving_fixture_capture(
-        database=database,
-        fixture_clients=clients,
-        native_mapping_sealer=FixtureNativeMappingSealer(),
-        fixture_request_refs={profile: [ref(profile)] for profile in PROFILES},
-        read_only_migration_capabilities={migration_ref: capability},
-    )
-
-    assert composition.read_only_migration_capabilities[migration_ref] is capability
-    with pytest.raises(TypeError):
-        composition.read_only_migration_capabilities[migration_ref] = capability  # type: ignore[index]
-    with pytest.raises(CaptureCompositionError, match="four Stage-2 source profiles"):
-        compose_non_serving_fixture_capture(
-            database=database,
-            fixture_clients=clients,
-            native_mapping_sealer=FixtureNativeMappingSealer(),
-            fixture_request_refs={},
-            read_only_migration_capabilities={},
-        )
-    database.close()
+    kwargs = dict(cas=EncryptedContentStore(tmp_path / "cas"), encryption_key=DEK, fixture_clients=clients, fixture_request_refs={profile: [ref("fixture-request", profile)] for profile in PROFILES}, read_only_migration_capabilities={})
+    with pytest.raises(CaptureCompositionError, match="synthetic database"):
+        compose_non_serving_fixture_capture(database=production, **kwargs)
+    capability = clients.issue_read_only_migration_capability(ref("unified-db-migration", "one"), resolved_scope())
+    with pytest.raises(Exception, match="scope"):
+        clients.verify_read_only_migration_capability(capability, ref("unified-db-migration", "one"), SourceScopeRefV1.from_mapping({**resolved_scope().to_mapping(), "scope_epoch": "2"}))
+    production.close()
 
 
-def test_architecture_checker_rejects_stage2_ownership_and_gate8_imports(tmp_path: Path):
+def test_architecture_checker_has_one_rule_per_stage2_boundary(tmp_path: Path):
     repo = tmp_path / "repo"
-    (repo / "src/wiki_spike/connectors").mkdir(parents=True)
-    (repo / "src/wiki_spike/memory_core").mkdir(parents=True)
-    (repo / "src/wiki_spike/applications").mkdir(parents=True)
+    for package in ("applications", "connectors", "composition", "memory_core"):
+        (repo / "src/wiki_spike" / package).mkdir(parents=True, exist_ok=True)
     config = Path(__file__).resolve().parents[2] / "architecture-boundaries.json"
     (repo / "architecture-boundaries.json").write_text(config.read_text())
-    (repo / "src/wiki_spike/connectors/forbidden.py").write_text("import wiki_spike.infrastructure.lifecycle_db\n")
-    (repo / "src/wiki_spike/memory_core/forbidden.py").write_text("import wiki_spike.infrastructure.lifecycle_db\n")
-    (repo / "src/wiki_spike/applications/capture_composition.py").write_text("import wiki_spike.memory_runtime.orchestrator\n")
-
+    (repo / "src/wiki_spike/applications/fixture_capture_service.py").write_text("import wiki_spike.infrastructure.lifecycle_db\n")
+    (repo / "src/wiki_spike/connectors/bad.py").write_text("import wiki_spike.infrastructure.encrypted_cas\n")
+    (repo / "src/wiki_spike/composition/second_brain_capture.py").write_text("import wiki_spike.memory_runtime.orchestrator\n")
     found = lint_boundaries(repo, repo / "architecture-boundaries.json")
-
-    assert {violation.imported_module for violation in found} == {
-        "wiki_spike.infrastructure.lifecycle_db",
-        "wiki_spike.memory_runtime.orchestrator",
-    }
+    assert [(item.path, item.imported_module) for item in found] == [
+        ("src/wiki_spike/applications/fixture_capture_service.py", "wiki_spike.infrastructure.lifecycle_db"),
+        ("src/wiki_spike/composition/second_brain_capture.py", "wiki_spike.memory_runtime.orchestrator"),
+        ("src/wiki_spike/connectors/bad.py", "wiki_spike.infrastructure.encrypted_cas"),
+    ]

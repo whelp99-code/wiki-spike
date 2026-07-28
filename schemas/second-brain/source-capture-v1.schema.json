@@ -1,96 +1,823 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "source-capture-v1.schema.json",
-  "title": "Second Brain Fixture-Only Source Capture V1",
-  "oneOf": [
-    { "$ref": "#/$defs/sourceScope" }, { "$ref": "#/$defs/checkpoint" },
-    { "$ref": "#/$defs/receipt" }, { "$ref": "#/$defs/manifest" },
-    { "$ref": "#/$defs/reconciliation" }, { "$ref": "#/$defs/migration" },
-    { "$ref": "#/$defs/cohort" }, { "$ref": "#/$defs/reconciledCheckpointAdvance" }
-  ],
   "$defs": {
-    "ref": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}:[0-9a-f]{64}$" },
-    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-    "epoch": { "type": "string", "pattern": "^[1-9][0-9]*$" },
-    "count": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
-    "captureRefs": { "type": "array", "items": { "type": "string", "pattern": "^capture:[0-9a-f]{64}$" }, "uniqueItems": true },
-    "sourceScope": {
-      "type": "object", "additionalProperties": false,
-      "required": ["scope_version", "source_profile", "source_domain", "source_ref", "workspace_ref", "scope_ref", "scope_epoch"],
-      "properties": {
-        "scope_version": { "const": "second-brain-source-scope-ref-v1" },
-        "source_profile": { "enum": ["Codex", "Claude/Memory Bank", "Git", "Markdown"] },
-        "source_domain": { "enum": ["codex", "claude-memory-bank", "git", "markdown"] },
-        "source_ref": { "$ref": "#/$defs/ref" }, "workspace_ref": { "type": "string", "pattern": "^workspace:[0-9a-f]{64}$" },
-        "scope_ref": { "$ref": "#/$defs/ref" }, "scope_epoch": { "$ref": "#/$defs/epoch" }
-      },
+    "aggregate": {
+      "additionalProperties": false,
       "allOf": [
-        { "if": { "properties": { "source_profile": { "const": "Codex" } } }, "then": { "properties": { "source_domain": { "const": "codex" }, "source_ref": { "pattern": "^codex-source:[0-9a-f]{64}$" }, "scope_ref": { "pattern": "^codex-scope:[0-9a-f]{64}$" } } } },
-        { "if": { "properties": { "source_profile": { "const": "Claude/Memory Bank" } } }, "then": { "properties": { "source_domain": { "const": "claude-memory-bank" }, "source_ref": { "pattern": "^claude-memory-bank-source:[0-9a-f]{64}$" }, "scope_ref": { "pattern": "^claude-memory-bank-scope:[0-9a-f]{64}$" } } } },
-        { "if": { "properties": { "source_profile": { "const": "Git" } } }, "then": { "properties": { "source_domain": { "const": "git" }, "source_ref": { "pattern": "^git-source:[0-9a-f]{64}$" }, "scope_ref": { "pattern": "^git-scope:[0-9a-f]{64}$" } } } },
-        { "if": { "properties": { "source_profile": { "const": "Markdown" } } }, "then": { "properties": { "source_domain": { "const": "markdown" }, "source_ref": { "pattern": "^markdown-source:[0-9a-f]{64}$" }, "scope_ref": { "pattern": "^markdown-scope:[0-9a-f]{64}$" } } } }
-      ]
+        {
+          "$comment": "Digest fields are canonical domain-separated identity digests verified by the contract parser; JSON Schema enforces their strict shape."
+        }
+      ],
+      "properties": {
+        "advance": {
+          "$ref": "#/$defs/reconciledCheckpointAdvance"
+        },
+        "aggregate_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "aggregate_version": {
+          "const": "second-brain-capture-persistence-aggregate-v1"
+        },
+        "cohort": {
+          "$ref": "#/$defs/cohort"
+        },
+        "manifest": {
+          "$ref": "#/$defs/manifest"
+        },
+        "receipts": {
+          "items": {
+            "$ref": "#/$defs/receipt"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "registration": {
+          "$ref": "#/$defs/migration"
+        },
+        "scope": {
+          "$ref": "#/$defs/sourceScope"
+        }
+      },
+      "required": [
+        "aggregate_version",
+        "scope",
+        "receipts",
+        "manifest",
+        "registration",
+        "advance",
+        "cohort",
+        "aggregate_digest"
+      ],
+      "type": "object"
+    },
+    "captureRefs": {
+      "items": {
+        "pattern": "^capture:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
     },
     "checkpoint": {
-      "type": "object", "additionalProperties": false,
-      "required": ["checkpoint_version", "scope", "scan_epoch", "checkpoint_ref", "checkpoint_digest", "manifest_ref", "reconciliation_ref", "reconciliation_digest", "reconciliation_epoch", "reconciliation_completion", "reconciliation_outcome"],
-      "properties": { "checkpoint_version": { "const": "second-brain-scan-checkpoint-v1" }, "scope": { "$ref": "#/$defs/sourceScope" }, "scan_epoch": { "$ref": "#/$defs/epoch" }, "checkpoint_ref": { "type": "string", "pattern": "^checkpoint:[0-9a-f]{64}$" }, "checkpoint_digest": { "$ref": "#/$defs/digest" }, "manifest_ref": { "type": "string", "pattern": "^manifest:[0-9a-f]{64}$" }, "reconciliation_ref": { "type": "string", "pattern": "^reconciliation:[0-9a-f]{64}$" }, "reconciliation_digest": { "$ref": "#/$defs/digest" }, "reconciliation_epoch": { "$ref": "#/$defs/epoch" }, "reconciliation_completion": { "const": "COMPLETE" }, "reconciliation_outcome": { "const": "RECONCILED" } }
-    },
-    "receipt": {
-      "type": "object", "additionalProperties": false,
-      "required": ["receipt_version", "scope", "scan_epoch", "capture_ref", "ciphertext_digest", "disposition"],
-      "properties": { "receipt_version": { "const": "second-brain-capture-item-receipt-v1" }, "scope": { "$ref": "#/$defs/sourceScope" }, "scan_epoch": { "$ref": "#/$defs/epoch" }, "capture_ref": { "type": "string", "pattern": "^capture:[0-9a-f]{64}$" }, "ciphertext_digest": { "$ref": "#/$defs/digest" }, "disposition": { "enum": ["ACCEPTED", "DUPLICATE", "TOMBSTONE", "SKIPPED", "QUARANTINED"] } }
-    },
-    "manifest": {
-      "type": "object", "additionalProperties": false,
-      "required": ["manifest_version", "scope", "scan_epoch", "checkpoint_ref", "receipt_refs", "manifest_ref", "manifest_digest"],
-      "properties": { "manifest_version": { "const": "second-brain-capture-scan-manifest-v1" }, "scope": { "$ref": "#/$defs/sourceScope" }, "scan_epoch": { "$ref": "#/$defs/epoch" }, "checkpoint_ref": { "type": "string", "pattern": "^checkpoint:[0-9a-f]{64}$" }, "receipt_refs": { "$ref": "#/$defs/captureRefs" }, "manifest_ref": { "type": "string", "pattern": "^manifest:[0-9a-f]{64}$" }, "manifest_digest": { "$ref": "#/$defs/digest" } }
-    },
-    "reconciliation": {
-      "type": "object", "additionalProperties": false,
-      "required": ["reconciliation_version", "scope", "scan_epoch", "manifest_ref", "reconciliation_ref", "reconciliation_epoch", "completion", "outcome", "expected_receipt_count", "accounted_receipt_count", "disposition_counts", "reconciliation_digest"],
-      "properties": { "reconciliation_version": { "const": "second-brain-capture-reconciliation-v1" }, "scope": { "$ref": "#/$defs/sourceScope" }, "scan_epoch": { "$ref": "#/$defs/epoch" }, "manifest_ref": { "type": "string", "pattern": "^manifest:[0-9a-f]{64}$" }, "reconciliation_ref": { "type": "string", "pattern": "^reconciliation:[0-9a-f]{64}$" }, "reconciliation_epoch": { "$ref": "#/$defs/epoch" }, "completion": { "const": "COMPLETE" }, "outcome": { "const": "RECONCILED" }, "expected_receipt_count": { "$ref": "#/$defs/count" }, "accounted_receipt_count": { "$ref": "#/$defs/count" }, "disposition_counts": { "$ref": "#/$defs/dispositionCounts" }, "reconciliation_digest": { "$ref": "#/$defs/digest" } }
-    },
-    "dispositionCounts": {
-      "type": "object", "additionalProperties": false,
-      "required": ["ACCEPTED", "DUPLICATE", "TOMBSTONE", "SKIPPED", "QUARANTINED"],
-      "properties": { "ACCEPTED": { "$ref": "#/$defs/count" }, "DUPLICATE": { "$ref": "#/$defs/count" }, "TOMBSTONE": { "$ref": "#/$defs/count" }, "SKIPPED": { "$ref": "#/$defs/count" }, "QUARANTINED": { "$ref": "#/$defs/count" } }
-    },
-    "migration": {
-      "type": "object", "additionalProperties": false,
-      "required": ["registration_version", "migration_source", "migration_ref", "migration_scope_ref", "scope", "migration_epoch", "registration_ref", "ciphertext_digest"],
-      "properties": { "registration_version": { "const": "second-brain-migration-registration-v1" }, "migration_source": { "enum": ["unified-db", "legacy Mem0/RAG", "me-wiki"] }, "migration_ref": { "$ref": "#/$defs/ref" }, "migration_scope_ref": { "$ref": "#/$defs/ref" }, "scope": { "$ref": "#/$defs/sourceScope" }, "migration_epoch": { "$ref": "#/$defs/epoch" }, "registration_ref": { "type": "string", "pattern": "^migration-registration:[0-9a-f]{64}$" }, "ciphertext_digest": { "$ref": "#/$defs/digest" } },
-      "allOf": [
-        { "if": { "properties": { "migration_source": { "const": "unified-db" } } }, "then": { "properties": { "migration_ref": { "pattern": "^unified-db-migration:[0-9a-f]{64}$" }, "migration_scope_ref": { "pattern": "^unified-db-migration-scope:[0-9a-f]{64}$" } } } },
-        { "if": { "properties": { "migration_source": { "const": "legacy Mem0/RAG" } } }, "then": { "properties": { "migration_ref": { "pattern": "^legacy-mem0-rag-migration:[0-9a-f]{64}$" }, "migration_scope_ref": { "pattern": "^legacy-mem0-rag-migration-scope:[0-9a-f]{64}$" } } } },
-        { "if": { "properties": { "migration_source": { "const": "me-wiki" } } }, "then": { "properties": { "migration_ref": { "pattern": "^me-wiki-migration:[0-9a-f]{64}$" }, "migration_scope_ref": { "pattern": "^me-wiki-migration-scope:[0-9a-f]{64}$" } } } }
-      ]
-    },
-    "rosterEntry": {
-      "type": "object", "additionalProperties": false,
-      "required": ["source_domain", "source_ref", "registration_ref", "scope_ref", "manifest_ref", "ownership_binding"],
-      "properties": { "source_domain": { "enum": ["codex", "claude-memory-bank", "git", "markdown"] }, "source_ref": { "$ref": "#/$defs/ref" }, "registration_ref": { "type": "string", "pattern": "^migration-registration:[0-9a-f]{64}$" }, "scope_ref": { "$ref": "#/$defs/ref" }, "manifest_ref": { "type": "string", "pattern": "^manifest:[0-9a-f]{64}$" }, "ownership_binding": { "$ref": "#/$defs/ownershipBinding" } },
-      "allOf": [
-        { "if": { "properties": { "source_domain": { "const": "codex" } } }, "then": { "properties": { "source_ref": { "pattern": "^codex-source:[0-9a-f]{64}$" }, "scope_ref": { "pattern": "^codex-scope:[0-9a-f]{64}$" } } } },
-        { "if": { "properties": { "source_domain": { "const": "claude-memory-bank" } } }, "then": { "properties": { "source_ref": { "pattern": "^claude-memory-bank-source:[0-9a-f]{64}$" }, "scope_ref": { "pattern": "^claude-memory-bank-scope:[0-9a-f]{64}$" } } } },
-        { "if": { "properties": { "source_domain": { "const": "git" } } }, "then": { "properties": { "source_ref": { "pattern": "^git-source:[0-9a-f]{64}$" }, "scope_ref": { "pattern": "^git-scope:[0-9a-f]{64}$" } } } },
-        { "if": { "properties": { "source_domain": { "const": "markdown" } } }, "then": { "properties": { "source_ref": { "pattern": "^markdown-source:[0-9a-f]{64}$" }, "scope_ref": { "pattern": "^markdown-scope:[0-9a-f]{64}$" } } } }
-      ]
+      "additionalProperties": false,
+      "properties": {
+        "checkpoint_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "checkpoint_ref": {
+          "pattern": "^checkpoint:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "checkpoint_version": {
+          "const": "second-brain-scan-checkpoint-v1"
+        },
+        "manifest_ref": {
+          "pattern": "^manifest:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "reconciliation_completion": {
+          "const": "COMPLETE"
+        },
+        "reconciliation_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "reconciliation_epoch": {
+          "$ref": "#/$defs/epoch"
+        },
+        "reconciliation_outcome": {
+          "const": "RECONCILED"
+        },
+        "reconciliation_ref": {
+          "pattern": "^reconciliation:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "scan_epoch": {
+          "$ref": "#/$defs/epoch"
+        },
+        "scope": {
+          "$ref": "#/$defs/sourceScope"
+        }
+      },
+      "required": [
+        "checkpoint_version",
+        "scope",
+        "scan_epoch",
+        "checkpoint_ref",
+        "checkpoint_digest",
+        "manifest_ref",
+        "reconciliation_ref",
+        "reconciliation_digest",
+        "reconciliation_epoch",
+        "reconciliation_completion",
+        "reconciliation_outcome"
+      ],
+      "type": "object"
     },
     "cohort": {
-      "type": "object", "additionalProperties": false,
-      "required": ["cohort_version", "cohort_ref", "final_workspace_ref", "state", "source_roster", "cohort_digest"],
-      "properties": { "cohort_version": { "const": "second-brain-non-serving-capture-cohort-v1" }, "cohort_ref": { "type": "string", "pattern": "^cohort:[0-9a-f]{64}$" }, "final_workspace_ref": { "type": "string", "pattern": "^workspace:[0-9a-f]{64}$" }, "state": { "const": "NON_SERVING" }, "source_roster": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/rosterEntry" } }, "cohort_digest": { "$ref": "#/$defs/digest" } }
+      "additionalProperties": false,
+      "properties": {
+        "cohort_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "cohort_ref": {
+          "pattern": "^cohort:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "cohort_version": {
+          "const": "second-brain-non-serving-capture-cohort-v1"
+        },
+        "final_workspace_ref": {
+          "pattern": "^workspace:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_roster": {
+          "items": {
+            "$ref": "#/$defs/rosterEntry"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "state": {
+          "const": "NON_SERVING"
+        }
+      },
+      "required": [
+        "cohort_version",
+        "cohort_ref",
+        "final_workspace_ref",
+        "state",
+        "source_roster",
+        "cohort_digest"
+      ],
+      "type": "object"
+    },
+    "count": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    },
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "dispositionCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "ACCEPTED": {
+          "$ref": "#/$defs/count"
+        },
+        "DUPLICATE": {
+          "$ref": "#/$defs/count"
+        },
+        "QUARANTINED": {
+          "$ref": "#/$defs/count"
+        },
+        "SKIPPED": {
+          "$ref": "#/$defs/count"
+        },
+        "TOMBSTONE": {
+          "$ref": "#/$defs/count"
+        }
+      },
+      "required": [
+        "ACCEPTED",
+        "DUPLICATE",
+        "TOMBSTONE",
+        "SKIPPED",
+        "QUARANTINED"
+      ],
+      "type": "object"
+    },
+    "epoch": {
+      "pattern": "^[1-9][0-9]*$",
+      "type": "string"
+    },
+    "manifest": {
+      "additionalProperties": false,
+      "properties": {
+        "checkpoint_ref": {
+          "pattern": "^checkpoint:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "manifest_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "manifest_ref": {
+          "pattern": "^manifest:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "manifest_version": {
+          "const": "second-brain-capture-scan-manifest-v1"
+        },
+        "receipt_refs": {
+          "$ref": "#/$defs/captureRefs"
+        },
+        "scan_epoch": {
+          "$ref": "#/$defs/epoch"
+        },
+        "scope": {
+          "$ref": "#/$defs/sourceScope"
+        }
+      },
+      "required": [
+        "manifest_version",
+        "scope",
+        "scan_epoch",
+        "checkpoint_ref",
+        "receipt_refs",
+        "manifest_ref",
+        "manifest_digest"
+      ],
+      "type": "object"
+    },
+    "migration": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "migration_source": {
+                "const": "unified-db"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "migration_ref": {
+                "pattern": "^unified-db-migration:[0-9a-f]{64}$"
+              },
+              "migration_scope_ref": {
+                "pattern": "^unified-db-migration-scope:[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "migration_source": {
+                "const": "legacy Mem0/RAG"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "migration_ref": {
+                "pattern": "^legacy-mem0-rag-migration:[0-9a-f]{64}$"
+              },
+              "migration_scope_ref": {
+                "pattern": "^legacy-mem0-rag-migration-scope:[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "migration_source": {
+                "const": "me-wiki"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "migration_ref": {
+                "pattern": "^me-wiki-migration:[0-9a-f]{64}$"
+              },
+              "migration_scope_ref": {
+                "pattern": "^me-wiki-migration-scope:[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "ciphertext_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "migration_epoch": {
+          "$ref": "#/$defs/epoch"
+        },
+        "migration_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "migration_scope_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "migration_source": {
+          "enum": [
+            "unified-db",
+            "legacy Mem0/RAG",
+            "me-wiki"
+          ]
+        },
+        "registration_ref": {
+          "pattern": "^migration-registration:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "registration_version": {
+          "const": "second-brain-migration-registration-v1"
+        },
+        "scope": {
+          "$ref": "#/$defs/sourceScope"
+        }
+      },
+      "required": [
+        "registration_version",
+        "migration_source",
+        "migration_ref",
+        "migration_scope_ref",
+        "scope",
+        "migration_epoch",
+        "registration_ref",
+        "ciphertext_digest"
+      ],
+      "type": "object"
     },
     "ownershipBinding": {
-      "type": "object", "additionalProperties": false,
-      "required": ["workspace_ref", "source_ref", "registration_ref", "scope_ref", "manifest_ref"],
-      "properties": { "workspace_ref": { "type": "string", "pattern": "^workspace:[0-9a-f]{64}$" }, "source_ref": { "$ref": "#/$defs/ref" }, "registration_ref": { "type": "string", "pattern": "^migration-registration:[0-9a-f]{64}$" }, "scope_ref": { "$ref": "#/$defs/ref" }, "manifest_ref": { "type": "string", "pattern": "^manifest:[0-9a-f]{64}$" } }
+      "additionalProperties": false,
+      "properties": {
+        "checkpoint_epoch": {
+          "$ref": "#/$defs/epoch"
+        },
+        "checkpoint_ref": {
+          "pattern": "^checkpoint:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "manifest_ref": {
+          "pattern": "^manifest:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "reconciliation_epoch": {
+          "$ref": "#/$defs/epoch"
+        },
+        "reconciliation_ref": {
+          "pattern": "^reconciliation:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "registration_ref": {
+          "pattern": "^migration-registration:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "scope_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "source_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "workspace_ref": {
+          "pattern": "^workspace:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspace_ref",
+        "source_ref",
+        "registration_ref",
+        "scope_ref",
+        "manifest_ref",
+        "reconciliation_ref",
+        "reconciliation_epoch",
+        "checkpoint_ref",
+        "checkpoint_epoch"
+      ],
+      "type": "object"
+    },
+    "receipt": {
+      "additionalProperties": false,
+      "properties": {
+        "capture_ref": {
+          "pattern": "^capture:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "ciphertext_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "disposition": {
+          "enum": [
+            "ACCEPTED",
+            "DUPLICATE",
+            "TOMBSTONE",
+            "SKIPPED",
+            "QUARANTINED"
+          ]
+        },
+        "receipt_version": {
+          "const": "second-brain-capture-item-receipt-v1"
+        },
+        "scan_epoch": {
+          "$ref": "#/$defs/epoch"
+        },
+        "scope": {
+          "$ref": "#/$defs/sourceScope"
+        }
+      },
+      "required": [
+        "receipt_version",
+        "scope",
+        "scan_epoch",
+        "capture_ref",
+        "ciphertext_digest",
+        "disposition"
+      ],
+      "type": "object"
     },
     "reconciledCheckpointAdvance": {
-      "type": "object", "additionalProperties": false,
-      "required": ["advance_version", "previous_checkpoint_ref", "reconciliation", "checkpoint"],
-      "properties": { "advance_version": { "const": "second-brain-reconciled-checkpoint-advance-v1" }, "previous_checkpoint_ref": { "anyOf": [{ "type": "null" }, { "type": "string", "pattern": "^checkpoint:[0-9a-f]{64}$" }] }, "reconciliation": { "$ref": "#/$defs/reconciliation" }, "checkpoint": { "$ref": "#/$defs/checkpoint" } }
+      "additionalProperties": false,
+      "properties": {
+        "advance_version": {
+          "const": "second-brain-reconciled-checkpoint-advance-v1"
+        },
+        "checkpoint": {
+          "$ref": "#/$defs/checkpoint"
+        },
+        "previous_checkpoint_ref": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "pattern": "^checkpoint:[0-9a-f]{64}$",
+              "type": "string"
+            }
+          ]
+        },
+        "reconciliation": {
+          "$ref": "#/$defs/reconciliation"
+        }
+      },
+      "required": [
+        "advance_version",
+        "previous_checkpoint_ref",
+        "reconciliation",
+        "checkpoint"
+      ],
+      "type": "object"
+    },
+    "reconciliation": {
+      "additionalProperties": false,
+      "properties": {
+        "accounted_receipt_count": {
+          "$ref": "#/$defs/count"
+        },
+        "completion": {
+          "const": "COMPLETE"
+        },
+        "disposition_counts": {
+          "$ref": "#/$defs/dispositionCounts"
+        },
+        "expected_receipt_count": {
+          "$ref": "#/$defs/count"
+        },
+        "manifest_ref": {
+          "pattern": "^manifest:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "outcome": {
+          "const": "RECONCILED"
+        },
+        "reconciliation_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "reconciliation_epoch": {
+          "$ref": "#/$defs/epoch"
+        },
+        "reconciliation_ref": {
+          "pattern": "^reconciliation:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "reconciliation_version": {
+          "const": "second-brain-capture-reconciliation-v1"
+        },
+        "scan_epoch": {
+          "$ref": "#/$defs/epoch"
+        },
+        "scope": {
+          "$ref": "#/$defs/sourceScope"
+        }
+      },
+      "required": [
+        "reconciliation_version",
+        "scope",
+        "scan_epoch",
+        "manifest_ref",
+        "reconciliation_ref",
+        "reconciliation_epoch",
+        "completion",
+        "outcome",
+        "expected_receipt_count",
+        "accounted_receipt_count",
+        "disposition_counts",
+        "reconciliation_digest"
+      ],
+      "type": "object"
+    },
+    "ref": {
+      "pattern": "^[a-z][a-z0-9_-]{0,63}:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "rosterEntry": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "source_domain": {
+                "const": "codex"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "scope_ref": {
+                "pattern": "^codex-scope:[0-9a-f]{64}$"
+              },
+              "source_ref": {
+                "pattern": "^codex-source:[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "source_domain": {
+                "const": "claude-memory-bank"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "scope_ref": {
+                "pattern": "^claude-memory-bank-scope:[0-9a-f]{64}$"
+              },
+              "source_ref": {
+                "pattern": "^claude-memory-bank-source:[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "source_domain": {
+                "const": "git"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "scope_ref": {
+                "pattern": "^git-scope:[0-9a-f]{64}$"
+              },
+              "source_ref": {
+                "pattern": "^git-source:[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "source_domain": {
+                "const": "markdown"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "scope_ref": {
+                "pattern": "^markdown-scope:[0-9a-f]{64}$"
+              },
+              "source_ref": {
+                "pattern": "^markdown-source:[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "checkpoint_epoch": {
+          "$ref": "#/$defs/epoch"
+        },
+        "checkpoint_ref": {
+          "pattern": "^checkpoint:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "manifest_ref": {
+          "pattern": "^manifest:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "ownership_binding": {
+          "$ref": "#/$defs/ownershipBinding"
+        },
+        "reconciliation_epoch": {
+          "$ref": "#/$defs/epoch"
+        },
+        "reconciliation_ref": {
+          "pattern": "^reconciliation:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "registration_ref": {
+          "pattern": "^migration-registration:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "scope_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "source_domain": {
+          "enum": [
+            "codex",
+            "claude-memory-bank",
+            "git",
+            "markdown"
+          ]
+        },
+        "source_ref": {
+          "$ref": "#/$defs/ref"
+        }
+      },
+      "required": [
+        "source_domain",
+        "source_ref",
+        "registration_ref",
+        "scope_ref",
+        "manifest_ref",
+        "reconciliation_ref",
+        "reconciliation_epoch",
+        "checkpoint_ref",
+        "checkpoint_epoch",
+        "ownership_binding"
+      ],
+      "type": "object"
+    },
+    "sourceScope": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "source_profile": {
+                "const": "Codex"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "scope_ref": {
+                "pattern": "^codex-scope:[0-9a-f]{64}$"
+              },
+              "source_domain": {
+                "const": "codex"
+              },
+              "source_ref": {
+                "pattern": "^codex-source:[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "source_profile": {
+                "const": "Claude/Memory Bank"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "scope_ref": {
+                "pattern": "^claude-memory-bank-scope:[0-9a-f]{64}$"
+              },
+              "source_domain": {
+                "const": "claude-memory-bank"
+              },
+              "source_ref": {
+                "pattern": "^claude-memory-bank-source:[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "source_profile": {
+                "const": "Git"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "scope_ref": {
+                "pattern": "^git-scope:[0-9a-f]{64}$"
+              },
+              "source_domain": {
+                "const": "git"
+              },
+              "source_ref": {
+                "pattern": "^git-source:[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "source_profile": {
+                "const": "Markdown"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "scope_ref": {
+                "pattern": "^markdown-scope:[0-9a-f]{64}$"
+              },
+              "source_domain": {
+                "const": "markdown"
+              },
+              "source_ref": {
+                "pattern": "^markdown-source:[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "scope_epoch": {
+          "$ref": "#/$defs/epoch"
+        },
+        "scope_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "scope_version": {
+          "const": "second-brain-source-scope-ref-v1"
+        },
+        "source_domain": {
+          "enum": [
+            "codex",
+            "claude-memory-bank",
+            "git",
+            "markdown"
+          ]
+        },
+        "source_profile": {
+          "enum": [
+            "Codex",
+            "Claude/Memory Bank",
+            "Git",
+            "Markdown"
+          ]
+        },
+        "source_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "workspace_ref": {
+          "pattern": "^workspace:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope_version",
+        "source_profile",
+        "source_domain",
+        "source_ref",
+        "workspace_ref",
+        "scope_ref",
+        "scope_epoch"
+      ],
+      "type": "object"
     }
-  }
+  },
+  "$id": "source-capture-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/sourceScope"
+    },
+    {
+      "$ref": "#/$defs/checkpoint"
+    },
+    {
+      "$ref": "#/$defs/receipt"
+    },
+    {
+      "$ref": "#/$defs/manifest"
+    },
+    {
+      "$ref": "#/$defs/reconciliation"
+    },
+    {
+      "$ref": "#/$defs/migration"
+    },
+    {
+      "$ref": "#/$defs/cohort"
+    },
+    {
+      "$ref": "#/$defs/reconciledCheckpointAdvance"
+    },
+    {
+      "$ref": "#/$defs/aggregate"
+    }
+  ],
+  "title": "Second Brain Fixture-Only Source Capture V1"
 }

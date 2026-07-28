@@ -1,51 +1,59 @@
-"""Stage-2 fixture capture orchestration; persistence remains in infrastructure."""
+"""Fixture-only Stage-2 capture orchestration against core ports."""
 from __future__ import annotations
 
 from hashlib import sha256
-from typing import Sequence
+from typing import Protocol, runtime_checkable
 
-from wiki_spike.memory_core.second_brain_capture_contracts import (
-    CaptureItemReceiptV1, CaptureScanManifestV1, MigrationRegistrationV1,
-    NonServingCaptureCohortV1, ReconciledCheckpointAdvanceV1, SourceScopeRefV1,
+from wiki_spike.memory_core.second_brain_capture import (
+    AtomicCapturePersistencePort,
+    CapturePersistenceAggregateV1,
+    ConnectorSourceReaderPort,
+    SourceScopeRefV1,
 )
-from wiki_spike.memory_core.second_brain_capture_ports import ConnectorSourceReaderPort
-from wiki_spike.infrastructure.fixture_capture_clients import FixtureCaptureClients
-from wiki_spike.infrastructure.lifecycle_db import EncryptedCapturePersistence
 
 
 class FixtureCaptureServiceError(ValueError):
     pass
 
 
-class FixtureCaptureService:
-    """Coordinates frozen ports without source I/O, activation, or serving."""
+@runtime_checkable
+class MigrationCapabilityVerificationPort(Protocol):
+    """Verifies a capability bound to the exact resolved source scope."""
+    def verify_read_only_migration_capability(
+        self, capability: object, migration_ref: str, scope: SourceScopeRefV1
+    ) -> None: ...
 
-    def __init__(self, persistence: EncryptedCapturePersistence, fixture_clients: FixtureCaptureClients) -> None:
+
+class FixtureCaptureService:
+    """Validates transient fixture evidence, then invokes the sole write port."""
+
+    def __init__(
+        self,
+        persistence: AtomicCapturePersistencePort,
+        capability_verifier: MigrationCapabilityVerificationPort,
+    ) -> None:
+        if not isinstance(persistence, AtomicCapturePersistencePort):
+            raise FixtureCaptureServiceError("atomic capture persistence port is required")
+        if not isinstance(capability_verifier, MigrationCapabilityVerificationPort):
+            raise FixtureCaptureServiceError("migration capability verification port is required")
         self._persistence = persistence
-        self._fixture_clients = fixture_clients
+        self._capability_verifier = capability_verifier
 
     def capture(
-        self, scope: SourceScopeRefV1, reader: ConnectorSourceReaderPort,
-        receipts: Sequence[CaptureItemReceiptV1], manifest: CaptureScanManifestV1,
-        advance: ReconciledCheckpointAdvanceV1, registration: MigrationRegistrationV1,
+        self,
+        aggregate: CapturePersistenceAggregateV1,
+        reader: ConnectorSourceReaderPort,
         migration_capability: object,
     ) -> None:
-        if registration.scope != scope or manifest.scope != scope or advance.checkpoint.scope != scope:
-            raise FixtureCaptureServiceError("all capture evidence must bind one exact source scope")
-        self._fixture_clients.verify_read_only_migration_capability(migration_capability, registration.migration_ref)
-        ciphertexts = reader.read_fixture_ciphertexts(scope, scope.scope_epoch)
-        by_digest = sorted(sha256(value).hexdigest() for value in ciphertexts)
-        expected = sorted(receipt.ciphertext_digest for receipt in receipts)
-        if by_digest != expected or set(manifest.receipt_refs) != {receipt.capture_ref for receipt in receipts}:
-            raise FixtureCaptureServiceError("fixture ciphertexts and receipt manifest do not reconcile")
-        self._persistence.record_scope(scope)
-        for receipt in receipts:
-            if receipt.scope != scope or receipt.scan_epoch != scope.scope_epoch:
-                raise FixtureCaptureServiceError("receipt scope or epoch mismatch")
-            self._persistence.record_capture_receipt(receipt)
-        self._persistence.record_capture_manifest(manifest)
-        self._persistence.record_migration_registration(registration)
-        self._persistence.reconcile_and_advance_checkpoint(advance)
-
-    def record_final_non_serving_cohort(self, cohort: NonServingCaptureCohortV1) -> None:
-        self._persistence.record_non_serving_capture_cohort(cohort)
+        if not isinstance(aggregate, CapturePersistenceAggregateV1):
+            raise FixtureCaptureServiceError("complete capture aggregate is required")
+        scope = aggregate.scope
+        self._capability_verifier.verify_read_only_migration_capability(
+            migration_capability, aggregate.registration.migration_ref, scope
+        )
+        items = reader.read_fixture_capture_items(scope, scope.scope_epoch)
+        observed = {item.capture_ref: sha256(item.ciphertext).hexdigest() for item in items}
+        expected = {receipt.capture_ref: receipt.ciphertext_digest for receipt in aggregate.receipts}
+        if observed != expected:
+            raise FixtureCaptureServiceError("fixture ciphertext evidence does not exactly match receipts")
+        self._persistence.persist_capture_aggregate(aggregate)

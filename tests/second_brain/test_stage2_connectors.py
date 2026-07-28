@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+from dataclasses import FrozenInstanceError
+from hashlib import sha256
 import json
 import socket
 import urllib.request
@@ -12,7 +14,10 @@ from wiki_spike.connectors.claude_memory_bank import ClaudeMemoryBankFixtureConn
 from wiki_spike.connectors.codex import CodexFixtureConnector
 from wiki_spike.connectors.git import GitFixtureConnector
 from wiki_spike.connectors.markdown import MarkdownFixtureConnector
-from wiki_spike.memory_core.second_brain_capture_contracts import SourceScopeRefV1
+from wiki_spike.memory_core.second_brain_capture_contracts import (
+    EncryptedNativeMappingRefV1,
+    SourceScopeRefV1,
+)
 
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "second_brain" / "capture"
@@ -40,9 +45,14 @@ class NativeMappingSealer:
     def __init__(self) -> None:
         self.sealed: list[tuple[str, str, bytes]] = []
 
-    def seal_native_mapping(self, scope, capture_ref: str, native_mapping: bytes) -> str:
+    def seal_native_mapping(
+        self, scope, capture_ref: str, native_mapping: bytes,
+    ) -> EncryptedNativeMappingRefV1:
         self.sealed.append((scope.scope_ref, capture_ref, native_mapping))
-        return REF("sealed-native-mapping")
+        return EncryptedNativeMappingRefV1(
+            capture_ref,
+            f"encrypted-native-mapping:{sha256(capture_ref.encode()).hexdigest()}",
+        )
 
 
 def fixture(name: str) -> tuple[str, bytes, dict[str, object]]:
@@ -62,6 +72,12 @@ def scope(profile: str, domain: str) -> SourceScopeRefV1:
     })
 
 
+def encrypted_native_mapping_ref(capture_ref: str) -> str:
+    return f"encrypted-native-mapping:{sha256(capture_ref.encode()).hexdigest()}"
+
+
+
+
 @pytest.mark.parametrize(("fixture_name", "connector_type", "profile", "domain"), CONNECTORS)
 def test_typed_fixture_connector_maps_exact_profile_deterministically(
     fixture_name, connector_type, profile, domain,
@@ -72,11 +88,18 @@ def test_typed_fixture_connector_maps_exact_profile_deterministically(
     sealer = NativeMappingSealer()
     connector = connector_type(client, sealer, [request_ref])
 
-    first = connector.read_fixture_ciphertexts(source_scope, "1")
-    second = connector.read_fixture_ciphertexts(source_scope, "1")
+    first = connector.read_fixture_capture_items(source_scope, "1")
+    second = connector.read_fixture_capture_items(source_scope, "1")
 
+    expected_capture_ref = value["capture_ref"]
+    expected_ciphertext = base64.b64decode(value["ciphertext_b64"])
     assert first == second
-    assert first == (base64.b64decode(json.loads(payload)["ciphertext_b64"]),)
+    assert tuple(
+        (item.capture_ref, item.ciphertext, item.encrypted_native_mapping_ref)
+        for item in first
+    ) == ((expected_capture_ref, expected_ciphertext, encrypted_native_mapping_ref(expected_capture_ref)),)
+    with pytest.raises(FrozenInstanceError):
+        first[0].ciphertext = b"swapped"
     assert client.requests == [request_ref, request_ref]
     assert [json.loads(native) for _, _, native in sealer.sealed] == [
         value["native_mapping"], value["native_mapping"],
@@ -99,9 +122,9 @@ def test_connector_rejects_malformed_wrong_source_and_bad_scope(
         bad = json.dumps(candidate).encode()
         connector = connector_type(FixtureClient({request_ref: bad}), NativeMappingSealer(), [request_ref])
         with pytest.raises(ValueError):
-            connector.read_fixture_ciphertexts(source_scope, "1")
+            connector.read_fixture_capture_items(source_scope, "1")
     with pytest.raises(ValueError):
-        connector.read_fixture_ciphertexts(scope("Git", "git"), "1")
+        connector.read_fixture_capture_items(scope("Git", "git"), "1")
 
 
 @pytest.mark.parametrize(("fixture_name", "connector_type", "profile", "domain"), CONNECTORS)
@@ -116,10 +139,46 @@ def test_connector_is_bounded_fixture_only_and_retains_no_raw_mapping(
     monkeypatch.setattr(socket, "create_connection", forbidden)
     monkeypatch.setattr(urllib.request, "urlopen", forbidden)
     connector = connector_type(FixtureClient({request_ref: payload}), NativeMappingSealer(), [request_ref])
-    ciphertexts = connector.read_fixture_ciphertexts(scope(profile, domain), "1")
-    assert ciphertexts
+    items = connector.read_fixture_capture_items(scope(profile, domain), "1")
+    assert items
     assert set(vars(connector)) == {"_fixture_client", "_native_mapping_sealer", "_fixture_request_refs"}
 
     refs = [f"fixture:{index:064x}" for index in range(1025)]
     with pytest.raises(ValueError):
         connector_type(FixtureClient({}), NativeMappingSealer(), refs)
+
+@pytest.mark.parametrize(("fixture_name", "connector_type", "profile", "domain"), CONNECTORS)
+def test_connector_rejects_swapped_ciphertext_native_mapping_identity(
+    fixture_name, connector_type, profile, domain,
+):
+    request_ref, payload, value = fixture(fixture_name)
+    second_ref = REF("second-fixture-request")
+    second_value = dict(value)
+    second_value["capture_ref"] = f"capture:{'b' * 64}"
+    second_value["ciphertext_b64"] = base64.b64encode(b"other-ciphertext").decode()
+    second_value["native_mapping"] = {"native": "other"}
+    second_payload = json.dumps(second_value, sort_keys=True).encode()
+
+    class SwappedIdentitySealer(NativeMappingSealer):
+        def seal_native_mapping(
+            self, source_scope, capture_ref: str, native_mapping: bytes,
+        ) -> EncryptedNativeMappingRefV1:
+            super().seal_native_mapping(source_scope, capture_ref, native_mapping)
+            other_capture_ref = (
+                second_value["capture_ref"]
+                if capture_ref == value["capture_ref"]
+                else value["capture_ref"]
+            )
+            return EncryptedNativeMappingRefV1(
+                other_capture_ref,
+                encrypted_native_mapping_ref(other_capture_ref),
+            )
+
+    connector = connector_type(
+        FixtureClient({request_ref: payload, second_ref: second_payload}),
+        SwappedIdentitySealer(),
+        [request_ref, second_ref],
+    )
+
+    with pytest.raises(ValueError, match="exact capture-bound"):
+        connector.read_fixture_capture_items(scope(profile, domain), "1")

@@ -14,7 +14,11 @@ from collections.abc import Mapping, Sequence
 from hashlib import sha256
 from typing import Any, Final
 
-from wiki_spike.memory_core.second_brain_capture_contracts import SourceScopeRefV1
+from wiki_spike.memory_core.second_brain_capture_contracts import (
+    CapturedItemV1,
+    EncryptedNativeMappingRefV1,
+    SourceScopeRefV1,
+)
 from wiki_spike.memory_core.second_brain_capture_ports import (
     CaptureApiPort,
     ConnectorSourceReaderPort,
@@ -63,20 +67,20 @@ class FixtureConnectorReader(ConnectorSourceReaderPort):
         self._native_mapping_sealer = native_mapping_sealer
         self._fixture_request_refs = tuple(sorted(refs))
 
-    def read_fixture_ciphertexts(self, scope: SourceScopeRefV1, scan_epoch: str) -> tuple[bytes, ...]:
+    def read_fixture_capture_items(self, scope: SourceScopeRefV1, scan_epoch: str) -> tuple[CapturedItemV1, ...]:
         self._validate_scope(scope, scan_epoch)
         parsed = tuple(self._parse_fixture(self._fixture_client.read_fixture_payload(ref), scope, scan_epoch) for ref in self._fixture_request_refs)
         if len({item[0] for item in parsed}) != len(parsed):
             raise FixtureConnectorError("fixture capture references must be unique")
-        total = sum(len(item[1]) for item in parsed)
-        if total > _MAX_TOTAL_CIPHERTEXT_BYTES:
+        if sum(len(item[1]) for item in parsed) > _MAX_TOTAL_CIPHERTEXT_BYTES:
             raise FixtureConnectorError("fixture ciphertext total exceeds the permitted limit")
-        ordered = tuple(sorted(parsed, key=lambda item: (item[0], sha256(item[1]).digest())))
-        for capture_ref, _, native_mapping in ordered:
-            sealed_ref = self._native_mapping_sealer.seal_native_mapping(scope, capture_ref, native_mapping)
-            if not isinstance(sealed_ref, str) or _REF.fullmatch(sealed_ref) is None:
-                raise FixtureConnectorError("native mapping sealer must return a keyed opaque reference")
-        return tuple(ciphertext for _, ciphertext, _ in ordered)
+        items: list[CapturedItemV1] = []
+        for capture_ref, ciphertext, native_mapping in sorted(parsed, key=lambda item: (item[0], sha256(item[1]).digest())):
+            sealed = self._native_mapping_sealer.seal_native_mapping(scope, capture_ref, native_mapping)
+            if not isinstance(sealed, EncryptedNativeMappingRefV1) or sealed.capture_ref != capture_ref:
+                raise FixtureConnectorError("native mapping sealer must return the exact capture-bound mapping reference")
+            items.append(CapturedItemV1(capture_ref, ciphertext, sealed.encrypted_native_mapping_ref))
+        return tuple(items)
 
     def _validate_scope(self, scope: SourceScopeRefV1, scan_epoch: str) -> None:
         if not isinstance(scope, SourceScopeRefV1) or scope.source_profile != self.source_profile or scope.source_domain != self.source_domain:
