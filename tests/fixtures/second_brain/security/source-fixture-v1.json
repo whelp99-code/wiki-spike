@@ -1,0 +1,18 @@
+{
+  "consent_epoch": "2",
+  "entries": [{
+    "byte_count": "11",
+    "page_count": "1",
+    "path": "normal.json",
+    "sha256": "7670c4141d96d800edbf2f686da124de10d8757daa5fd3eeab68f0bf2eae08e2",
+    "source_fixture_ref": "fixture:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }],
+  "fixture_profile": "fixture-local-v1",
+  "fixture_revision": "1",
+  "manifest_digest": "585839eba67afa46e2ac3ee4529d96ff8786e4dc950b8b2543c531871c3f5cef",
+  "manifest_ref": "fixture_manifest:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "project_ref_id": "project-1",
+  "security_version": "second-brain-security-foundation-v1",
+  "source_fixture_refs": ["fixture:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+  "source_ref_id": "source-1"
+}

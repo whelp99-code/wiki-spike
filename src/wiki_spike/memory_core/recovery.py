@@ -36,6 +36,8 @@ RECOVERY_EVIDENCE_VERSION = "phase3-recovery-evidence-v1"
 RECOVERY_SIGNING_PURPOSE = "recovery_manifest"
 RECOVERY_SIGNING_DOMAIN = "wiki.recovery.manifest.v1"
 
+DELETION_OVERLAY_SIGNING_PURPOSE = "deletion_overlay"
+DELETION_OVERLAY_SIGNING_DOMAIN = "wiki.recovery.deletion-overlay.v1"
 HEX40_OR_64 = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$")
@@ -1018,6 +1020,65 @@ class RecoverySource(Protocol):
 
     def read_item(self, workspace_id: str, item_id: str) -> bytes: ...
 
+class RecoverySourceV2(RecoverySource, Protocol):
+    """Recovery source that can expose the authoritative deletion overlay."""
+
+    def deletion_overlay_provider(self) -> "DeletionOverlayProviderV1": ...
+
+
+@dataclass(frozen=True)
+class SignedDeletionOverlayV1:
+    """Body-free signed overlay delta or authoritative current-set snapshot."""
+
+    workspace_id: str
+    overlay_sequence: str
+    previous_head_digest: str
+    head_digest: str
+    floor_digest: str
+    non_regression_proof_digest: str
+    key_id: str
+    signed_at: str
+    signature_b64: str
+    snapshot: bool = False
+
+    def canonical_payload(self) -> bytes:
+        return canonical_bytes({
+            "workspace_id": self.workspace_id,
+            "overlay_sequence": self.overlay_sequence,
+            "previous_head_digest": self.previous_head_digest,
+            "head_digest": self.head_digest,
+            "floor_digest": self.floor_digest,
+            "non_regression_proof_digest": self.non_regression_proof_digest,
+            "snapshot": self.snapshot,
+        })
+
+    def verify(self, registry: HistoricalKeyRegistry) -> None:
+        try:
+            signature = b64decode(self.signature_b64, validate=True)
+            valid = registry.verify(
+                key_id=self.key_id,
+                purpose=DELETION_OVERLAY_SIGNING_PURPOSE,
+                domain=DELETION_OVERLAY_SIGNING_DOMAIN,
+                payload=self.canonical_payload(),
+                signature=signature,
+                signed_at=self.signed_at,
+            )
+        except Exception as exc:
+            raise RecoveryError("overlay_signature_invalid", "deletion overlay signature is invalid") from exc
+        if not valid:
+            raise RecoveryError("overlay_signature_invalid", "deletion overlay signature is invalid")
+
+
+class DeletionOverlayProviderV1(Protocol):
+    """Provides only signed, body-free deletion-recovery overlay evidence."""
+
+    def signed_deltas(
+        self, workspace_id: str, bundle_head_digest: str
+    ) -> Sequence[SignedDeletionOverlayV1]: ...
+
+    def authoritative_current_set(
+        self, workspace_id: str, bundle_head_digest: str
+    ) -> SignedDeletionOverlayV1 | None: ...
 
 class WriteFreezePort(Protocol):
     def acquire(self, workspace_id: str, manifest_id: str) -> str | None: ...
@@ -1061,12 +1122,14 @@ class RecoveryCoordinator:
         *,
         target: RecoveryTarget | None = None,
         freeze: WriteFreezePort | None = None,
+        overlay_provider: DeletionOverlayProviderV1 | None = None,
         completed_at: str,
     ) -> None:
         self.source = source
         self.trust_anchor = trust_anchor
         self.target = target
         self.freeze = freeze
+        self.overlay_provider = overlay_provider
         self.completed_at = _require_timestamp(completed_at, "completed_at")
 
     def dry_run(self, workspace_id: str) -> RecoveryEvidence:
@@ -1230,8 +1293,61 @@ class RecoveryCoordinator:
         expected = tuple(
             sorted((query.query_id, query.expected_result_digest) for query in manifest.sample_queries)
         )
+        self._verify_deletion_overlay(workspace_id, manifest.state_root, key_registry)
         return _VerifiedRecoverySet(signed, payloads, key_registry, expected)
 
+    def _verify_deletion_overlay(
+        self,
+        workspace_id: str,
+        bundle_head_digest: str,
+        key_registry: HistoricalKeyRegistry,
+    ) -> None:
+        """Reject a recovery set unless deletion history is current and signed."""
+        provider = self.overlay_provider
+        if provider is None:
+            candidate = getattr(self.source, "deletion_overlay_provider", None)
+            if candidate is not None:
+                provider = candidate()
+        if provider is None:
+            raise RecoveryError("overlay_unavailable", "deletion overlay provider is required")
+        try:
+            deltas = tuple(provider.signed_deltas(workspace_id, bundle_head_digest))
+        except Exception as exc:
+            raise RecoveryError("overlay_unavailable", "deletion overlay deltas are unavailable") from exc
+        if deltas:
+            previous = bundle_head_digest
+            sequence: int | None = None
+            for delta in deltas:
+                delta.verify(key_registry)
+                if delta.snapshot or delta.workspace_id != workspace_id:
+                    raise RecoveryError("overlay_invalid", "deletion overlay delta is inconsistent")
+                current_sequence = _canonical_nonnegative_integer(
+                    delta.overlay_sequence, "overlay_sequence"
+                )
+                if delta.previous_head_digest != previous or (
+                    sequence is not None and current_sequence != sequence + 1
+                ):
+                    raise RecoveryError("overlay_discontinuous", "deletion overlay is not contiguous")
+                _require_hex64(delta.head_digest, "head_digest")
+                _require_hex64(delta.floor_digest, "floor_digest")
+                _require_hex64(delta.non_regression_proof_digest, "non_regression_proof_digest")
+                previous, sequence = delta.head_digest, current_sequence
+            return
+        try:
+            snapshot = provider.authoritative_current_set(workspace_id, bundle_head_digest)
+        except Exception as exc:
+            raise RecoveryError("overlay_unavailable", "authoritative deletion overlay is unavailable") from exc
+        if snapshot is None:
+            raise RecoveryError("overlay_missing", "deletion overlay is missing")
+        snapshot.verify(key_registry)
+        if not snapshot.snapshot or snapshot.workspace_id != workspace_id or (
+            snapshot.previous_head_digest != bundle_head_digest
+        ):
+            raise RecoveryError("overlay_invalid", "authoritative deletion overlay is inconsistent")
+        _canonical_nonnegative_integer(snapshot.overlay_sequence, "overlay_sequence")
+        _require_hex64(snapshot.head_digest, "head_digest")
+        _require_hex64(snapshot.floor_digest, "floor_digest")
+        _require_hex64(snapshot.non_regression_proof_digest, "non_regression_proof_digest")
     @staticmethod
     def _verify_registry_snapshot(
         payload: bytes, *, label: str, required_keys: set[str] | None

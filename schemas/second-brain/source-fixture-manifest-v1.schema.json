@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/source-fixture-manifest-v1.schema.json",
+  "title": "Second Brain Local Source Fixture Manifest V1",
+  "description": "Fixture-only local-file manifest. This is neither a connector contract nor an OS sandbox claim.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["security_version", "manifest_ref", "fixture_revision", "source_fixture_refs", "manifest_digest", "fixture_profile", "source_ref_id", "project_ref_id", "consent_epoch", "entries"],
+  "$defs": {
+    "ref": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}:[0-9a-f]{64}$"},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "positive": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "decimal": {"type": "string", "pattern": "^(0|[1-9][0-9]*)$"},
+    "path": {"type": "string", "pattern": "^(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!/)(?!.*[:\\\\])[A-Za-z0-9][A-Za-z0-9._/-]*$"},
+    "entry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_fixture_ref", "path", "sha256", "byte_count", "page_count"],
+      "properties": {
+        "source_fixture_ref": {"$ref": "#/$defs/ref"}, "path": {"$ref": "#/$defs/path"},
+        "sha256": {"$ref": "#/$defs/digest"}, "byte_count": {"$ref": "#/$defs/decimal"}, "page_count": {"$ref": "#/$defs/decimal"}
+      }
+    }
+  },
+  "properties": {
+    "security_version": {"const": "second-brain-security-foundation-v1"},
+    "manifest_ref": {"$ref": "#/$defs/ref"}, "fixture_revision": {"$ref": "#/$defs/positive"},
+    "source_fixture_refs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/ref"}},
+    "manifest_digest": {"$ref": "#/$defs/digest"}, "fixture_profile": {"const": "fixture-local-v1"},
+    "source_ref_id": {"type": "string", "minLength": 1}, "project_ref_id": {"type": "string", "minLength": 1},
+    "consent_epoch": {"$ref": "#/$defs/positive"}, "entries": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/entry"}}
+  }
+}

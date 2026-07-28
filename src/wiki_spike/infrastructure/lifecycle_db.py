@@ -219,6 +219,20 @@ CREATE TABLE IF NOT EXISTS deletion_state (
   updated_at TEXT NOT NULL,
   FOREIGN KEY (artifact_id) REFERENCES canonical_artifact(artifact_id)
 );
+CREATE TABLE IF NOT EXISTS source_deletion_recovery_map (
+  map_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  source_ref_id TEXT NOT NULL,
+  artifact_id TEXT NOT NULL,
+  deletion_ref_id TEXT NOT NULL,
+  recovery_proof_ref_id TEXT NOT NULL,
+  overlay_sequence TEXT NOT NULL,
+  bundle_head_digest TEXT NOT NULL,
+  floor_digest TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (workspace_id, source_ref_id, artifact_id, deletion_ref_id),
+  FOREIGN KEY (artifact_id) REFERENCES canonical_artifact(artifact_id)
+);
 CREATE TABLE IF NOT EXISTS binding_leaf (
   leaf_id TEXT PRIMARY KEY,
   namespace_id TEXT NOT NULL,
@@ -323,6 +337,7 @@ TABLE_NAMES: tuple[str, ...] = (
     "candidate_review",
     "floor_state",
     "deletion_state",
+    "source_deletion_recovery_map",
     "binding_leaf",
     "binding_checkpoint",
     "event_log",
@@ -652,6 +667,39 @@ class UnitOfWork:
             "ORDER BY updated_at DESC, deletion_id DESC LIMIT 1",
             (artifact_id,),
         ).fetchone()
+    # -- source/deletion/recovery mapping (body-free) ----------------------- #
+
+    def insert_source_deletion_recovery_map(
+        self,
+        map_id: str,
+        workspace_id: str,
+        source_ref_id: str,
+        artifact_id: str,
+        deletion_ref_id: str,
+        recovery_proof_ref_id: str,
+        overlay_sequence: str,
+        bundle_head_digest: str,
+        floor_digest: str,
+        created_at: str,
+    ) -> None:
+        self._con.execute(
+            "INSERT INTO source_deletion_recovery_map "
+            "(map_id, workspace_id, source_ref_id, artifact_id, deletion_ref_id, "
+            " recovery_proof_ref_id, overlay_sequence, bundle_head_digest, floor_digest, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (map_id, workspace_id, source_ref_id, artifact_id, deletion_ref_id,
+             recovery_proof_ref_id, overlay_sequence, bundle_head_digest, floor_digest, created_at),
+        )
+
+    def list_source_deletion_recovery_maps(
+        self, workspace_id: str, source_ref_id: str, deletion_ref_id: str
+    ) -> list[sqlite3.Row]:
+        self._con.row_factory = sqlite3.Row
+        return list(self._con.execute(
+            "SELECT * FROM source_deletion_recovery_map "
+            "WHERE workspace_id=? AND source_ref_id=? AND deletion_ref_id=? ORDER BY artifact_id",
+            (workspace_id, source_ref_id, deletion_ref_id),
+        ))
 
     # -- binding cache (SQLite is a cache only; see module docstring) ------- #
 
