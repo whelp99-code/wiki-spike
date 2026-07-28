@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/decision-record-v1.schema.json",
+  "title": "Second Brain Decision Record V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["decision_version", "decision_id", "outcome", "scope_kind", "scope_name", "reason", "evidence_refs", "evidence_digest", "signed_by", "signature", "expires_at"],
+  "properties": {
+    "decision_version": {"const": "second-brain-decision-record-v1"},
+    "decision_id": {"enum": ["DB-01", "DB-02", "DB-03", "DB-04", "DB-05", "DB-06", "DB-07", "DB-08"]},
+    "outcome": {"enum": ["GO", "NO_GO"]},
+    "scope_kind": {"enum": ["global", "source_profile", "migration_source", "external_model_route", "export_destination"]},
+    "scope_name": {"type": ["string", "null"]},
+    "reason": {"type": "string", "minLength": 1},
+    "evidence_refs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "evidence_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "signed_by": {"type": "string", "minLength": 1},
+    "signature": {"type": "string", "minLength": 1},
+    "expires_at": {"type": "string", "format": "date-time"}
+  },
+  "allOf": [
+    {"if": {"properties": {"decision_id": {"enum": ["DB-01", "DB-04", "DB-05", "DB-07"]}}}, "then": {"properties": {"outcome": {"const": "GO"}, "scope_kind": {"const": "global"}, "scope_name": {"const": null}}}},
+    {"if": {"properties": {"decision_id": {"const": "DB-02"}}}, "then": {"properties": {"scope_kind": {"const": "source_profile"}, "scope_name": {"type": "string", "minLength": 1}}}},
+    {"if": {"properties": {"decision_id": {"const": "DB-03"}}}, "then": {"properties": {"scope_kind": {"const": "migration_source"}, "scope_name": {"type": "string", "minLength": 1}}}},
+    {"if": {"properties": {"decision_id": {"const": "DB-06"}}}, "then": {"properties": {"scope_kind": {"const": "external_model_route"}, "scope_name": {"type": "string", "minLength": 1}}}},
+    {"if": {"properties": {"decision_id": {"const": "DB-08"}}}, "then": {"properties": {"scope_kind": {"const": "export_destination"}, "scope_name": {"type": "string", "minLength": 1}}}}
+  ]
+}

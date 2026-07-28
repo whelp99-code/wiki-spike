@@ -23,6 +23,7 @@ from .mirror import RemoteMirror
 from .publish import PublishResult, PublishService
 from .search import SearchResponse, SearchService
 from .signing import Keyring
+from .workspace_format import prepare_workspace_root
 
 KEY_ID = "k1"
 LEASE_TTL = 30
@@ -40,7 +41,7 @@ class IngestPublishResult:
 class Workspace:
     def __init__(self, root: str | Path, holder: str | None = None, extractor=None) -> None:
         self.root = Path(root)
-        self.root.mkdir(parents=True, exist_ok=True)
+        prepare_workspace_root(self.root)
         # Unique holder per process/instance (fixes the shared-"cli" lease bug).
         self.holder = holder or f"cli-{uuid.uuid4()}"
 

@@ -24,6 +24,7 @@ from .claims import DeterministicMockExtractor
 from .controlplane import LeaseError
 from .ingest import IngestService
 from .workspace import Workspace
+from .workspace_format import WorkspaceRootError, prepare_workspace_root
 
 
 def _phase1a_service(root: Path) -> IngestService:
@@ -46,7 +47,11 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     root = Path(args.root)
-    root.mkdir(parents=True, exist_ok=True)
+    try:
+        prepare_workspace_root(root)
+    except WorkspaceRootError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
 
     # --- Phase 1a primitives (no publication surface) ---
     if args.cmd in ("receive", "compile", "status"):
