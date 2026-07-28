@@ -82,12 +82,13 @@ COLUMN_KIND_ALLOWLIST: tuple[str, ...] = (
 )
 # A small number of columns are exact-name matches rather than suffix matches.
 # Each is a body-free closed value: ``ordinal`` is a manifest ordinal;
-# ``consent_epoch`` and ``revision_number`` are canonical decimal-string
-# counters; ``sensitivity`` is a closed enum (PUBLIC/INTERNAL/CONFIDENTIAL/
-# RESTRICTED). None carries plaintext.
+# ``consent_epoch``, ``retention_epoch`` and ``revision_number`` are canonical
+# decimal-string counters; ``sensitivity`` is a closed enum
+# (PUBLIC/INTERNAL/CONFIDENTIAL/RESTRICTED). None carries plaintext.
 COLUMN_KIND_EXACT_ALLOWLIST: tuple[str, ...] = (
     "ordinal",
     "consent_epoch",
+    "retention_epoch",
     "revision_number",
     "sensitivity",
 )
@@ -138,6 +139,30 @@ CREATE TABLE IF NOT EXISTS object_binding (
   sensitivity TEXT NOT NULL,
   created_at TEXT NOT NULL,
   FOREIGN KEY (artifact_id) REFERENCES canonical_artifact(artifact_id)
+);
+CREATE TABLE IF NOT EXISTS source_consent_state (
+  workspace_id TEXT NOT NULL,
+  source_ref_id TEXT NOT NULL,
+  project_ref_id TEXT NOT NULL,
+  consent_epoch TEXT NOT NULL,
+  consent_state TEXT NOT NULL,
+  sensitivity TEXT NOT NULL,
+  consent_digest TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, source_ref_id, project_ref_id)
+);
+CREATE TABLE IF NOT EXISTS retention_policy (
+  workspace_id TEXT NOT NULL,
+  source_ref_id TEXT NOT NULL,
+  project_ref_id TEXT NOT NULL,
+  retention_epoch TEXT NOT NULL,
+  retention_state TEXT NOT NULL,
+  sensitivity TEXT NOT NULL,
+  retention_digest TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, source_ref_id, project_ref_id)
 );
 CREATE TABLE IF NOT EXISTS command_artifact (
   command_id TEXT NOT NULL,
@@ -290,6 +315,8 @@ TABLE_NAMES: tuple[str, ...] = (
     "canonical_artifact",
     "object_binding",
     "command_artifact",
+    "source_consent_state",
+    "retention_policy",
     "ark_key_intent",
     "wrapped_key",
     "key_state",
@@ -455,6 +482,75 @@ class UnitOfWork:
         self._con.row_factory = sqlite3.Row
         return self._con.execute(
             "SELECT * FROM object_binding WHERE artifact_id=?", (artifact_id,)
+        ).fetchone()
+    # -- body-free source consent / retention policy ------------------------ #
+
+    def upsert_source_consent_state(
+        self,
+        workspace_id: str,
+        source_ref_id: str,
+        project_ref_id: str,
+        consent_epoch: str,
+        consent_state: str,
+        sensitivity: str,
+        consent_digest: str,
+        expires_at: str,
+        updated_at: str,
+    ) -> None:
+        self._con.execute(
+            "INSERT INTO source_consent_state "
+            "(workspace_id, source_ref_id, project_ref_id, consent_epoch, consent_state, sensitivity, "
+            " consent_digest, expires_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(workspace_id, source_ref_id, project_ref_id) DO UPDATE SET "
+            "consent_epoch=excluded.consent_epoch, consent_state=excluded.consent_state, "
+            "sensitivity=excluded.sensitivity, consent_digest=excluded.consent_digest, "
+            "expires_at=excluded.expires_at, updated_at=excluded.updated_at",
+            (workspace_id, source_ref_id, project_ref_id, consent_epoch, consent_state, sensitivity,
+             consent_digest, expires_at, updated_at),
+        )
+
+    def get_source_consent_state(
+        self, workspace_id: str, source_ref_id: str, project_ref_id: str
+    ) -> sqlite3.Row | None:
+        self._con.row_factory = sqlite3.Row
+        return self._con.execute(
+            "SELECT * FROM source_consent_state "
+            "WHERE workspace_id=? AND source_ref_id=? AND project_ref_id=?",
+            (workspace_id, source_ref_id, project_ref_id),
+        ).fetchone()
+
+    def upsert_retention_policy(
+        self,
+        workspace_id: str,
+        source_ref_id: str,
+        project_ref_id: str,
+        retention_epoch: str,
+        retention_state: str,
+        sensitivity: str,
+        retention_digest: str,
+        expires_at: str,
+        updated_at: str,
+    ) -> None:
+        self._con.execute(
+            "INSERT INTO retention_policy "
+            "(workspace_id, source_ref_id, project_ref_id, retention_epoch, retention_state, sensitivity, "
+            " retention_digest, expires_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(workspace_id, source_ref_id, project_ref_id) DO UPDATE SET "
+            "retention_epoch=excluded.retention_epoch, retention_state=excluded.retention_state, "
+            "sensitivity=excluded.sensitivity, retention_digest=excluded.retention_digest, "
+            "expires_at=excluded.expires_at, updated_at=excluded.updated_at",
+            (workspace_id, source_ref_id, project_ref_id, retention_epoch, retention_state, sensitivity,
+             retention_digest, expires_at, updated_at),
+        )
+
+    def get_retention_policy(
+        self, workspace_id: str, source_ref_id: str, project_ref_id: str
+    ) -> sqlite3.Row | None:
+        self._con.row_factory = sqlite3.Row
+        return self._con.execute(
+            "SELECT * FROM retention_policy "
+            "WHERE workspace_id=? AND source_ref_id=? AND project_ref_id=?",
+            (workspace_id, source_ref_id, project_ref_id),
         ).fetchone()
 
     # -- ARK custody: ark_key_intent / wrapped_key / key_state -------------- #

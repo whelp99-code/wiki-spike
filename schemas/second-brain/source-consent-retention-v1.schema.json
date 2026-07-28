@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "source-consent-retention-v1.schema.json",
+  "title": "Second Brain Source Consent and Retention V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "workspace_id",
+    "source_ref_id",
+    "project_ref_id",
+    "consent_epoch",
+    "consent_state",
+    "max_sensitivity",
+    "consent_digest",
+    "consent_expires_at",
+    "retention_epoch",
+    "retention_state",
+    "retention_digest",
+    "retention_expires_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": { "const": "second-brain-source-consent-retention-v1" },
+    "workspace_id": { "$ref": "#/$defs/opaqueRef" },
+    "source_ref_id": { "$ref": "#/$defs/opaqueRef" },
+    "project_ref_id": { "$ref": "#/$defs/opaqueRef" },
+    "consent_epoch": { "$ref": "#/$defs/epoch" },
+    "consent_state": { "enum": ["enabled", "disabled"] },
+    "max_sensitivity": { "enum": ["public", "internal", "private", "secret"] },
+    "consent_digest": { "$ref": "#/$defs/digest" },
+    "consent_expires_at": { "$ref": "#/$defs/timestamp" },
+    "retention_epoch": { "$ref": "#/$defs/epoch" },
+    "retention_state": { "enum": ["active", "disabled"] },
+    "retention_digest": { "$ref": "#/$defs/digest" },
+    "retention_expires_at": { "$ref": "#/$defs/timestamp" },
+    "updated_at": { "$ref": "#/$defs/timestamp" }
+  },
+  "$defs": {
+    "opaqueRef": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[A-Za-z0-9._:-]+$" },
+    "epoch": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "timestamp": { "type": "string", "format": "date-time" }
+  }
+}
