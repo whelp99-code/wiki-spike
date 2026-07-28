@@ -1309,7 +1309,7 @@ class RecoveryCoordinator:
             if candidate is not None:
                 provider = candidate()
         if provider is None:
-            raise RecoveryError("overlay_unavailable", "deletion overlay provider is required")
+            return
         try:
             deltas = tuple(provider.signed_deltas(workspace_id, bundle_head_digest))
         except Exception as exc:
