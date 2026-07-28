@@ -26,10 +26,22 @@ Architecture-boundary contract: infrastructure layer; may import
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
+from hashlib import sha256
 import re
 from enum import Enum
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Mapping
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .lifecycle_db import UnitOfWork
+from wiki_spike.memory_core.recovery import (
+    AppliedDeletionOverlayEvidence,
+    SignedDeletionOverlay,
+    VerifiedDeletionOverlay,
+)
+from wiki_spike.memory_core.errors import InvalidContractValue
 
 try:
     import jsonschema  # type: ignore
@@ -319,3 +331,87 @@ def is_crypto_shredded(phase: "DeletionPhase | str") -> bool:
     """
     resolved = _coerce_phase(phase)
     return resolved in _CRYPTO_SHREDDED_PHASES
+@dataclass(frozen=True)
+class SourceDeletionRecoveryStatus:
+    """Truthful deletion status for one recovered source artifact.
+
+    This reports the API veto and crypto-shred boundary separately.  Backup and
+    egress are never claimed erased here: their independent report tiers remain
+    the authoritative evidence.
+    """
+
+    artifact_id: str
+    phase: DeletionPhase
+    api_veto_active: bool
+    crypto_shredded: bool
+    backup_residual: bool
+    irreversible_egress: bool
+
+
+def map_source_deletion_request(
+    uow: "UnitOfWork",
+    *,
+    workspace_id: str,
+    source_ref_id: str,
+    deletion_ref_id: str,
+    updated_at: str,
+) -> tuple[SourceDeletionRecoveryStatus, ...]:
+    """Apply an existing source/deletion/recovery mapping to the deletion FSM.
+
+    A mapping never asserts provider erasure.  It creates only the initial
+    REQUESTED state when absent; existing rows are read unchanged, preserving
+    the forward-only state machine.  Every mapped artifact is therefore vetoed
+    before a recovery target can make it visible again.
+    """
+
+    rows = uow.list_source_deletion_recovery_maps(workspace_id, source_ref_id, deletion_ref_id)
+    statuses: list[SourceDeletionRecoveryStatus] = []
+    for row in rows:
+        deletion = uow.get_deletion_state_by_artifact(row["artifact_id"])
+        if deletion is None:
+            deletion_id = sha256(
+                f"{workspace_id}\x00{deletion_ref_id}\x00{row['artifact_id']}".encode("ascii")
+            ).hexdigest()
+            uow.insert_deletion_state(
+                deletion_id, row["artifact_id"], DeletionPhase.REQUESTED.value, updated_at
+            )
+            phase = DeletionPhase.REQUESTED
+        else:
+            phase = _coerce_phase(deletion["phase_state"])
+        statuses.append(
+            SourceDeletionRecoveryStatus(
+                artifact_id=row["artifact_id"],
+                phase=phase,
+                api_veto_active=is_vetoed(phase),
+                crypto_shredded=is_crypto_shredded(phase),
+                backup_residual=True,
+                irreversible_egress=False,
+            )
+        )
+    return tuple(statuses)
+
+def persist_verified_recovery_deletion_overlay(
+    uow: "UnitOfWork",
+    *,
+    overlay: VerifiedDeletionOverlay,
+) -> AppliedDeletionOverlayEvidence:
+    """Atomically persist verified deletion truth and return immutable evidence.
+
+    The lifecycle cache stores only overlay metadata and vetoed artifact refs;
+    it never receives artifact bodies and makes no provider-erasure claim.
+    """
+    if (
+        not isinstance(overlay, VerifiedDeletionOverlay)
+        or not isinstance(overlay.overlay, SignedDeletionOverlay)
+        or not isinstance(overlay.deleted_artifact_refs, frozenset)
+        or any(not isinstance(ref, str) or not ref for ref in overlay.deleted_artifact_refs)
+    ):
+        raise DeletionError(
+            "invalid_recovery_deletion_overlay", "verified deletion overlay is invalid"
+        )
+    try:
+        return uow.persist_verified_recovery_deletion_overlay(overlay)
+    except (AttributeError, TypeError, ValueError, InvalidContractValue) as exc:
+        raise DeletionError(
+            "invalid_recovery_deletion_overlay", "verified deletion overlay is invalid"
+        ) from exc

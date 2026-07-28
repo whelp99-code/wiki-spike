@@ -1,0 +1,11 @@
+{
+  "security_version": "second-brain-security-foundation-v1",
+  "request_ref": "request:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "capability_ref": "capability:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "subject_key_ref": "key:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "scope_refs": [
+    "scope:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  ],
+  "requested_at": "2030-01-01T00:00:00Z",
+  "request_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+}

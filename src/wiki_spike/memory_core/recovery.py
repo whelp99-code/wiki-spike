@@ -33,8 +33,11 @@ RECOVERY_TRUST_VERSION = "phase3-recovery-trust-v1"
 RECOVERY_QUERY_VERSION = "phase3-recovery-query-v1"
 RECOVERY_SIGNATURE_VERSION = "phase3-recovery-signature-v1"
 RECOVERY_EVIDENCE_VERSION = "phase3-recovery-evidence-v1"
+DELETION_OVERLAY_VERSION = "phase3-deletion-overlay-v2"
 RECOVERY_SIGNING_PURPOSE = "recovery_manifest"
 RECOVERY_SIGNING_DOMAIN = "wiki.recovery.manifest.v1"
+DELETION_OVERLAY_SIGNING_PURPOSE = "recovery_deletion_overlay"
+DELETION_OVERLAY_SIGNING_DOMAIN = "wiki.recovery.deletion-overlay.v2"
 
 HEX40_OR_64 = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
@@ -1013,7 +1016,191 @@ class RecoveryEvidence:
         return canonical_bytes(self.to_mapping())
 
 
+@dataclass(frozen=True)
+class SignedDeletionOverlay:
+    """Signed V2 deletion truth, intentionally carrying no artifact bodies."""
+
+    deletion_overlay_version: str
+    overlay_id: str
+    workspace_id: str
+    manifest_id: str
+    sequence: str
+    previous_overlay_id: str | None
+    deleted_artifact_refs: tuple[str, ...] | None
+    mapping_digest: str | None
+    signer_key_id: str
+    signed_at: str
+    signature_b64: str
+
+    def __post_init__(self) -> None:
+        if self.deletion_overlay_version != DELETION_OVERLAY_VERSION:
+            raise UnsupportedContractVersion("unsupported deletion overlay version")
+        _require_hex64(self.overlay_id, "overlay_id")
+        _require_nonempty(self.workspace_id, "workspace_id")
+        _require_hex64(self.manifest_id, "manifest_id")
+        _canonical_nonnegative_integer(self.sequence, "sequence")
+        if int(self.sequence) == 0:
+            if self.previous_overlay_id is not None:
+                raise InvalidContractValue("initial deletion overlay cannot name a predecessor")
+        else:
+            _require_hex64(self.previous_overlay_id, "previous_overlay_id")
+        if (self.deleted_artifact_refs is None) == (self.mapping_digest is None):
+            raise InvalidContractValue("deletion overlay requires exactly one mapping form")
+        if self.deleted_artifact_refs is not None:
+            _sorted_unique(self.deleted_artifact_refs, "deleted_artifact_refs", allow_empty=True)
+        if self.mapping_digest is not None:
+            _require_hex64(self.mapping_digest, "mapping_digest")
+        _require_nonempty(self.signer_key_id, "signer_key_id")
+        _require_timestamp(self.signed_at, "signed_at")
+        try:
+            b64decode(self.signature_b64, validate=True)
+        except Exception as exc:
+            raise InvalidContractValue("deletion overlay signature is invalid base64") from exc
+        if self.overlay_id != _digest_mapping(self._body(self.__dict__)):
+            raise InvalidContractValue("deletion overlay id does not match body")
+
+    @staticmethod
+    def _body(values: Mapping[str, object]) -> dict[str, object]:
+        return {
+            "deletion_overlay_version": values["deletion_overlay_version"],
+            "workspace_id": values["workspace_id"],
+            "manifest_id": values["manifest_id"],
+            "sequence": values["sequence"],
+            "previous_overlay_id": values["previous_overlay_id"],
+            "deleted_artifact_refs": (
+                list(values["deleted_artifact_refs"])
+                if values["deleted_artifact_refs"] is not None
+                else None
+            ),
+            "mapping_digest": values["mapping_digest"],
+            "signer_key_id": values["signer_key_id"],
+            "signed_at": values["signed_at"],
+        }
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        workspace_id: str,
+        manifest_id: str,
+        sequence: str,
+        previous_overlay_id: str | None,
+        deleted_artifact_refs: Sequence[str] | None,
+        mapping_digest: str | None,
+        signer_key_id: str,
+        signed_at: str,
+        private_key: Ed25519PrivateKey,
+    ) -> "SignedDeletionOverlay":
+        values: dict[str, object] = {
+            "deletion_overlay_version": DELETION_OVERLAY_VERSION,
+            "workspace_id": workspace_id,
+            "manifest_id": manifest_id,
+            "sequence": sequence,
+            "previous_overlay_id": previous_overlay_id,
+            "deleted_artifact_refs": (
+                tuple(deleted_artifact_refs) if deleted_artifact_refs is not None else None
+            ),
+            "mapping_digest": mapping_digest,
+            "signer_key_id": signer_key_id,
+            "signed_at": signed_at,
+        }
+        overlay_id = _digest_mapping(cls._body(values))
+        signature = private_key.sign(
+            signature_frame(
+                DELETION_OVERLAY_SIGNING_PURPOSE,
+                DELETION_OVERLAY_SIGNING_DOMAIN,
+                canonical_bytes(cls._body(values)),
+            )
+        )
+        return cls(
+            overlay_id=overlay_id,
+            signature_b64=b64encode(signature).decode("ascii"),
+            **values,
+        )
+    def canonical_bytes(self) -> bytes:
+        return canonical_bytes({"overlay_id": self.overlay_id, **self._body(self.__dict__)})
+
+    def verify(self, trust: RecoveryTrustAnchor) -> None:
+        if self.signer_key_id != trust.recovery_signer_key_id:
+            raise RecoveryError("deletion_overlay_signature_invalid", "deletion overlay signer is untrusted")
+        try:
+            public = Ed25519PublicKey.from_public_bytes(
+                b64decode(trust.recovery_signer_public_key_b64, validate=True)
+            )
+            public.verify(
+                b64decode(self.signature_b64, validate=True),
+                signature_frame(
+                    DELETION_OVERLAY_SIGNING_PURPOSE,
+                    DELETION_OVERLAY_SIGNING_DOMAIN,
+                    canonical_bytes(self._body(self.__dict__)),
+                ),
+            )
+        except Exception as exc:
+            raise RecoveryError(
+                "deletion_overlay_signature_invalid", "deletion overlay signature failed"
+            ) from exc
+
+
+@dataclass(frozen=True)
+class VerifiedDeletionOverlay:
+    """Verified V2 deletion truth retained through restore staging."""
+
+    overlay: SignedDeletionOverlay
+    deleted_artifact_refs: frozenset[str]
+    chain: tuple[SignedDeletionOverlay, ...] = ()
+
+
+@dataclass(frozen=True)
+class AppliedDeletionOverlayToken:
+    """Opaque, store-authenticated capability for one applied overlay."""
+
+    _secret: str
+    def __post_init__(self) -> None:
+        _require_nonempty(self._secret, "deletion overlay token")
+
+
+@dataclass(frozen=True)
+class AppliedDeletionOverlayEvidence:
+    """Immutable evidence redeemed from the concrete lifecycle persistence store."""
+
+    overlay_id: str
+    workspace_id: str
+    manifest_id: str
+    sequence: str
+    previous_overlay_id: str | None
+    deleted_artifact_refs: frozenset[str]
+
+    def __post_init__(self) -> None:
+        _require_hex64(self.overlay_id, "overlay_id")
+        _require_nonempty(self.workspace_id, "workspace_id")
+        _require_hex64(self.manifest_id, "manifest_id")
+        _canonical_nonnegative_integer(self.sequence, "sequence")
+        if int(self.sequence) == 0:
+            if self.previous_overlay_id is not None:
+                raise InvalidContractValue("initial deletion overlay evidence cannot name a predecessor")
+        else:
+            _require_hex64(self.previous_overlay_id, "previous_overlay_id")
+        if not isinstance(self.deleted_artifact_refs, frozenset):
+            raise InvalidContractValue("deleted_artifact_refs must be a frozenset")
+        _sorted_unique(tuple(sorted(self.deleted_artifact_refs)), "deleted_artifact_refs", allow_empty=True)
+
+class DeletionOverlayProvider(Protocol):
+    def signed_deletion_overlay(self, workspace_id: str) -> SignedDeletionOverlay: ...
+
+    def signed_deletion_overlay_chain(
+        self, workspace_id: str
+    ) -> Sequence[SignedDeletionOverlay]: ...
+
+    def resolve_deleted_artifact_refs(
+        self, workspace_id: str, mapping_digest: str
+    ) -> Sequence[str]: ...
+
+
 class RecoverySource(Protocol):
+    """V1 is an absent/explicit ``"v1"`` declaration; V2 must declare ``"v2"``."""
+
+    recovery_source_version: str
+
     def signed_manifest(self, workspace_id: str) -> SignedRecoveryManifest: ...
 
     def read_item(self, workspace_id: str, item_id: str) -> bytes: ...
@@ -1023,6 +1210,14 @@ class WriteFreezePort(Protocol):
     def acquire(self, workspace_id: str, manifest_id: str) -> str | None: ...
 
     def release(self, workspace_id: str, token: str) -> None: ...
+
+
+class DeletionOverlayPersistencePort(Protocol):
+    def apply_verified_overlay(self, overlay: VerifiedDeletionOverlay) -> AppliedDeletionOverlayToken: ...
+
+    def redeem_applied_overlay(
+        self, token: AppliedDeletionOverlayToken
+    ) -> AppliedDeletionOverlayEvidence: ...
 
 
 class RecoveryTarget(Protocol):
@@ -1051,6 +1246,7 @@ class _VerifiedRecoverySet:
     payloads: dict[str, bytes]
     key_registry: HistoricalKeyRegistry
     query_expected_digests: tuple[tuple[str, str], ...]
+    deletion_overlay: VerifiedDeletionOverlay | None
 
 
 class RecoveryCoordinator:
@@ -1061,12 +1257,27 @@ class RecoveryCoordinator:
         *,
         target: RecoveryTarget | None = None,
         freeze: WriteFreezePort | None = None,
+        deletion_overlay_provider: DeletionOverlayProvider | None = None,
+        deletion_overlay_persistence: DeletionOverlayPersistencePort | None = None,
         completed_at: str,
     ) -> None:
         self.source = source
         self.trust_anchor = trust_anchor
         self.target = target
         self.freeze = freeze
+        self.deletion_overlay_provider = deletion_overlay_provider
+        self.deletion_overlay_persistence = deletion_overlay_persistence
+        self._source_version = self._source_version(source)
+        if self._source_version == "v2" and deletion_overlay_provider is None:
+            raise RecoveryError(
+                "deletion_overlay_provider_missing",
+                "V2 recovery sources require a deletion overlay provider",
+            )
+        if self._source_version == "v2" and deletion_overlay_persistence is None:
+            raise RecoveryError(
+                "deletion_overlay_persistence_missing",
+                "V2 recovery sources require deletion overlay persistence",
+            )
         self.completed_at = _require_timestamp(completed_at, "completed_at")
 
     def dry_run(self, workspace_id: str) -> RecoveryEvidence:
@@ -1097,9 +1308,23 @@ class RecoveryCoordinator:
                 raise RecoveryError("write_freeze_unavailable", "could not acquire recovery write freeze")
             verified = self._verify_bundle(workspace_id, expected_signed=preview)
             manifest = verified.signed.manifest
+            if verified.deletion_overlay is not None:
+                persistence = self.deletion_overlay_persistence
+                if persistence is None:
+                    raise RecoveryError(
+                        "deletion_overlay_persistence_missing",
+                        "V2 recovery sources require deletion overlay persistence",
+                    )
+                applied = persistence.apply_verified_overlay(verified.deletion_overlay)
+                evidence = persistence.redeem_applied_overlay(applied)
+                self._verify_applied_deletion_overlay_evidence(verified.deletion_overlay, evidence)
+                deleted_refs = evidence.deleted_artifact_refs
+            else:
+                deleted_refs = frozenset()
             session_id = self.target.begin_restore(manifest)
             for item in manifest.items:
-                self.target.stage_item(session_id, item, verified.payloads[item.item_id])
+                if item.item_id not in deleted_refs:
+                    self.target.stage_item(session_id, item, verified.payloads[item.item_id])
             restored_root = self.target.restore_authoritative(session_id, manifest)
             if restored_root != manifest.state_root:
                 raise RecoveryError("state_root_mismatch", "restored authoritative state root mismatch")
@@ -1150,12 +1375,51 @@ class RecoveryCoordinator:
                             "write_freeze_release_failed", "recovery write freeze release failed"
                         ) from exc
 
+    @staticmethod
+    def _verify_applied_deletion_overlay_evidence(
+        overlay: VerifiedDeletionOverlay, evidence: object
+    ) -> None:
+        if not isinstance(evidence, AppliedDeletionOverlayEvidence):
+            raise RecoveryError(
+                "deletion_overlay_persistence_unverified",
+                "concrete deletion overlay persistence did not return evidence",
+            )
+        if (
+            evidence.overlay_id != overlay.overlay.overlay_id
+            or evidence.workspace_id != overlay.overlay.workspace_id
+            or evidence.manifest_id != overlay.overlay.manifest_id
+            or evidence.sequence != overlay.overlay.sequence
+            or evidence.previous_overlay_id != overlay.overlay.previous_overlay_id
+            or evidence.deleted_artifact_refs != overlay.deleted_artifact_refs
+        ):
+            raise RecoveryError(
+                "deletion_overlay_persistence_mismatch",
+                "deletion overlay evidence does not match verified deletion truth",
+            )
     def _abort_safely(self, session_id: str) -> None:
         assert self.target is not None
         try:
             self.target.abort_restore(session_id)
         except Exception:
             pass
+
+    @staticmethod
+    def _source_version(source: RecoverySource) -> str:
+        try:
+            declaration = getattr(source, "recovery_source_version")
+        except AttributeError:
+            return "v1"
+        except Exception as exc:
+            raise RecoveryError(
+                "recovery_source_version_invalid", "recovery source version is unavailable"
+            ) from exc
+        if declaration is None:
+            raise RecoveryError("recovery_source_version_invalid", "recovery source version cannot be null")
+        if declaration == "v1":
+            return "v1"
+        if declaration != "v2":
+            raise RecoveryError("recovery_source_version_invalid", "unsupported recovery source version")
+        return declaration
 
     def _verify_bundle(
         self,
@@ -1230,7 +1494,89 @@ class RecoveryCoordinator:
         expected = tuple(
             sorted((query.query_id, query.expected_result_digest) for query in manifest.sample_queries)
         )
-        return _VerifiedRecoverySet(signed, payloads, key_registry, expected)
+        deletion_overlay = self._verify_deletion_overlay(workspace_id, manifest)
+        return _VerifiedRecoverySet(signed, payloads, key_registry, expected, deletion_overlay)
+
+    def _verify_deletion_overlay(
+        self, workspace_id: str, manifest: RecoveryManifest
+    ) -> VerifiedDeletionOverlay | None:
+        if self._source_version == "v1":
+            return None
+        provider = self.deletion_overlay_provider
+        if provider is None:
+            raise RecoveryError(
+                "deletion_overlay_provider_missing",
+                "V2 recovery sources require a deletion overlay provider",
+            )
+        try:
+            overlay = provider.signed_deletion_overlay(workspace_id)
+        except Exception as exc:
+            raise RecoveryError(
+                "deletion_overlay_unavailable", "signed deletion overlay is unavailable"
+            ) from exc
+        if overlay is None or not isinstance(overlay, SignedDeletionOverlay):
+            raise RecoveryError("deletion_overlay_unavailable", "signed deletion overlay is unavailable")
+        if overlay.workspace_id != workspace_id or overlay.manifest_id != manifest.manifest_id:
+            raise RecoveryError("deletion_overlay_snapshot_mismatch", "deletion overlay is for another snapshot")
+
+        chain: Sequence[SignedDeletionOverlay] = (overlay,)
+        if overlay.sequence != "0":
+            try:
+                chain = provider.signed_deletion_overlay_chain(workspace_id)
+            except Exception as exc:
+                raise RecoveryError(
+                    "deletion_overlay_discontinuous",
+                    "V2 deletion overlay history is unavailable",
+                ) from exc
+            if not isinstance(chain, Sequence) or isinstance(chain, (str, bytes)):
+                raise RecoveryError(
+                    "deletion_overlay_discontinuous", "V2 deletion overlay history is invalid"
+                )
+        previous_id: str | None = None
+        for expected_sequence, candidate in enumerate(chain):
+            if not isinstance(candidate, SignedDeletionOverlay):
+                raise RecoveryError(
+                    "deletion_overlay_discontinuous", "V2 deletion overlay history is invalid"
+                )
+            if (
+                candidate.workspace_id != workspace_id
+                or candidate.manifest_id != manifest.manifest_id
+                or candidate.sequence != str(expected_sequence)
+                or candidate.previous_overlay_id != previous_id
+            ):
+                raise RecoveryError(
+                    "deletion_overlay_discontinuous", "V2 deletion overlay history is discontinuous"
+                )
+            candidate.verify(self.trust_anchor)
+            previous_id = candidate.overlay_id
+        if not chain or chain[-1].canonical_bytes() != overlay.canonical_bytes():
+            raise RecoveryError(
+                "deletion_overlay_discontinuous", "V2 deletion overlay head is not continuous"
+            )
+
+        if overlay.deleted_artifact_refs is not None:
+            refs = overlay.deleted_artifact_refs
+        else:
+            assert overlay.mapping_digest is not None
+            try:
+                refs = tuple(
+                    provider.resolve_deleted_artifact_refs(workspace_id, overlay.mapping_digest)
+                )
+            except Exception as exc:
+                raise RecoveryError(
+                    "deletion_overlay_mapping_unavailable",
+                    "authoritative deletion mapping is unavailable",
+                ) from exc
+            if _digest_mapping({"deleted_artifact_refs": list(refs)}) != overlay.mapping_digest:
+                raise RecoveryError(
+                    "deletion_overlay_mapping_invalid",
+                    "authoritative deletion mapping digest mismatch",
+                )
+        try:
+            resolved = frozenset(_sorted_unique(refs, "deleted_artifact_refs", allow_empty=True))
+        except InvalidContractValue as exc:
+            raise RecoveryError("deletion_overlay_mapping_invalid", "invalid deleted artifact mapping") from exc
+        return VerifiedDeletionOverlay(overlay, resolved, tuple(chain))
 
     @staticmethod
     def _verify_registry_snapshot(

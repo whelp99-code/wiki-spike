@@ -374,6 +374,44 @@ class TelemetryPoint:
 
 class TelemetrySink(Protocol):
     def emit(self, point: TelemetryPoint) -> None: ...
+@dataclass(frozen=True)
+class TelemetryMetricAllowlist:
+    """Fixed aggregate buckets for one metric; no labels or free text are admitted."""
+
+    value_buckets: tuple[str, ...]
+    status_codes: tuple[str, ...]
+    max_cardinality: int
+    retention_seconds: int
+
+    def __post_init__(self) -> None:
+        values = _sorted_strings(self.value_buckets, "value_buckets", pattern=CODE, allow_empty=False)
+        statuses = _sorted_strings(self.status_codes, "status_codes", pattern=CODE, allow_empty=False)
+        if self.max_cardinality < 1 or self.retention_seconds < 1:
+            raise ValueError("telemetry cardinality and retention limits must be positive")
+        object.__setattr__(self, "value_buckets", values)
+        object.__setattr__(self, "status_codes", statuses)
+
+
+@dataclass(frozen=True)
+class TelemetryAllowlist:
+    """Closed metric admission policy with bounded per-metric state."""
+
+    metrics: Mapping[str, TelemetryMetricAllowlist]
+
+    def __post_init__(self) -> None:
+        normalized = dict(self.metrics)
+        if not normalized:
+            raise ValueError("telemetry allowlist must contain at least one metric")
+        for metric, policy in normalized.items():
+            _code(metric, "metric_name")
+            if not isinstance(policy, TelemetryMetricAllowlist):
+                raise TypeError("telemetry metric policy must be TelemetryMetricAllowlist")
+        object.__setattr__(self, "metrics", normalized)
+
+
+DEFAULT_TELEMETRY_ALLOWLIST = TelemetryAllowlist({
+    "queue.depth": TelemetryMetricAllowlist(("small",), ("ok",), 256, 86_400),
+})
 
 
 @dataclass(frozen=True)
@@ -385,9 +423,43 @@ class TelemetryDeliveryResult:
 
 
 class PrivacyPreservingTelemetry:
-    def __init__(self, sink: TelemetrySink, audit: AuditRecorder) -> None:
+    def __init__(
+        self,
+        sink: TelemetrySink,
+        audit: AuditRecorder,
+        *,
+        allowlist: TelemetryAllowlist = DEFAULT_TELEMETRY_ALLOWLIST,
+    ) -> None:
         self.sink = sink
         self.audit = audit
+        self.allowlist = allowlist
+        self._metric_points: dict[str, dict[str, datetime]] = {}
+        self._lock = RLock()
+
+    def _admit(self, point: TelemetryPoint, *, occurred_at: str) -> str | None:
+        policy = self.allowlist.metrics.get(point.metric_name)
+        if policy is None:
+            return "telemetry_metric_not_allowed"
+        if point.value_bucket not in policy.value_buckets:
+            return "telemetry_value_bucket_not_allowed"
+        if point.status_code not in policy.status_codes:
+            return "telemetry_status_not_allowed"
+        current = _timestamp(occurred_at, "occurred_at")
+        bucket = _timestamp(point.time_bucket, "time_bucket")
+        if bucket > current or (current - bucket).total_seconds() > policy.retention_seconds:
+            return "telemetry_retention_exceeded"
+        with self._lock:
+            seen = self._metric_points.setdefault(point.metric_name, {})
+            expired = tuple(
+                point_id for point_id, admitted_at in seen.items()
+                if (current - admitted_at).total_seconds() > policy.retention_seconds
+            )
+            for point_id in expired:
+                seen.pop(point_id, None)
+            if point.point_id not in seen and len(seen) >= policy.max_cardinality:
+                return "telemetry_cardinality_exceeded"
+            seen[point.point_id] = current
+        return None
 
     def emit(
         self,
@@ -399,6 +471,9 @@ class PrivacyPreservingTelemetry:
         correlation_id: str,
         occurred_at: str,
     ) -> TelemetryDeliveryResult:
+        rejection = self._admit(point, occurred_at=occurred_at)
+        if rejection is not None:
+            return TelemetryDeliveryResult("rejected", point.point_id, rejection, None)
         try:
             self.sink.emit(point)
             return TelemetryDeliveryResult("delivered", point.point_id, None, None)

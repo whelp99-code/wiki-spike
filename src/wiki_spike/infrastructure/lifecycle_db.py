@@ -55,6 +55,7 @@ as of its own atomic acquisition and is never retroactively invalid.
 from __future__ import annotations
 
 import hashlib
+import secrets
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -62,6 +63,12 @@ from pathlib import Path
 from typing import Iterator
 
 from wiki_spike.memory_core.contracts import canonical_bytes
+from wiki_spike.memory_core.recovery import (
+    AppliedDeletionOverlayEvidence,
+    AppliedDeletionOverlayToken,
+    VerifiedDeletionOverlay,
+    SignedDeletionOverlay,
+)
 
 # --------------------------------------------------------------------------- #
 # Column-kind allowlist (no plaintext columns anywhere in this schema).
@@ -82,12 +89,13 @@ COLUMN_KIND_ALLOWLIST: tuple[str, ...] = (
 )
 # A small number of columns are exact-name matches rather than suffix matches.
 # Each is a body-free closed value: ``ordinal`` is a manifest ordinal;
-# ``consent_epoch`` and ``revision_number`` are canonical decimal-string
-# counters; ``sensitivity`` is a closed enum (PUBLIC/INTERNAL/CONFIDENTIAL/
-# RESTRICTED). None carries plaintext.
+# ``consent_epoch``, ``retention_epoch`` and ``revision_number`` are canonical
+# decimal-string counters; ``sensitivity`` is a closed enum
+# (PUBLIC/INTERNAL/CONFIDENTIAL/RESTRICTED). None carries plaintext.
 COLUMN_KIND_EXACT_ALLOWLIST: tuple[str, ...] = (
     "ordinal",
     "consent_epoch",
+    "retention_epoch",
     "revision_number",
     "sensitivity",
 )
@@ -138,6 +146,30 @@ CREATE TABLE IF NOT EXISTS object_binding (
   sensitivity TEXT NOT NULL,
   created_at TEXT NOT NULL,
   FOREIGN KEY (artifact_id) REFERENCES canonical_artifact(artifact_id)
+);
+CREATE TABLE IF NOT EXISTS source_consent_state (
+  workspace_id TEXT NOT NULL,
+  source_ref_id TEXT NOT NULL,
+  project_ref_id TEXT NOT NULL,
+  consent_epoch TEXT NOT NULL,
+  consent_state TEXT NOT NULL,
+  sensitivity TEXT NOT NULL,
+  consent_digest TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, source_ref_id, project_ref_id)
+);
+CREATE TABLE IF NOT EXISTS retention_policy (
+  workspace_id TEXT NOT NULL,
+  source_ref_id TEXT NOT NULL,
+  project_ref_id TEXT NOT NULL,
+  retention_epoch TEXT NOT NULL,
+  retention_state TEXT NOT NULL,
+  sensitivity TEXT NOT NULL,
+  retention_digest TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, source_ref_id, project_ref_id)
 );
 CREATE TABLE IF NOT EXISTS command_artifact (
   command_id TEXT NOT NULL,
@@ -192,6 +224,45 @@ CREATE TABLE IF NOT EXISTS deletion_state (
   artifact_id TEXT NOT NULL,
   phase_state TEXT NOT NULL,
   updated_at TEXT NOT NULL,
+  FOREIGN KEY (artifact_id) REFERENCES canonical_artifact(artifact_id)
+);
+CREATE TABLE IF NOT EXISTS recovery_deletion_overlay (
+  overlay_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  manifest_id TEXT NOT NULL,
+  overlay_sequence TEXT NOT NULL,
+  previous_overlay_id TEXT,
+  mapping_digest TEXT,
+  signer_key_id TEXT NOT NULL,
+  signed_at TEXT NOT NULL,
+  overlay_state TEXT NOT NULL,
+  UNIQUE (workspace_id, manifest_id, overlay_sequence)
+);
+CREATE TABLE IF NOT EXISTS recovery_deletion_veto (
+  overlay_id TEXT NOT NULL,
+  artifact_id TEXT NOT NULL,
+  veto_state TEXT NOT NULL,
+  PRIMARY KEY (overlay_id, artifact_id),
+  FOREIGN KEY (overlay_id) REFERENCES recovery_deletion_overlay(overlay_id)
+);
+CREATE TABLE IF NOT EXISTS recovery_deletion_overlay_token (
+  token_digest TEXT PRIMARY KEY,
+  overlay_id TEXT NOT NULL,
+  token_state TEXT NOT NULL,
+  FOREIGN KEY (overlay_id) REFERENCES recovery_deletion_overlay(overlay_id)
+);
+CREATE TABLE IF NOT EXISTS source_deletion_recovery_map (
+  map_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  source_ref_id TEXT NOT NULL,
+  artifact_id TEXT NOT NULL,
+  deletion_ref_id TEXT NOT NULL,
+  recovery_proof_ref_id TEXT NOT NULL,
+  overlay_sequence TEXT NOT NULL,
+  bundle_head_digest TEXT NOT NULL,
+  floor_digest TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (workspace_id, source_ref_id, artifact_id, deletion_ref_id),
   FOREIGN KEY (artifact_id) REFERENCES canonical_artifact(artifact_id)
 );
 CREATE TABLE IF NOT EXISTS binding_leaf (
@@ -290,12 +361,18 @@ TABLE_NAMES: tuple[str, ...] = (
     "canonical_artifact",
     "object_binding",
     "command_artifact",
+    "source_consent_state",
+    "retention_policy",
     "ark_key_intent",
     "wrapped_key",
     "key_state",
     "candidate_review",
     "floor_state",
     "deletion_state",
+    "recovery_deletion_overlay",
+    "recovery_deletion_veto",
+    "recovery_deletion_overlay_token",
+    "source_deletion_recovery_map",
     "binding_leaf",
     "binding_checkpoint",
     "event_log",
@@ -456,6 +533,75 @@ class UnitOfWork:
         return self._con.execute(
             "SELECT * FROM object_binding WHERE artifact_id=?", (artifact_id,)
         ).fetchone()
+    # -- body-free source consent / retention policy ------------------------ #
+
+    def upsert_source_consent_state(
+        self,
+        workspace_id: str,
+        source_ref_id: str,
+        project_ref_id: str,
+        consent_epoch: str,
+        consent_state: str,
+        sensitivity: str,
+        consent_digest: str,
+        expires_at: str,
+        updated_at: str,
+    ) -> None:
+        self._con.execute(
+            "INSERT INTO source_consent_state "
+            "(workspace_id, source_ref_id, project_ref_id, consent_epoch, consent_state, sensitivity, "
+            " consent_digest, expires_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(workspace_id, source_ref_id, project_ref_id) DO UPDATE SET "
+            "consent_epoch=excluded.consent_epoch, consent_state=excluded.consent_state, "
+            "sensitivity=excluded.sensitivity, consent_digest=excluded.consent_digest, "
+            "expires_at=excluded.expires_at, updated_at=excluded.updated_at",
+            (workspace_id, source_ref_id, project_ref_id, consent_epoch, consent_state, sensitivity,
+             consent_digest, expires_at, updated_at),
+        )
+
+    def get_source_consent_state(
+        self, workspace_id: str, source_ref_id: str, project_ref_id: str
+    ) -> sqlite3.Row | None:
+        self._con.row_factory = sqlite3.Row
+        return self._con.execute(
+            "SELECT * FROM source_consent_state "
+            "WHERE workspace_id=? AND source_ref_id=? AND project_ref_id=?",
+            (workspace_id, source_ref_id, project_ref_id),
+        ).fetchone()
+
+    def upsert_retention_policy(
+        self,
+        workspace_id: str,
+        source_ref_id: str,
+        project_ref_id: str,
+        retention_epoch: str,
+        retention_state: str,
+        sensitivity: str,
+        retention_digest: str,
+        expires_at: str,
+        updated_at: str,
+    ) -> None:
+        self._con.execute(
+            "INSERT INTO retention_policy "
+            "(workspace_id, source_ref_id, project_ref_id, retention_epoch, retention_state, sensitivity, "
+            " retention_digest, expires_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(workspace_id, source_ref_id, project_ref_id) DO UPDATE SET "
+            "retention_epoch=excluded.retention_epoch, retention_state=excluded.retention_state, "
+            "sensitivity=excluded.sensitivity, retention_digest=excluded.retention_digest, "
+            "expires_at=excluded.expires_at, updated_at=excluded.updated_at",
+            (workspace_id, source_ref_id, project_ref_id, retention_epoch, retention_state, sensitivity,
+             retention_digest, expires_at, updated_at),
+        )
+
+    def get_retention_policy(
+        self, workspace_id: str, source_ref_id: str, project_ref_id: str
+    ) -> sqlite3.Row | None:
+        self._con.row_factory = sqlite3.Row
+        return self._con.execute(
+            "SELECT * FROM retention_policy "
+            "WHERE workspace_id=? AND source_ref_id=? AND project_ref_id=?",
+            (workspace_id, source_ref_id, project_ref_id),
+        ).fetchone()
 
     # -- ARK custody: ark_key_intent / wrapped_key / key_state -------------- #
 
@@ -556,6 +702,132 @@ class UnitOfWork:
             "ORDER BY updated_at DESC, deletion_id DESC LIMIT 1",
             (artifact_id,),
         ).fetchone()
+
+    def persist_verified_recovery_deletion_overlay(
+        self, overlay: VerifiedDeletionOverlay
+    ) -> AppliedDeletionOverlayEvidence:
+        """Atomically persist verified overlay metadata and its complete veto set."""
+        signed = overlay.overlay
+        deleted_artifact_refs = tuple(sorted(overlay.deleted_artifact_refs))
+        self._con.row_factory = sqlite3.Row
+        existing = self._con.execute(
+            "SELECT * FROM recovery_deletion_overlay WHERE overlay_id=?", (signed.overlay_id,)
+        ).fetchone()
+        if existing is not None:
+            if (
+                existing["workspace_id"] != signed.workspace_id
+                or existing["manifest_id"] != signed.manifest_id
+                or existing["overlay_sequence"] != signed.sequence
+                or existing["previous_overlay_id"] != signed.previous_overlay_id
+                or existing["mapping_digest"] != signed.mapping_digest
+                or existing["signer_key_id"] != signed.signer_key_id
+                or existing["signed_at"] != signed.signed_at
+            ):
+                raise LifecycleDbError("recovery deletion overlay id conflicts with persisted truth")
+            persisted_refs = tuple(
+                row[0]
+                for row in self._con.execute(
+                    "SELECT artifact_id FROM recovery_deletion_veto WHERE overlay_id=? ORDER BY artifact_id",
+                    (signed.overlay_id,),
+                )
+            )
+            if persisted_refs != deleted_artifact_refs:
+                raise LifecycleDbError("recovery deletion overlay id conflicts with persisted veto set")
+            return AppliedDeletionOverlayEvidence(
+                signed.overlay_id,
+                signed.workspace_id,
+                signed.manifest_id,
+                signed.sequence,
+                signed.previous_overlay_id,
+                overlay.deleted_artifact_refs,
+            )
+        head = self._con.execute(
+            "SELECT overlay_id, overlay_sequence FROM recovery_deletion_overlay "
+            "WHERE workspace_id=? AND manifest_id=? "
+            "ORDER BY CAST(overlay_sequence AS INTEGER) DESC LIMIT 1",
+            (signed.workspace_id, signed.manifest_id),
+        ).fetchone()
+        if head is None:
+            if signed.sequence != "0" or signed.previous_overlay_id is not None:
+                raise LifecycleDbError("recovery deletion overlay history is discontinuous")
+        elif (
+            signed.sequence != str(int(head["overlay_sequence"]) + 1)
+            or signed.previous_overlay_id != head["overlay_id"]
+        ):
+            raise LifecycleDbError("recovery deletion overlay rollback or discontinuity")
+        self._con.execute(
+            "INSERT INTO recovery_deletion_overlay "
+            "(overlay_id, workspace_id, manifest_id, overlay_sequence, previous_overlay_id, "
+            " mapping_digest, signer_key_id, signed_at, overlay_state) VALUES (?,?,?,?,?,?,?,?,?)",
+            (
+                signed.overlay_id,
+                signed.workspace_id,
+                signed.manifest_id,
+                signed.sequence,
+                signed.previous_overlay_id,
+                signed.mapping_digest,
+                signed.signer_key_id,
+                signed.signed_at,
+                "VERIFIED_APPLIED",
+            ),
+        )
+        self._con.executemany(
+            "INSERT INTO recovery_deletion_veto (overlay_id, artifact_id, veto_state) VALUES (?,?,?)",
+            [(signed.overlay_id, artifact_id, "ACTIVE") for artifact_id in deleted_artifact_refs],
+        )
+        return AppliedDeletionOverlayEvidence(
+            signed.overlay_id,
+            signed.workspace_id,
+            signed.manifest_id,
+            signed.sequence,
+            signed.previous_overlay_id,
+            overlay.deleted_artifact_refs,
+        )
+
+    def recovery_deletion_vetoed(self, artifact_id: str) -> bool:
+        return self._con.execute(
+            "SELECT 1 FROM recovery_deletion_veto WHERE artifact_id=? AND veto_state='ACTIVE' LIMIT 1",
+            (artifact_id,),
+        ).fetchone() is not None
+
+    def list_recovery_deletion_vetoes(self, overlay_id: str) -> list[sqlite3.Row]:
+        self._con.row_factory = sqlite3.Row
+        return list(self._con.execute(
+            "SELECT * FROM recovery_deletion_veto WHERE overlay_id=? ORDER BY artifact_id", (overlay_id,)
+        ))
+    # -- source/deletion/recovery mapping (body-free) ----------------------- #
+
+    def insert_source_deletion_recovery_map(
+        self,
+        map_id: str,
+        workspace_id: str,
+        source_ref_id: str,
+        artifact_id: str,
+        deletion_ref_id: str,
+        recovery_proof_ref_id: str,
+        overlay_sequence: str,
+        bundle_head_digest: str,
+        floor_digest: str,
+        created_at: str,
+    ) -> None:
+        self._con.execute(
+            "INSERT INTO source_deletion_recovery_map "
+            "(map_id, workspace_id, source_ref_id, artifact_id, deletion_ref_id, "
+            " recovery_proof_ref_id, overlay_sequence, bundle_head_digest, floor_digest, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (map_id, workspace_id, source_ref_id, artifact_id, deletion_ref_id,
+             recovery_proof_ref_id, overlay_sequence, bundle_head_digest, floor_digest, created_at),
+        )
+
+    def list_source_deletion_recovery_maps(
+        self, workspace_id: str, source_ref_id: str, deletion_ref_id: str
+    ) -> list[sqlite3.Row]:
+        self._con.row_factory = sqlite3.Row
+        return list(self._con.execute(
+            "SELECT * FROM source_deletion_recovery_map "
+            "WHERE workspace_id=? AND source_ref_id=? AND deletion_ref_id=? ORDER BY artifact_id",
+            (workspace_id, source_ref_id, deletion_ref_id),
+        ))
 
     # -- binding cache (SQLite is a cache only; see module docstring) ------- #
 
@@ -851,6 +1123,64 @@ class LifecycleDatabase:
             raise
         else:
             con.execute("COMMIT")
+    def apply_verified_overlay(self, overlay: VerifiedDeletionOverlay) -> AppliedDeletionOverlayToken:
+        """Persist an overlay and issue a bearer token authenticated by this store."""
+        assert self.con is not None, "initialize() not called"
+        if (
+            not isinstance(overlay, VerifiedDeletionOverlay)
+            or not isinstance(overlay.overlay, SignedDeletionOverlay)
+            or not isinstance(overlay.deleted_artifact_refs, frozenset)
+            or any(not isinstance(ref, str) or not ref for ref in overlay.deleted_artifact_refs)
+        ):
+            raise LifecycleDbError("verified recovery deletion overlay is invalid")
+        with self.unit_of_work() as uow:
+            evidence = uow.persist_verified_recovery_deletion_overlay(overlay)
+            while True:
+                secret = secrets.token_urlsafe(32)
+                token_digest = hashlib.sha256(secret.encode("ascii")).hexdigest()
+                try:
+                    uow._con.execute(
+                        "INSERT INTO recovery_deletion_overlay_token "
+                        "(token_digest, overlay_id, token_state) VALUES (?,?,?)",
+                        (token_digest, evidence.overlay_id, "ACTIVE"),
+                    )
+                except sqlite3.IntegrityError:
+                    continue
+                return AppliedDeletionOverlayToken(secret)
+
+    def redeem_applied_overlay(
+        self, token: AppliedDeletionOverlayToken
+    ) -> AppliedDeletionOverlayEvidence:
+        """Redeem an authenticated token for immutable persisted overlay evidence."""
+        assert self.con is not None, "initialize() not called"
+        if not isinstance(token, AppliedDeletionOverlayToken):
+            raise LifecycleDbError("recovery deletion overlay token is invalid")
+        token_digest = hashlib.sha256(token._secret.encode("ascii")).hexdigest()
+        self.con.row_factory = sqlite3.Row
+        overlay = self.con.execute(
+            "SELECT overlay.* FROM recovery_deletion_overlay_token AS token "
+            "JOIN recovery_deletion_overlay AS overlay ON overlay.overlay_id=token.overlay_id "
+            "WHERE token.token_digest=? AND token.token_state='ACTIVE'",
+            (token_digest,),
+        ).fetchone()
+        if overlay is None:
+            raise LifecycleDbError("recovery deletion overlay token is invalid")
+        refs = frozenset(
+            row[0]
+            for row in self.con.execute(
+                "SELECT artifact_id FROM recovery_deletion_veto "
+                "WHERE overlay_id=? AND veto_state='ACTIVE' ORDER BY artifact_id",
+                (overlay["overlay_id"],),
+            )
+        )
+        return AppliedDeletionOverlayEvidence(
+            overlay["overlay_id"],
+            overlay["workspace_id"],
+            overlay["manifest_id"],
+            overlay["overlay_sequence"],
+            overlay["previous_overlay_id"],
+            refs,
+        )
 
     # -- checked-snapshot read (linearization point; see module docstring) --- #
 
