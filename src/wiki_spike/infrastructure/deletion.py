@@ -383,3 +383,30 @@ def map_source_deletion_request(
             )
         )
     return tuple(statuses)
+
+def persist_verified_recovery_deletion_overlay(
+    uow: "UnitOfWork",
+    *,
+    overlay: Any,
+    deleted_artifact_refs: frozenset[str],
+) -> None:
+    """Persist signed recovery deletion truth before restore staging.
+
+    The lifecycle cache stores only overlay metadata and vetoed artifact refs;
+    it never receives artifact bodies and makes no provider-erasure claim.
+    """
+    if not isinstance(deleted_artifact_refs, frozenset) or any(
+        not isinstance(ref, str) or not ref for ref in deleted_artifact_refs
+    ):
+        raise DeletionError("invalid_recovery_deletion_overlay", "deleted artifact refs are invalid")
+    uow.persist_recovery_deletion_overlay(
+        overlay_id=overlay.overlay_id,
+        workspace_id=overlay.workspace_id,
+        manifest_id=overlay.manifest_id,
+        overlay_sequence=overlay.sequence,
+        previous_overlay_id=overlay.previous_overlay_id,
+        mapping_digest=overlay.mapping_digest,
+        signer_key_id=overlay.signer_key_id,
+        signed_at=overlay.signed_at,
+        deleted_artifact_refs=tuple(sorted(deleted_artifact_refs)),
+    )

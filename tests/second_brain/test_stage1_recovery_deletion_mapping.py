@@ -1,5 +1,14 @@
-from wiki_spike.infrastructure.deletion import DeletionPhase, map_source_deletion_request
-from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase
+from types import SimpleNamespace
+
+import pytest
+
+from wiki_spike.infrastructure.deletion import (
+    DeletionError,
+    DeletionPhase,
+    map_source_deletion_request,
+    persist_verified_recovery_deletion_overlay,
+)
+from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase, LifecycleDbError
 
 
 DIGEST = "a" * 64
@@ -26,3 +35,62 @@ def test_recovered_deleted_artifact_remains_vetoed_while_survivor_is_unmapped(tm
         assert uow.get_deletion_state_by_artifact("artifact-survivor") is None
         assert statuses[0].backup_residual is True
         assert statuses[0].irreversible_egress is False
+
+def test_verified_overlay_persists_body_free_vetoes_and_rejects_discontinuous_history(tmp_path):
+    database = LifecycleDatabase(tmp_path / "lifecycle.sqlite")
+    database.initialize()
+    initial = SimpleNamespace(
+        overlay_id="a" * 64,
+        workspace_id="workspace",
+        manifest_id="b" * 64,
+        sequence="0",
+        previous_overlay_id=None,
+        mapping_digest=None,
+        signer_key_id="recovery-k1",
+        signed_at="2026-01-01T00:00:00Z",
+    )
+    with database.unit_of_work() as uow:
+        persist_verified_recovery_deletion_overlay(
+            uow, overlay=initial, deleted_artifact_refs=frozenset({"artifact-deleted"})
+        )
+        assert uow.recovery_deletion_vetoed("artifact-deleted") is True
+        assert uow.recovery_deletion_vetoed("artifact-survivor") is False
+        assert [row["artifact_id"] for row in uow.list_recovery_deletion_vetoes(initial.overlay_id)] == [
+            "artifact-deleted"
+        ]
+
+    discontinuous = SimpleNamespace(
+        overlay_id="c" * 64,
+        workspace_id="workspace",
+        manifest_id="b" * 64,
+        sequence="2",
+        previous_overlay_id=initial.overlay_id,
+        mapping_digest=None,
+        signer_key_id="recovery-k1",
+        signed_at="2026-01-01T00:01:00Z",
+    )
+    with pytest.raises(LifecycleDbError, match="rollback or discontinuity"):
+        with database.unit_of_work() as uow:
+            persist_verified_recovery_deletion_overlay(
+                uow, overlay=discontinuous, deleted_artifact_refs=frozenset()
+            )
+
+
+def test_recovery_overlay_requires_resolved_refs_to_be_a_frozenset(tmp_path):
+    database = LifecycleDatabase(tmp_path / "lifecycle.sqlite")
+    database.initialize()
+    overlay = SimpleNamespace(
+        overlay_id="a" * 64,
+        workspace_id="workspace",
+        manifest_id="b" * 64,
+        sequence="0",
+        previous_overlay_id=None,
+        mapping_digest=None,
+        signer_key_id="recovery-k1",
+        signed_at="2026-01-01T00:00:00Z",
+    )
+    with pytest.raises(DeletionError, match="deleted artifact refs"):
+        with database.unit_of_work() as uow:
+            persist_verified_recovery_deletion_overlay(
+                uow, overlay=overlay, deleted_artifact_refs=frozenset({""})
+            )

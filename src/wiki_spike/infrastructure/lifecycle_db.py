@@ -219,6 +219,25 @@ CREATE TABLE IF NOT EXISTS deletion_state (
   updated_at TEXT NOT NULL,
   FOREIGN KEY (artifact_id) REFERENCES canonical_artifact(artifact_id)
 );
+CREATE TABLE IF NOT EXISTS recovery_deletion_overlay (
+  overlay_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  manifest_id TEXT NOT NULL,
+  overlay_sequence TEXT NOT NULL,
+  previous_overlay_id TEXT,
+  mapping_digest TEXT,
+  signer_key_id TEXT NOT NULL,
+  signed_at TEXT NOT NULL,
+  overlay_state TEXT NOT NULL,
+  UNIQUE (workspace_id, manifest_id, overlay_sequence)
+);
+CREATE TABLE IF NOT EXISTS recovery_deletion_veto (
+  overlay_id TEXT NOT NULL,
+  artifact_id TEXT NOT NULL,
+  veto_state TEXT NOT NULL,
+  PRIMARY KEY (overlay_id, artifact_id),
+  FOREIGN KEY (overlay_id) REFERENCES recovery_deletion_overlay(overlay_id)
+);
 CREATE TABLE IF NOT EXISTS source_deletion_recovery_map (
   map_id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
@@ -337,6 +356,8 @@ TABLE_NAMES: tuple[str, ...] = (
     "candidate_review",
     "floor_state",
     "deletion_state",
+    "recovery_deletion_overlay",
+    "recovery_deletion_veto",
     "source_deletion_recovery_map",
     "binding_leaf",
     "binding_checkpoint",
@@ -667,6 +688,73 @@ class UnitOfWork:
             "ORDER BY updated_at DESC, deletion_id DESC LIMIT 1",
             (artifact_id,),
         ).fetchone()
+
+    def persist_recovery_deletion_overlay(
+        self,
+        *,
+        overlay_id: str,
+        workspace_id: str,
+        manifest_id: str,
+        overlay_sequence: str,
+        previous_overlay_id: str | None,
+        mapping_digest: str | None,
+        signer_key_id: str,
+        signed_at: str,
+        deleted_artifact_refs: tuple[str, ...],
+    ) -> None:
+        self._con.row_factory = sqlite3.Row
+        existing = self._con.execute(
+            "SELECT * FROM recovery_deletion_overlay WHERE overlay_id=?", (overlay_id,)
+        ).fetchone()
+        if existing is not None:
+            if (
+                existing["workspace_id"] != workspace_id
+                or existing["manifest_id"] != manifest_id
+                or existing["overlay_sequence"] != overlay_sequence
+                or existing["previous_overlay_id"] != previous_overlay_id
+                or existing["mapping_digest"] != mapping_digest
+            ):
+                raise LifecycleDbError("recovery deletion overlay id conflicts with persisted truth")
+            return
+        head = self._con.execute(
+            "SELECT overlay_id, overlay_sequence FROM recovery_deletion_overlay "
+            "WHERE workspace_id=? AND manifest_id=? "
+            "ORDER BY CAST(overlay_sequence AS INTEGER) DESC LIMIT 1",
+            (workspace_id, manifest_id),
+        ).fetchone()
+        if head is None:
+            if overlay_sequence != "0" or previous_overlay_id is not None:
+                raise LifecycleDbError("recovery deletion overlay history is discontinuous")
+        elif (
+            overlay_sequence != str(int(head["overlay_sequence"]) + 1)
+            or previous_overlay_id != head["overlay_id"]
+        ):
+            raise LifecycleDbError("recovery deletion overlay rollback or discontinuity")
+        self._con.execute(
+            "INSERT INTO recovery_deletion_overlay "
+            "(overlay_id, workspace_id, manifest_id, overlay_sequence, previous_overlay_id, "
+            " mapping_digest, signer_key_id, signed_at, overlay_state) VALUES (?,?,?,?,?,?,?,?,?)",
+            (
+                overlay_id, workspace_id, manifest_id, overlay_sequence, previous_overlay_id,
+                mapping_digest, signer_key_id, signed_at, "VERIFIED_APPLIED",
+            ),
+        )
+        self._con.executemany(
+            "INSERT INTO recovery_deletion_veto (overlay_id, artifact_id, veto_state) VALUES (?,?,?)",
+            [(overlay_id, artifact_id, "ACTIVE") for artifact_id in deleted_artifact_refs],
+        )
+
+    def recovery_deletion_vetoed(self, artifact_id: str) -> bool:
+        return self._con.execute(
+            "SELECT 1 FROM recovery_deletion_veto WHERE artifact_id=? AND veto_state='ACTIVE' LIMIT 1",
+            (artifact_id,),
+        ).fetchone() is not None
+
+    def list_recovery_deletion_vetoes(self, overlay_id: str) -> list[sqlite3.Row]:
+        self._con.row_factory = sqlite3.Row
+        return list(self._con.execute(
+            "SELECT * FROM recovery_deletion_veto WHERE overlay_id=? ORDER BY artifact_id", (overlay_id,)
+        ))
     # -- source/deletion/recovery mapping (body-free) ----------------------- #
 
     def insert_source_deletion_recovery_map(

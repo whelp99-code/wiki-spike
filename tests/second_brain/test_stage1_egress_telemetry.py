@@ -13,6 +13,11 @@ from wiki_spike.memory_core.second_brain_egress import (
     EgressAuthorizationRequest,
     LocalFirstEgressPolicy,
 )
+from wiki_spike.memory_core.second_brain_security_contracts import (
+    CapabilityReceiptV1,
+    EgressPolicyV1,
+    SourceConsentRetentionV1,
+)
 
 NOW = "2026-07-28T00:00:00Z"
 HASH = "a" * 64
@@ -79,6 +84,30 @@ def test_local_default_and_unresolved_db06_never_invoke_external_callable():
     assert not policy.authorize(request, now=NOW).allowed
     assert policy.invoke(request, lambda: called.append("external"), now=NOW) is None
     assert called == []
+def test_caller_supplied_receipts_and_body_digest_substitution_never_authorize():
+    request = EgressAuthorizationRequest(
+        data_class_ref="class:1", provider_ref="provider:1", route_ref="route:1",
+        consent_ref="consent:1", capability_ref="capability:1", policy_digest=HASH,
+        receipt_intent_ref="receipt:1",
+    )
+    policy = EgressPolicyV1(
+        "second-brain-security-foundation-v1", "policy:" + HASH, "1", "provider:1",
+        ("class:" + HASH, "route:" + HASH), HASH,
+    )
+    consent = SourceConsentRetentionV1(
+        "second-brain-security-foundation-v1", "source:" + HASH, "consent:" + HASH,
+        "1", "2030-02-01T00:00:00Z", "map:" + HASH, HASH,
+    )
+    receipt = CapabilityReceiptV1(
+        "second-brain-security-foundation-v1", "receipt:" + HASH, "request:" + HASH,
+        "capability:" + HASH, ("class:" + HASH, "route:" + HASH), NOW,
+        "2030-02-01T00:00:00Z", HASH,
+    )
+    gate = LocalFirstEgressPolicy(policy, consent, receipt)
+    assert not gate.authorize(request, now=NOW).allowed
+    assert not LocalFirstEgressPolicy(
+        policy, consent, receipt, resolution=object(), aggregate=object(), trusted_keys=object(),
+    ).authorize(request, now=NOW).allowed
 
 
 def test_telemetry_rejects_unknown_free_text_raw_ids_and_limits_before_sink():

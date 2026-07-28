@@ -193,7 +193,59 @@ def require_resolved_security_context(resolution: ContractResolutionV1 | None, a
 _Result = TypeVar("_Result")
 
 
-def invoke_with_resolved_security_context(operation: Callable[[], _Result], resolution: ContractResolutionV1 | None, aggregate: SignedSecondBrainContractEnvelopeV1 | None, trusted_keys: TrustedDecisionKeyBindingsV1 | None, **scope: Any) -> _Result:
-    """Invoke an inert port operation only after the complete Stage-0 gate passes."""
-    require_resolved_security_context(resolution, aggregate, trusted_keys, **scope)
+_AUTHORITY_MINT = object()
+
+
+class SecurityContextAuthority:
+    """Opaque, revalidating authority for Stage-1 security operations."""
+
+    __slots__ = ("__resolution", "__aggregate", "__trusted_keys")
+
+    def __init__(
+        self,
+        mint: object,
+        resolution: ContractResolutionV1,
+        aggregate: SignedSecondBrainContractEnvelopeV1,
+        trusted_keys: TrustedDecisionKeyBindingsV1,
+    ) -> None:
+        if mint is not _AUTHORITY_MINT:
+            raise InvalidContractValue("SecurityContextAuthority must be minted")
+        self.__resolution = resolution
+        self.__aggregate = aggregate
+        self.__trusted_keys = trusted_keys
+
+    def require(self, **scope: Any) -> ContractResolutionV1:
+        """Revalidate the complete Stage-0 evidence for every protected operation."""
+        return require_resolved_security_context(
+            self.__resolution, self.__aggregate, self.__trusted_keys, **scope
+        )
+
+
+def mint_security_context_authority(
+    resolution: ContractResolutionV1 | None,
+    aggregate: SignedSecondBrainContractEnvelopeV1 | None,
+    trusted_keys: TrustedDecisionKeyBindingsV1 | None,
+) -> SecurityContextAuthority:
+    """Mint opaque authority only after validating current Stage-0 evidence."""
+    require_resolved_security_context(resolution, aggregate, trusted_keys)
+    assert resolution is not None and aggregate is not None and trusted_keys is not None
+    return SecurityContextAuthority(_AUTHORITY_MINT, resolution, aggregate, trusted_keys)
+
+
+def require_security_context_authority(authority: object, **scope: Any) -> SecurityContextAuthority:
+    if not isinstance(authority, SecurityContextAuthority):
+        raise InvalidContractValue("a minted SecurityContextAuthority is required")
+    authority.require(**scope)
+    return authority
+
+
+def invoke_with_resolved_security_context(
+    operation: Callable[[], _Result],
+    resolution: ContractResolutionV1 | None,
+    aggregate: SignedSecondBrainContractEnvelopeV1 | None,
+    trusted_keys: TrustedDecisionKeyBindingsV1 | None,
+    **scope: Any,
+) -> _Result:
+    """Compatibility helper that mints and immediately uses opaque authority."""
+    mint_security_context_authority(resolution, aggregate, trusted_keys).require(**scope)
     return operation()

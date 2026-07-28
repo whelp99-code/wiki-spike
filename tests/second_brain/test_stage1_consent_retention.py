@@ -82,6 +82,29 @@ def test_disable_and_expired_retention_fail_closed():
         prior_sensitivity=Sensitivity.PRIVATE,
     )
     assert not downgrade.allowed
+def test_authorization_reparses_timestamps_epochs_enums_and_dto_shape():
+    policy = ConsentRetentionPolicy()
+    for malformed in ("2030-02-01", "2030-02-01T00:00:00", "2030-02-01T00:00:00+25:00"):
+        assert not policy.authorize_capture(
+            workspace_id="workspace-1", source_ref_id="source-1", project_ref_id="project-1",
+            consent=consent(expires_at=malformed), retention=retention(),
+            sensitivity=Sensitivity.PUBLIC, now=NOW,
+        ).allowed
+    assert not policy.authorize_capture(
+        workspace_id="workspace-1", source_ref_id="source-1", project_ref_id="project-1",
+        consent=consent(consent_epoch="02"), retention=retention(),
+        sensitivity=Sensitivity.PUBLIC, now=NOW,
+    ).allowed
+    assert not policy.authorize_capture(
+        workspace_id="workspace-1", source_ref_id="source-1", project_ref_id="project-1",
+        consent=consent(consent_state="enabled"), retention=retention(),
+        sensitivity=Sensitivity.PUBLIC, now=NOW,
+    ).allowed
+    assert not policy.authorize_serve(
+        workspace_id="workspace-1", source_ref_id="source-1", project_ref_id="project-1",
+        consent_epoch="0", retention_epoch="3", consent=consent(), retention=retention(),
+        sensitivity=Sensitivity.PUBLIC, now=NOW,
+    ).allowed
 
 
 def test_body_free_consent_and_retention_rows_round_trip(tmp_path):

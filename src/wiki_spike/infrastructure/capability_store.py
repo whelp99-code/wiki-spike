@@ -5,11 +5,11 @@ from dataclasses import dataclass
 from threading import RLock
 from typing import Any
 
-from wiki_spike.memory_core.second_brain_ports import (
-    CapabilityAuthorizationPort,
-    DelegatedReviewGrantPort,
-    DeviceEnrollmentPort,
-    TrustRootPort,
+from wiki_spike.memory_core.second_brain_ports import CapabilityStatePort
+from wiki_spike.memory_core.second_brain_capabilities import (
+    CapabilityGrantV1,
+    ConsumptionReceipt,
+    mint_consumption_receipt,
 )
 from wiki_spike.memory_core.second_brain_security_contracts import (
     CapabilityReceiptV1,
@@ -20,28 +20,8 @@ from wiki_spike.memory_core.second_brain_security_contracts import (
 )
 
 
-@dataclass(frozen=True)
-class StoredCapability:
-    capability_ref: str
-    request_digest: str
-    trust_root_ref: str
-    root_digest: str
-    device_key_ref: str
-    workspace_ref: str
-    actor_key_ref: str
-    actions: tuple[str, ...]
-    scope_digest: str
-    expires_at: str
-    nonce_digest: str
-    revocation_epoch: str
 
-
-class CapabilityStore(
-    TrustRootPort,
-    DeviceEnrollmentPort,
-    DelegatedReviewGrantPort,
-    CapabilityAuthorizationPort,
-):
+class CapabilityStore(CapabilityStatePort):
     """A locked store of only canonical wire values, keyed references, and digests."""
 
     def __init__(self) -> None:
@@ -51,7 +31,7 @@ class CapabilityStore(
         self._grants: dict[str, DelegatedReviewGrantV1] = {}
         self._requests: dict[str, CapabilityRequestV1] = {}
         self._receipts: dict[str, CapabilityReceiptV1] = {}
-        self._capabilities: dict[str, StoredCapability] = {}
+        self._capabilities: dict[str, CapabilityGrantV1] = {}
         self._consumed: set[str] = set()
         self._revocation_epochs: dict[str, int] = {}
 
@@ -108,14 +88,21 @@ class CapabilityStore(
         with self._lock:
             return str(self._revocation_epochs.get(trust_root_ref, 0))
 
-    def save_capability(self, capability: StoredCapability) -> None:
+    def save_capability(self, capability: CapabilityGrantV1) -> None:
         with self._lock:
             if capability.capability_ref in self._capabilities:
                 raise ValueError("capability already exists")
             self._capabilities[capability.capability_ref] = capability
 
-    def compare_consume(self, capability_ref: str, request_digest: str, nonce_digest: str) -> StoredCapability | None:
-        """Atomically consume the exact request and nonce binding once."""
+    def compare_consume(
+        self,
+        capability_ref: str,
+        request_digest: str,
+        nonce_digest: str,
+        credential_ref: str,
+        action: str,
+    ) -> ConsumptionReceipt | None:
+        """Atomically consume and mint an exact, store-bound credential receipt."""
         with self._lock:
             capability = self._capabilities.get(capability_ref)
             if (capability is None or capability_ref in self._consumed
@@ -123,4 +110,4 @@ class CapabilityStore(
                     or capability.nonce_digest != nonce_digest):
                 return None
             self._consumed.add(capability_ref)
-            return capability
+            return mint_consumption_receipt(self, capability, credential_ref, action)

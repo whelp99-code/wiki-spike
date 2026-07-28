@@ -5,6 +5,9 @@ Callers MUST run ``require_resolved_security_context`` before invoking any port.
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .second_brain_capabilities import CapabilityGrantV1, ConsumptionReceipt
 
 from .second_brain_security_contracts import (
     CapabilityReceiptV1,
@@ -60,5 +63,14 @@ class EgressPolicyPort(Protocol):
 
 
 @runtime_checkable
-class TelemetryAllowlistPort(Protocol):
-    def record_telemetry_allowlist(self, allowlist: TelemetryAllowlistV1) -> None: ...
+class CapabilityStatePort(
+    TrustRootPort, DeviceEnrollmentPort, DelegatedReviewGrantPort, CapabilityAuthorizationPort, Protocol
+):
+    """Atomic persistence boundary for Stage-1 capability state."""
+    def trust_root(self, trust_root_ref: str) -> TrustRootV1 | None: ...
+    def device(self, device_key_ref: str) -> DeviceEnrollmentV1 | None: ...
+    def grants_for(self, reviewer_key_ref: str) -> tuple[DelegatedReviewGrantV1, ...]: ...
+    def revoke_device(self, trust_root_ref: str, device_key_ref: str) -> str: ...
+    def revocation_epoch(self, trust_root_ref: str) -> str: ...
+    def save_capability(self, capability: "CapabilityGrantV1") -> None: ...
+    def compare_consume(self, capability_ref: str, request_digest: str, nonce_digest: str, credential_ref: str, action: str) -> "ConsumptionReceipt | None": ...

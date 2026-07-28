@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 
 import pytest
+from test_decision_contracts import TRUSTED, aggregate, expected, records, scope
+from wiki_spike.memory_core.second_brain_contracts import ResolvedScopeV1, resolve_second_brain_contract
 
 from wiki_spike.infrastructure.capability_store import CapabilityStore
 from wiki_spike.memory_core.operability import RetryBudget
@@ -18,15 +20,25 @@ from wiki_spike.memory_core.second_brain_capabilities import (
     _digest,
 )
 from wiki_spike.memory_core.second_brain_security_contracts import (
-    CapabilityRequestV1,
-    DelegatedReviewGrantV1,
-    DeviceEnrollmentV1,
-    TrustRootV1,
+    CapabilityRequestV1, DelegatedReviewGrantV1, DeviceEnrollmentV1, TrustRootV1,
+    SecurityContextAuthority, mint_security_context_authority,
 )
 
 NOW = datetime(2030, 1, 1, tzinfo=timezone.utc)
 def ref(kind: str, digit: str) -> str: return f"{kind}:{digit * 64}"
 def digest(digit: str) -> str: return digit * 64
+def authority():
+    items = records()
+    envelope = aggregate(items)
+    resolution = resolve_second_brain_contract(
+        items, ResolvedScopeV1.from_mapping(scope()), expected(), envelope, trusted_keys=TRUSTED
+    )
+    return mint_security_context_authority(resolution, envelope, TRUSTED)
+def test_authority_rejects_unresolved_and_direct_forgery():
+    with pytest.raises(Exception):
+        mint_security_context_authority(None, None, None)
+    with pytest.raises(Exception):
+        SecurityContextAuthority(object(), None, None, None)  # type: ignore[arg-type]
 
 
 def root() -> TrustRootV1:
@@ -40,13 +52,13 @@ def request() -> CapabilityRequestV1:
 
 def issued(*, actor: str | None = None, actions: tuple[str, ...] | None = None, budget: RetryBudget | None = None):
     store, trust = CapabilityStore(), root()
-    DeviceTrustService(store, now=lambda: NOW).enroll(trust.owner_key_ref, trust, device(trust.trust_root_ref))
+    DeviceTrustService(store, now=lambda: NOW).enroll(authority(), trust.owner_key_ref, trust, device(trust.trust_root_ref))
     req = request()
     actor = actor or trust.owner_key_ref
     actions = actions or req.scope_refs
     service = CapabilityService(store, retry_budget=budget, now=lambda: NOW)
     scope = _digest({"workspace_ref": ref("workspace", "7"), "actions": list(actions), "scope_refs": list(req.scope_refs)})
-    grant = service.issue(req, trust_root_ref=trust.trust_root_ref, device_key_ref=ref("device", "5"), workspace_ref=ref("workspace", "7"), actor_key_ref=actor, actions=actions, scope_digest=scope, expires_at="2030-02-01T00:00:00Z", nonce="nonce")
+    grant = service.issue(authority(), req, trust_root_ref=trust.trust_root_ref, device_key_ref=ref("device", "5"), workspace_ref=ref("workspace", "7"), actor_key_ref=actor, actions=actions, scope_digest=scope, expires_at="2030-02-01T00:00:00Z", nonce="nonce")
     return store, trust, req, service, grant
 
 
@@ -60,33 +72,33 @@ def test_altered_binding_is_denied_before_invocation(field, value):
     kwargs = dict(trust_root_ref=trust.trust_root_ref, device_key_ref=ref("device", "5"), workspace_ref=ref("workspace", "7"), actor_key_ref=trust.owner_key_ref, actions=req.scope_refs, scope_digest="0" * 64, expires_at="2030-02-01T00:00:00Z", nonce="n")
     kwargs[field] = value
     invoked = []
-    with pytest.raises(CapabilityDenied): service.issue_and_consume(req, invoke=lambda: invoked.append(True), **kwargs)
+    with pytest.raises(CapabilityDenied): service.issue_and_consume(authority(), req, invoke=lambda: invoked.append(True), **kwargs)
     assert invoked == []
 
 
 def test_unknown_device_expiry_revocation_and_nonce_replay_are_denied():
     store, trust, req, service, grant = issued()
     with pytest.raises(CapabilityDenied):
-        service.issue(req, trust_root_ref=trust.trust_root_ref, device_key_ref=ref("device", "9"), workspace_ref=ref("workspace", "7"), actor_key_ref=trust.owner_key_ref, actions=req.scope_refs, scope_digest="0" * 64, expires_at="2030-02-01T00:00:00Z", nonce="n")
-    assert service.consume(grant.capability_ref, req.request_digest, "nonce", lambda: "ok") == "ok"
-    with pytest.raises(CapabilityDenied): service.consume(grant.capability_ref, req.request_digest, "nonce", lambda: pytest.fail("replayed"))
+        service.issue(authority(), req, trust_root_ref=trust.trust_root_ref, device_key_ref=ref("device", "9"), workspace_ref=ref("workspace", "7"), actor_key_ref=trust.owner_key_ref, actions=req.scope_refs, scope_digest="0" * 64, expires_at="2030-02-01T00:00:00Z", nonce="n")
+    assert service.consume(authority(), grant.capability_ref, req.request_digest, "nonce", lambda: "ok") == "ok"
+    with pytest.raises(CapabilityDenied): service.consume(authority(), grant.capability_ref, req.request_digest, "nonce", lambda: pytest.fail("replayed"))
     store2, trust2, req2, service2, grant2 = issued()
-    DeviceTrustService(store2, now=lambda: NOW).revoke(trust2.owner_key_ref, trust2.trust_root_ref, ref("device", "5"))
+    DeviceTrustService(store2, now=lambda: NOW).revoke(authority(), trust2.owner_key_ref, trust2.trust_root_ref, ref("device", "5"))
     with pytest.raises(CapabilityDenied):
-        service2.consume(grant2.capability_ref, req2.request_digest, "nonce", lambda: pytest.fail("revoked"))
+        service2.consume(authority(), grant2.capability_ref, req2.request_digest, "nonce", lambda: pytest.fail("revoked"))
 
 
 def test_delegate_cannot_transfer_redelegate_or_escalate_actions():
     store, trust, req, service, _ = issued()
     reviewer = ref("key", "8")
     grant = DelegatedReviewGrantV1.from_mapping({"security_version": "second-brain-security-foundation-v1", "grant_ref": ref("grant", "9"), "grant_revision": "1", "grantor_key_ref": trust.owner_key_ref, "reviewer_key_ref": reviewer, "scope_refs": list(req.scope_refs), "expires_at": "2030-02-01T00:00:00Z", "grant_digest": digest("a")})
-    DelegationService(store, now=lambda: NOW).delegate(trust.owner_key_ref, trust.trust_root_ref, grant)
-    with pytest.raises(CapabilityDenied): DelegationService(store, now=lambda: NOW).delegate(reviewer, trust.trust_root_ref, grant)
+    DelegationService(store, now=lambda: NOW).delegate(authority(), trust.owner_key_ref, trust.trust_root_ref, grant)
+    with pytest.raises(CapabilityDenied): DelegationService(store, now=lambda: NOW).delegate(authority(), reviewer, trust.trust_root_ref, grant)
     with pytest.raises(CapabilityDenied):
         escalated = (ref("scope", "0"), *req.scope_refs)
         reviewer_request = replace(req, subject_key_ref=reviewer, capability_ref=ref("capability", "f"), request_digest=digest("f"))
         scope = _digest({"workspace_ref": ref("workspace", "7"), "actions": list(escalated), "scope_refs": list(reviewer_request.scope_refs)})
-        service.issue(reviewer_request, trust_root_ref=trust.trust_root_ref, device_key_ref=ref("device", "5"), workspace_ref=ref("workspace", "7"), actor_key_ref=reviewer, actions=escalated, scope_digest=scope, expires_at="2030-02-01T00:00:00Z", nonce="n")
+        service.issue(authority(), reviewer_request, trust_root_ref=trust.trust_root_ref, device_key_ref=ref("device", "5"), workspace_ref=ref("workspace", "7"), actor_key_ref=reviewer, actions=escalated, scope_digest=scope, expires_at="2030-02-01T00:00:00Z", nonce="n")
 
 
 def test_quota_and_concurrent_compare_consume_allow_at_most_one_invocation():
@@ -95,7 +107,7 @@ def test_quota_and_concurrent_compare_consume_allow_at_most_one_invocation():
     calls: list[int] = []
     def consume() -> bool:
         try:
-            service.consume(grant.capability_ref, req.request_digest, "nonce", lambda: calls.append(1))
+            service.consume(authority(), grant.capability_ref, req.request_digest, "nonce", lambda: calls.append(1))
             return True
         except CapabilityDenied:
             return False
