@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/resolved-scope-v1.schema.json",
+  "title": "Resolved Scope V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["scope_version", "enabled_source_profiles", "disabled_source_profiles", "enabled_migration_sources", "disabled_migration_sources", "feature_flags", "egress_destinations", "disabled_external_model_routes", "disabled_export_destinations", "capability_manifest_digest", "source_manifest_digest", "mandatory_release_constraints"],
+  "$defs": {
+    "names": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "disabled": {"type": "array", "uniqueItems": true, "items": {"type": "object", "additionalProperties": false, "required": ["name", "reason"], "properties": {"name": {"type": "string", "minLength": 1}, "reason": {"type": "string", "minLength": 1}}}}
+  },
+  "properties": {
+    "scope_version": {"const": "second-brain-resolved-scope-v1"},
+    "enabled_source_profiles": {"$ref": "#/$defs/names"},
+    "disabled_source_profiles": {"$ref": "#/$defs/disabled"},
+    "enabled_migration_sources": {"$ref": "#/$defs/names"},
+    "disabled_migration_sources": {"$ref": "#/$defs/disabled"},
+    "feature_flags": {"$ref": "#/$defs/names"},
+    "egress_destinations": {"$ref": "#/$defs/names"},
+    "disabled_external_model_routes": {"$ref": "#/$defs/disabled"},
+    "disabled_export_destinations": {"$ref": "#/$defs/disabled"},
+    "capability_manifest_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "source_manifest_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "mandatory_release_constraints": {"$ref": "#/$defs/names"}
+  }
+}
