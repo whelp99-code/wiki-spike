@@ -58,6 +58,67 @@
       "type": "array",
       "uniqueItems": true
     },
+    "connectorFixture": {
+      "additionalProperties": false,
+      "properties": {
+        "capture_ref": {
+          "pattern": "^capture:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "ciphertext_b64": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "encrypted_content_ref": {
+          "pattern": "^encrypted-content:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "fixture_version": {
+          "const": "second-brain-connector-fixture-v1"
+        },
+        "native_mapping": {
+          "type": "object"
+        },
+        "scan_epoch": {
+          "$ref": "#/$defs/epoch"
+        },
+        "scope_epoch": {
+          "$ref": "#/$defs/epoch"
+        },
+        "scope_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "source_domain": {
+          "enum": [
+            "codex",
+            "claude-memory-bank",
+            "git",
+            "markdown"
+          ]
+        },
+        "source_profile": {
+          "enum": [
+            "Codex",
+            "Claude/Memory Bank",
+            "Git",
+            "Markdown"
+          ]
+        }
+      },
+      "required": [
+        "fixture_version",
+        "source_profile",
+        "source_domain",
+        "scope_ref",
+        "scope_epoch",
+        "scan_epoch",
+        "capture_ref",
+        "encrypted_content_ref",
+        "ciphertext_b64",
+        "native_mapping"
+      ],
+      "type": "object"
+    },
     "checkpoint": {
       "additionalProperties": false,
       "properties": {
@@ -801,6 +862,9 @@
   "$id": "source-capture-v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "oneOf": [
+    {
+      "$ref": "#/$defs/connectorFixture"
+    },
     {
       "$ref": "#/$defs/sourceScope"
     },

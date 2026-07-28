@@ -57,11 +57,15 @@ def test_native_mapping_seal_is_idempotent_and_rejects_changed_evidence_before_c
     capture_ref = ref("capture", "one")
     first = sealer.seal_native_mapping(scope, capture_ref, b'{"native":"one"}')
     second = sealer.seal_native_mapping(scope, capture_ref, b'{"native":"one"}')
+    changed_scope_epoch = SourceScopeRefV1.from_mapping({**scope.to_mapping(), "scope_epoch": "2"})
+    resealed = sealer.seal_native_mapping(changed_scope_epoch, capture_ref, b'{"native":"one"}')
     assert second == first
-    assert len(tuple(cas.objects.iterdir())) == 1
+    assert resealed != first
+    assert sealer.seal_native_mapping(changed_scope_epoch, capture_ref, b'{"native":"one"}') == resealed
+    assert len(tuple(cas.objects.iterdir())) == 2
     with pytest.raises(FixtureCaptureClientError, match="different sealed evidence"):
         sealer.seal_native_mapping(scope, capture_ref, b'{"native":"changed"}')
-    assert len(tuple(cas.objects.iterdir())) == 1
+    assert len(tuple(cas.objects.iterdir())) == 2
 
 
 def test_architecture_checker_has_one_rule_per_stage2_boundary(tmp_path: Path):

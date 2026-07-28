@@ -15,12 +15,13 @@ Contract PRAGMAs (mirrored, not imported, from ``wiki_spike.controlplane``):
 ``busy_timeout=5000``, and every write transaction uses ``BEGIN IMMEDIATE``.
 
 No plaintext columns exist anywhere in this schema. Every column is one of
-exactly six kinds, enforced by a name-suffix convention so the shape is
+exactly seven kinds, enforced by a name-suffix convention so the shape is
 mechanically auditable (see ``COLUMN_KIND_ALLOWLIST`` and
 :func:`assert_no_plaintext_columns`):
 
 - **id**       — ``*_id`` / ``workspace_id`` / ``artifact_id`` / ... — opaque identifiers.
 - **digest**   — ``*_digest`` / ``*_sha256`` — content digests (never bodies).
+- **ref**      — ``*_ref`` — closed opaque references.
 - **handle**   — ``*_handle`` — opaque external-provider handles.
 - **state**    — ``*_state`` / ``*_kind`` / ``*_role`` / ``ordinal`` — closed
   enum/selector/ordinal values, never free text.
@@ -86,6 +87,7 @@ COLUMN_KIND_ALLOWLIST: tuple[str, ...] = (
     "_id",
     "_digest",
     "_sha256",
+    "_ref",
     "_handle",
     "_state",
     "_kind",
@@ -1166,6 +1168,7 @@ class LifecycleDatabase:
         if self._fixture_capture_capability:
             self.con.executescript(CAPTURE_SCHEMA)
         self.assert_contract_pragmas()
+        assert_no_plaintext_columns(self.con)
 
     def assert_contract_pragmas(self) -> None:
         """Assert the four contract PRAGMAs are active on the open connection."""
@@ -1437,9 +1440,16 @@ def table_columns(con: sqlite3.Connection, table: str) -> list[str]:
 
 
 def assert_no_plaintext_columns(con: sqlite3.Connection) -> None:
-    """Assert every column of every table in :data:`TABLE_NAMES` is one of
-    the allowlisted id/digest/handle/state/wrapped/ts column kinds."""
+    """Assert every installed schema table, including fixture capture tables, has
+    only allowlisted opaque/id/digest/handle/state/wrapped/timestamp columns."""
+    installed_tables = {
+        row[0] for row in con.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+        )
+    }
     for table in TABLE_NAMES:
+        if table not in installed_tables:
+            continue
         for column in table_columns(con, table):
             if not is_allowed_column_name(column):
                 raise LifecycleDbError(

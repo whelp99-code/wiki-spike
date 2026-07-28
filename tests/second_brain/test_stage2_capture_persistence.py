@@ -7,7 +7,14 @@ from pathlib import Path
 import pytest
 
 from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore
-from wiki_spike.infrastructure.lifecycle_db import CapturePersistenceError, EncryptedCapturePersistence, LifecycleDatabase, fixture_capture_database
+from wiki_spike.infrastructure.lifecycle_db import (
+    CapturePersistenceError,
+    EncryptedCapturePersistence,
+    LifecycleDatabase,
+    assert_no_plaintext_columns,
+    fixture_capture_database,
+    table_columns,
+)
 from wiki_spike.memory_core.second_brain_capture_contracts import CapturePersistenceAggregateV1, canonical_identity_body_digest
 
 DEK = bytes(range(32))
@@ -49,6 +56,23 @@ def store(tmp_path: Path) -> tuple[LifecycleDatabase, EncryptedContentStore, Enc
     database.initialize()
     cas = EncryptedContentStore(tmp_path / "cas")
     return database, cas, EncryptedCapturePersistence(database, cas, DEK)
+def test_fixture_capture_schema_has_only_allowlisted_ref_columns(tmp_path: Path):
+    database = fixture_capture_database(tmp_path / "fixture.sqlite")
+    database.initialize()
+    assert_no_plaintext_columns(database.con)
+    fixture_ref_columns = {
+        (table, column)
+        for table in TABLES
+        for column in table_columns(database.con, table)
+        if column.endswith("_ref")
+    }
+    assert fixture_ref_columns == {
+        ("capture_receipt", "encrypted_content_ref"),
+        ("capture_receipt", "encrypted_native_mapping_ref"),
+    }
+    database.close()
+
+
 
 
 def test_four_source_capture_identities_are_atomic_encrypted_and_restart_idempotent(tmp_path: Path):
@@ -110,6 +134,28 @@ def test_identical_retry_after_sqlite_rollback_publishes_one_complete_aggregate(
     assert database.con.execute("SELECT COUNT(*) FROM capture_scope").fetchone()[0] == 1
     assert database.con.execute("SELECT COUNT(*) FROM capture_receipt").fetchone()[0] == 1
     database.close()
+def test_scan_epoch_two_remains_valid_under_unchanged_scope_epoch_one(tmp_path: Path):
+    database, _, persistence = store(tmp_path)
+    first = aggregate("Git", "git", epoch="1")
+    persistence.persist_capture_aggregate(first)
+    second = aggregate(
+        "Git",
+        "git",
+        epoch="2",
+        previous=first.advance.checkpoint.checkpoint_ref,
+    )
+
+    persistence.persist_capture_aggregate(second)
+
+    assert second.scope.scope_epoch == "1"
+    assert second.manifest.scan_epoch == "2"
+    assert database.con.execute(
+        "SELECT checkpoint_sequence FROM capture_checkpoint WHERE scope_id=?",
+        (second.scope.scope_ref,),
+    ).fetchone()[0] == "2"
+    database.close()
+
+
 
 
 
@@ -142,6 +188,36 @@ def test_full_cohort_requires_exact_durable_reconciliation_checkpoint_and_epoch(
     persistence.persist_capture_aggregate(final)
     assert database.con.execute("SELECT COUNT(*) FROM capture_cohort").fetchone()[0] == 4
     database.close()
+@pytest.mark.parametrize("field", ("manifest_ref", "registration_ref"))
+def test_preexisting_cohort_roster_rejects_mismatched_durable_manifest_or_registration(
+    tmp_path: Path, field: str,
+):
+    database, _, persistence = store(tmp_path)
+    aggregates = [aggregate(profile, domain) for profile, domain in PROFILES]
+    for value in aggregates[1:]:
+        persistence.persist_capture_aggregate(value)
+    git_epoch_two = aggregate(
+        "Git",
+        "git",
+        epoch="2",
+        previous=aggregates[2].advance.checkpoint.checkpoint_ref,
+    )
+    persistence.persist_capture_aggregate(git_epoch_two)
+    entries = [value.cohort.source_roster[0].to_mapping() for value in aggregates]
+    replacement = (
+        git_epoch_two.manifest.manifest_ref
+        if field == "manifest_ref"
+        else git_epoch_two.registration.registration_ref
+    )
+    entries[2][field] = replacement
+    entries[2]["ownership_binding"][field] = entries[2][field]
+    final = aggregate("Codex", "codex", cohort_entries=entries, cohort_label=f"bad-{field}")
+
+    with pytest.raises(CapturePersistenceError, match="exact durable registration, manifest"):
+        persistence.persist_capture_aggregate(final)
+
+    assert database.con.execute("SELECT COUNT(*) FROM capture_scope").fetchone()[0] == 3
+    database.close()
 
 
 def test_sqlite_stores_only_bound_encrypted_refs_and_no_raw_payload(tmp_path: Path):
@@ -168,6 +244,7 @@ def test_sqlite_stores_only_bound_encrypted_refs_and_no_raw_payload(tmp_path: Pa
 def test_production_database_never_installs_capture_tables_or_accepts_mode_mutation(tmp_path: Path):
     database = LifecycleDatabase(tmp_path / "production.sqlite", fixture_capture_mode=True)
     database.initialize()
+    assert_no_plaintext_columns(database.con)
     assert not {row[0] for row in database.con.execute("SELECT name FROM sqlite_master WHERE type='table'")}.intersection(TABLES)
     with pytest.raises(AttributeError):
         database.fixture_capture_mode = True

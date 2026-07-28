@@ -55,8 +55,9 @@ class NativeMappingSealer:
         )
 
 
-def fixture(name: str) -> tuple[str, bytes, dict[str, object]]:
+def fixture(name: str, *, scope_epoch: str = "1") -> tuple[str, bytes, dict[str, object]]:
     value = json.loads((FIXTURES / name).read_text())
+    value["scope_epoch"] = scope_epoch
     value["encrypted_content_ref"] = encrypted_content_ref(value["capture_ref"])
     return REF("fixture-request"), json.dumps(value, sort_keys=True).encode(), value
 
@@ -203,4 +204,14 @@ def test_connector_rejects_swapped_ciphertext_native_mapping_identity(
     )
 
     with pytest.raises(ValueError, match="exact capture-bound"):
+        connector.read_fixture_capture_items(scope(profile, domain), "1")
+
+@pytest.mark.parametrize(("fixture_name", "connector_type", "profile", "domain"), CONNECTORS)
+def test_connector_rejects_changed_scope_epoch_with_every_other_fixture_field_unchanged(
+    fixture_name, connector_type, profile, domain,
+):
+    request_ref, payload, _ = fixture(fixture_name, scope_epoch="2")
+    connector = connector_type(FixtureClient({request_ref: payload}), NativeMappingSealer(), [request_ref])
+
+    with pytest.raises(ValueError, match="scope and epochs"):
         connector.read_fixture_capture_items(scope(profile, domain), "1")

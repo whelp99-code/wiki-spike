@@ -123,7 +123,7 @@ class SwappingSealer:
 
 
 def fixture(capture_ref=REF("capture")):
-    return json.dumps({"fixture_version": "second-brain-connector-fixture-v1", "source_profile": "Codex", "source_domain": "codex", "scope_ref": REF("codex-scope"), "scan_epoch": "1", "capture_ref": capture_ref, "encrypted_content_ref": REF("encrypted-content"), "ciphertext_b64": base64.b64encode(b"ciphertext").decode(), "native_mapping": {"fixture_only": "opaque"}}).encode()
+    return json.dumps({"fixture_version": "second-brain-connector-fixture-v1", "source_profile": "Codex", "source_domain": "codex", "scope_ref": REF("codex-scope"), "scope_epoch": "1", "scan_epoch": "1", "capture_ref": capture_ref, "encrypted_content_ref": REF("encrypted-content"), "ciphertext_b64": base64.b64encode(b"ciphertext").decode(), "native_mapping": {"fixture_only": "opaque"}}).encode()
 
 
 def test_connector_returns_complete_identity_bound_transient_items():
@@ -141,6 +141,14 @@ def test_connector_rejects_a_swapped_sealed_native_mapping_identity():
     source_scope = __import__("wiki_spike.memory_core.second_brain_capture_contracts", fromlist=["SourceScopeRefV1"]).SourceScopeRefV1.from_mapping(scope())
     with pytest.raises(FixtureConnectorError):
         connector.read_fixture_capture_items(source_scope, "1")
+def test_connector_rejects_changed_scope_epoch_with_identical_scope_identity():
+    connector = CodexFixtureConnector(FixtureClient({REF("request"): fixture()}), ExactSealer(), [REF("request")])
+    changed_scope_epoch = {**scope(), "scope_epoch": "2"}
+    source_scope = __import__("wiki_spike.memory_core.second_brain_capture_contracts", fromlist=["SourceScopeRefV1"]).SourceScopeRefV1.from_mapping(changed_scope_epoch)
+    with pytest.raises(FixtureConnectorError):
+        connector.read_fixture_capture_items(source_scope, "1")
+
+
 
 
 def test_atomic_persistence_port_exposes_only_one_complete_aggregate_operation():
@@ -153,5 +161,12 @@ def test_aggregate_requires_complete_matching_receipt_manifest_scope():
     bound("aggregate-v1", value, "aggregate_digest")
     CapturePersistenceAggregateV1.from_mapping(value)
     value["manifest"]["receipt_refs"] = [REF("other-capture")]
+    with pytest.raises(InvalidContractValue):
+        CapturePersistenceAggregateV1.from_mapping(value)
+def test_aggregate_rejects_migration_epoch_that_differs_only_from_manifest_scan_epoch():
+    value = {"aggregate_version": "second-brain-capture-persistence-aggregate-v1", "scope": scope(), "receipts": [receipt()], "manifest": manifest(), "registration": {"registration_version": "second-brain-migration-registration-v1", "migration_source": "unified-db", "migration_ref": REF("unified-db-migration"), "migration_scope_ref": REF("unified-db-migration-scope"), "scope": scope(), "migration_epoch": "1", "registration_ref": REF("migration-registration"), "ciphertext_digest": DIGEST}, "advance": advance(), "cohort": cohort(), "aggregate_digest": ""}
+    bound("aggregate-v1", value, "aggregate_digest")
+    value["registration"]["migration_epoch"] = "2"
+    bound("aggregate-v1", value, "aggregate_digest")
     with pytest.raises(InvalidContractValue):
         CapturePersistenceAggregateV1.from_mapping(value)

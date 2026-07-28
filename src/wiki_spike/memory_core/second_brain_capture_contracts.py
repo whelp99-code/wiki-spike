@@ -293,6 +293,7 @@ class CapturePersistenceAggregateV1:
             or reconciliation.scope != scope
             or checkpoint.scope != scope
             or registration.scope != scope
+            or registration.migration_epoch != manifest.scan_epoch
             or reconciliation.scan_epoch != manifest.scan_epoch
             or checkpoint.scan_epoch != manifest.scan_epoch
             or set(manifest.receipt_refs) != {receipt.capture_ref for receipt in receipts}
@@ -300,7 +301,24 @@ class CapturePersistenceAggregateV1:
             or reconciliation.accounted_receipt_count != str(len(receipts))
             or dict(reconciliation.disposition_counts) != {disposition: str(receipt_counts[disposition]) for disposition in CAPTURE_DISPOSITIONS}
         ):
-            raise InvalidContractValue("aggregate evidence must bind one exact scope, scan epoch, receipt manifest, and reconciliation")
+            raise InvalidContractValue("aggregate evidence must bind one exact scope, scan epoch, receipt manifest, registration, and reconciliation")
+        matching_roster_entries = tuple(
+            entry for entry in cohort.source_roster
+            if entry.source_ref == scope.source_ref and entry.registration_ref == registration.registration_ref
+        )
+        if len(matching_roster_entries) != 1:
+            raise InvalidContractValue("cohort must contain one exact roster entry for the aggregate registration")
+        roster_entry = matching_roster_entries[0]
+        if (
+            roster_entry.scope_ref != scope.scope_ref
+            or roster_entry.manifest_ref != manifest.manifest_ref
+            or roster_entry.reconciliation_ref != reconciliation.reconciliation_ref
+            or roster_entry.checkpoint_ref != checkpoint.checkpoint_ref
+            or roster_entry.reconciliation_epoch != manifest.scan_epoch
+            or roster_entry.checkpoint_epoch != manifest.scan_epoch
+            or registration.migration_epoch != roster_entry.reconciliation_epoch
+        ):
+            raise InvalidContractValue("cohort roster must bind manifest and registration sequences to its reconciliation checkpoint epoch")
         body = {key: value for key, value in v.items() if key != "aggregate_digest"}
         return cls(CAPTURE_PERSISTENCE_AGGREGATE_VERSION, scope, receipts, manifest, registration, advance, cohort, _bound_digest(v["aggregate_digest"], "aggregate_digest", "aggregate-v1", body))
     def to_mapping(self) -> dict[str, Any]:

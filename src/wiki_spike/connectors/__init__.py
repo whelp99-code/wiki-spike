@@ -27,7 +27,7 @@ from wiki_spike.memory_core.second_brain_capture_ports import (
 
 _FIXTURE_VERSION: Final = "second-brain-connector-fixture-v1"
 _FIELDS: Final = frozenset({
-    "fixture_version", "source_profile", "source_domain", "scope_ref",
+    "fixture_version", "source_profile", "source_domain", "scope_ref", "scope_epoch",
     "scan_epoch", "capture_ref", "encrypted_content_ref", "ciphertext_b64",
     "native_mapping",
 })
@@ -102,8 +102,9 @@ class FixtureConnectorReader(ConnectorSourceReaderPort):
                 or value["source_profile"] != self.source_profile
                 or value["source_domain"] != self.source_domain
                 or value["scope_ref"] != scope.scope_ref
+                or value["scope_epoch"] != scope.scope_epoch
                 or value["scan_epoch"] != scan_epoch):
-            raise FixtureConnectorError("fixture payload does not bind the requested source scope and epoch")
+            raise FixtureConnectorError("fixture payload does not bind the requested source scope and epochs")
         capture_ref = value["capture_ref"]
         if not isinstance(capture_ref, str) or not capture_ref.startswith("capture:") or _REF.fullmatch(capture_ref) is None:
             raise FixtureConnectorError("fixture capture reference must be a capture opaque reference")
