@@ -1,32 +1,27 @@
-"""Immutable workspace-format marker for the Encrypted Single-Memory Lifecycle.
+"""Workspace-format marker parsing and conservative root classification.
 
-This module is pure inspect/assert: it defines the marker shape (selected
-storage profile A|B, schema version, encrypted-lifecycle enablement) and a
-canonical (de)serializer built on the frozen Core canonicalizer. It
-deliberately does NOT create directories, keys, a database, or CAS — atomic
-workspace initialization is owned by a later Gate 2 slice. Calling any
-function here must never have a filesystem side effect.
+A format marker records an intended encrypted-lifecycle format; it is not proof
+that the legacy workspace implementation is encrypted.  This module therefore
+never admits a marked root to the legacy ``Workspace`` or creates a V2 marker.
 """
 from __future__ import annotations
 
+import os
+import stat
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any, Mapping
 
 from wiki_spike.memory_core.contracts import canonical_bytes
 
-WORKSPACE_FORMAT_SCHEMA = "wiki-workspace-format-marker-v1"
+WORKSPACE_FORMAT_SCHEMA = "wiki-spike-workspace-format-v1"
 WORKSPACE_FORMAT_SCHEMA_VERSION = "1"
+WORKSPACE_FORMAT_FILENAME = "workspace-format.json"
 
 
 class ProfileSelection(str, Enum):
-    """Pre-initialization, no-runtime-fallback storage profile choice.
-
-    A: SQLCipher-profile (whole-database encryption).
-    B: field-AEAD-profile (per-field envelope encryption).
-    Exactly one profile is selected once, permanently, at workspace
-    creation; there is no runtime fallback between A and B.
-    """
+    """Storage profile selected by an encrypted-lifecycle implementation."""
 
     SQLCIPHER = "A"
     FIELD_AEAD = "B"
@@ -34,6 +29,19 @@ class ProfileSelection(str, Enum):
 
 class WorkspaceFormatError(ValueError):
     """Raised when a workspace-format marker mapping is malformed."""
+
+
+class WorkspaceRootError(WorkspaceFormatError):
+    """Raised when a root is unsafe or unsupported for the requested runtime."""
+
+
+class WorkspaceRootState(str, Enum):
+    ABSENT = "absent"
+    EMPTY = "empty"
+    MARKED_UNSUPPORTED = "marked-unsupported"
+    LEGACY = "legacy"
+    UNKNOWN = "unknown"
+    MIXED = "mixed"
 
 
 @dataclass(frozen=True)
@@ -74,20 +82,24 @@ class WorkspaceFormatMarker:
 
 
 _REQUIRED_FIELDS = {
-    "schema",
-    "schema_version",
-    "workspace_id",
-    "profile_selection",
-    "encrypted_lifecycle_enabled",
+    "schema", "schema_version", "workspace_id", "profile_selection", "encrypted_lifecycle_enabled"
 }
+_LEGACY_CHILD_TYPES = {
+    "repo.git": stat.S_IFDIR,
+    "signing.key": stat.S_IFREG,
+    "control.sqlite": stat.S_IFREG,
+    "control.sqlite-shm": stat.S_IFREG,
+    "control.sqlite-wal": stat.S_IFREG,
+    "cas": stat.S_IFDIR,
+    "remote.git": stat.S_IFDIR,
+}
+_LEGACY_ENTRIES = frozenset(_LEGACY_CHILD_TYPES)
 
 
 def parse_marker(data: Mapping[str, Any]) -> WorkspaceFormatMarker:
-    """Strict, side-effect-free parse of a workspace-format marker mapping.
-
-    Raises :class:`WorkspaceFormatError` on any unknown/missing field,
-    unsupported schema/version, or invalid profile_selection.
-    """
+    """Strict, side-effect-free parsing of a workspace-format marker."""
+    if not isinstance(data, Mapping):
+        raise WorkspaceFormatError("workspace-format marker must be an object")
     unknown = set(data) - _REQUIRED_FIELDS
     if unknown:
         raise WorkspaceFormatError(f"unknown workspace-format marker fields: {sorted(unknown)}")
@@ -103,26 +115,156 @@ def parse_marker(data: Mapping[str, Any]) -> WorkspaceFormatMarker:
         raise WorkspaceFormatError("workspace_id must be a non-empty string")
     try:
         profile_selection = ProfileSelection(data["profile_selection"])
-    except ValueError as exc:
+    except (TypeError, ValueError) as exc:
         raise WorkspaceFormatError(f"unsupported profile_selection: {data['profile_selection']!r}") from exc
     encrypted_lifecycle_enabled = data["encrypted_lifecycle_enabled"]
     if not isinstance(encrypted_lifecycle_enabled, bool):
         raise WorkspaceFormatError("encrypted_lifecycle_enabled must be a boolean")
     return WorkspaceFormatMarker(
-        schema=data["schema"],
-        schema_version=data["schema_version"],
-        workspace_id=workspace_id,
-        profile_selection=profile_selection,
-        encrypted_lifecycle_enabled=encrypted_lifecycle_enabled,
+        schema=data["schema"], schema_version=data["schema_version"], workspace_id=workspace_id,
+        profile_selection=profile_selection, encrypted_lifecycle_enabled=encrypted_lifecycle_enabled,
     )
 
 
 def assert_marker_matches(marker: WorkspaceFormatMarker, *, expected_profile: ProfileSelection) -> None:
-    """Pure assertion: the marker's recorded profile must equal
-    ``expected_profile`` exactly. No runtime profile fallback is permitted:
-    a mismatch is always a hard error, never a silent coercion."""
+    """Require an encrypted implementation to select the recorded profile exactly."""
     if marker.profile_selection is not expected_profile:
         raise WorkspaceFormatError(
             f"workspace-format profile mismatch: marker records {marker.profile_selection.value!r}, "
             f"caller expected {expected_profile.value!r}; no runtime profile fallback is permitted"
         )
+    if not marker.encrypted_lifecycle_enabled:
+        raise WorkspaceFormatError("workspace-format encrypted lifecycle is disabled")
+
+
+def classify_workspace_root(root: str | Path) -> WorkspaceRootState:
+    """Classify a root without following links or changing the filesystem."""
+    path = Path(root)
+    if _has_symlink_ancestor(path):
+        return WorkspaceRootState.UNKNOWN
+    try:
+        root_stat = os.lstat(path)
+    except FileNotFoundError:
+        return WorkspaceRootState.ABSENT
+    except OSError:
+        return WorkspaceRootState.UNKNOWN
+    if stat.S_ISLNK(root_stat.st_mode) or not stat.S_ISDIR(root_stat.st_mode):
+        return WorkspaceRootState.UNKNOWN
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        directory_fd = os.open(path, flags)
+    except OSError:
+        return WorkspaceRootState.UNKNOWN
+    try:
+        names = set(os.listdir(directory_fd))
+        if not names:
+            return WorkspaceRootState.EMPTY
+        has_marker = WORKSPACE_FORMAT_FILENAME in names
+        legacy_names = names & _LEGACY_ENTRIES
+        if has_marker:
+            # A marker cannot establish encryption/signature authority for this runtime.
+            return WorkspaceRootState.MIXED if legacy_names or len(names) > 1 else WorkspaceRootState.MARKED_UNSUPPORTED
+        if legacy_names and len(names) != len(legacy_names):
+            return WorkspaceRootState.MIXED
+        return WorkspaceRootState.LEGACY if legacy_names else WorkspaceRootState.UNKNOWN
+    except OSError:
+        return WorkspaceRootState.UNKNOWN
+    finally:
+        os.close(directory_fd)
+
+
+def _has_symlink_ancestor(path: Path) -> bool:
+    absolute = Path(os.path.abspath(path))
+    current = Path(absolute.anchor)
+    for component in absolute.parts[1:]:
+        current /= component
+        try:
+            mode = os.lstat(current).st_mode
+        except FileNotFoundError:
+            return False
+        except OSError:
+            return True
+        if stat.S_ISLNK(mode):
+            return True
+    return False
+
+
+@dataclass(frozen=True)
+class LegacyWorkspaceRoot:
+    """Admission result for the plaintext legacy runtime.
+
+    This is deliberately not descriptor-pinned: legacy storage APIs consume
+    paths.  ``assert_current`` detects replacement before each path is handed
+    to such an API, but cannot make a path-based backend race-free.
+    """
+
+    path: Path
+    device: int
+    inode: int
+
+    @classmethod
+    def open(cls, root: str | Path) -> "LegacyWorkspaceRoot":
+        path = Path(root)
+        state = classify_workspace_root(path)
+        if state is WorkspaceRootState.ABSENT:
+            try:
+                path.mkdir(parents=True, exist_ok=False)
+            except FileExistsError:
+                pass
+            state = classify_workspace_root(path)
+        if state not in (WorkspaceRootState.EMPTY, WorkspaceRootState.LEGACY):
+            raise WorkspaceRootError(f"workspace root denied: {state.value}")
+        root_stat = os.lstat(path)
+        if not stat.S_ISDIR(root_stat.st_mode) or stat.S_ISLNK(root_stat.st_mode):
+            raise WorkspaceRootError("workspace root denied: replaced")
+        _assert_existing_legacy_children(path)
+        return cls(path, root_stat.st_dev, root_stat.st_ino)
+
+    def assert_current(self) -> None:
+        try:
+            root_stat = os.lstat(self.path)
+        except OSError as exc:
+            raise WorkspaceRootError("workspace root denied: replaced") from exc
+        if (
+            not stat.S_ISDIR(root_stat.st_mode)
+            or stat.S_ISLNK(root_stat.st_mode)
+            or (root_stat.st_dev, root_stat.st_ino) != (self.device, self.inode)
+            or classify_workspace_root(self.path) not in (WorkspaceRootState.EMPTY, WorkspaceRootState.LEGACY)
+        ):
+            raise WorkspaceRootError("workspace root denied: replaced")
+        _assert_existing_legacy_children(self.path)
+
+    def child(self, name: str) -> Path:
+        expected_type = _LEGACY_CHILD_TYPES.get(name)
+        if expected_type is None:
+            raise WorkspaceRootError(f"workspace child denied: {name}")
+        self.assert_current()
+        _assert_legacy_child_type(self.path, name, expected_type)
+        return self.path / name
+
+
+def _assert_existing_legacy_children(root: Path) -> None:
+    for name, expected_type in _LEGACY_CHILD_TYPES.items():
+        _assert_legacy_child_type(root, name, expected_type)
+
+
+def _assert_legacy_child_type(root: Path, name: str, expected_type: int) -> None:
+    """Allow an absent child, but deny links and every unexpected existing type."""
+    try:
+        child_stat = os.lstat(root / name)
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise WorkspaceRootError(f"workspace child denied: {name}") from exc
+    if stat.S_ISLNK(child_stat.st_mode) or stat.S_IFMT(child_stat.st_mode) != expected_type:
+        raise WorkspaceRootError(f"workspace child denied: {name}")
+
+
+def prepare_workspace_root(root: str | Path, **_unsupported: object) -> WorkspaceRootState:
+    """Fail closed: this repository has no encrypted V2 initializer.
+
+    Callers requiring V2 must use an implementation that establishes trusted
+    keys, authoritative scope inventory, and aggregate signatures.
+    """
+    state = classify_workspace_root(root)
+    raise WorkspaceRootError(f"encrypted V2 workspace unavailable: {state.value}")
