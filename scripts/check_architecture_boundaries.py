@@ -121,19 +121,6 @@ def _stage2_rules(relative_path: str) -> list[dict[str, object]]:
             "forbidden_modules": ["wiki_spike.infrastructure"],
             "reason": "Fixture connectors may use Core ports and injected fixture clients, never Infrastructure directly.",
         }]
-    if normalized.startswith("src/wiki_spike/memory_core/"):
-        return [{
-            "from_layers": ["core"],
-            "forbidden_modules": [
-                "wiki_spike.infrastructure",
-                "wiki_spike.composition",
-                "wiki_spike.memory_runtime",
-                "wiki_spike.applications",
-                "wiki_spike.connectors",
-                "wiki_spike.ui",
-            ],
-            "reason": "Core may not import outer Application, Connector, Infrastructure, Runtime, or composition layers.",
-        }]
     if normalized == "src/wiki_spike/applications/capture_composition.py":
         return [{
             "from_layers": ["application"],

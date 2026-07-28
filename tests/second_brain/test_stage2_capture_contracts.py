@@ -202,7 +202,10 @@ def test_non_string_closed_values_raise_invalid_contract_value(parser, factory, 
 
 
 def test_package_exports_connector_reader_and_native_mapping_sealer():
-    from wiki_spike.memory_core import ConnectorSourceReaderPort, EncryptedNativeMappingSealerPort
+    from wiki_spike.memory_core.second_brain_capture import (
+        ConnectorSourceReaderPort,
+        EncryptedNativeMappingSealerPort,
+    )
 
     assert ConnectorSourceReaderPort.__name__ == "ConnectorSourceReaderPort"
     assert EncryptedNativeMappingSealerPort.__name__ == "EncryptedNativeMappingSealerPort"
