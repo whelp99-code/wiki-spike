@@ -15,12 +15,13 @@ Contract PRAGMAs (mirrored, not imported, from ``wiki_spike.controlplane``):
 ``busy_timeout=5000``, and every write transaction uses ``BEGIN IMMEDIATE``.
 
 No plaintext columns exist anywhere in this schema. Every column is one of
-exactly six kinds, enforced by a name-suffix convention so the shape is
+exactly seven kinds, enforced by a name-suffix convention so the shape is
 mechanically auditable (see ``COLUMN_KIND_ALLOWLIST`` and
 :func:`assert_no_plaintext_columns`):
 
 - **id**       — ``*_id`` / ``workspace_id`` / ``artifact_id`` / ... — opaque identifiers.
 - **digest**   — ``*_digest`` / ``*_sha256`` — content digests (never bodies).
+- **ref**      — ``*_ref`` — closed opaque references.
 - **handle**   — ``*_handle`` — opaque external-provider handles.
 - **state**    — ``*_state`` / ``*_kind`` / ``*_role`` / ``ordinal`` — closed
   enum/selector/ordinal values, never free text.
@@ -62,6 +63,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
+from wiki_spike.memory_core.second_brain_capture_ports import AtomicCapturePersistencePort
+import json
+
 from wiki_spike.memory_core.contracts import canonical_bytes
 from wiki_spike.memory_core.recovery import (
     AppliedDeletionOverlayEvidence,
@@ -69,6 +73,11 @@ from wiki_spike.memory_core.recovery import (
     VerifiedDeletionOverlay,
     SignedDeletionOverlay,
 )
+from wiki_spike.memory_core.second_brain_capture_contracts import (
+    CapturePersistenceAggregateV1, CaptureItemReceiptV1,
+)
+from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore
+from wiki_spike.infrastructure.crypto import aes_gcm_seal
 
 # --------------------------------------------------------------------------- #
 # Column-kind allowlist (no plaintext columns anywhere in this schema).
@@ -78,6 +87,7 @@ COLUMN_KIND_ALLOWLIST: tuple[str, ...] = (
     "_id",
     "_digest",
     "_sha256",
+    "_ref",
     "_handle",
     "_state",
     "_kind",
@@ -354,6 +364,80 @@ CREATE TABLE IF NOT EXISTS freshness_serve_gate (
 );
 """
 
+CAPTURE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS capture_identity_binding (
+  workspace_ref TEXT NOT NULL,
+  source_profile_state TEXT NOT NULL,
+  source_domain_state TEXT NOT NULL,
+  source_ref TEXT NOT NULL,
+  scope_ref TEXT NOT NULL,
+  scope_epoch_sequence TEXT NOT NULL,
+  capture_ref TEXT NOT NULL,
+  evidence_kind TEXT NOT NULL,
+  evidence_digest TEXT NOT NULL,
+  identity_ref TEXT NOT NULL UNIQUE,
+  cas_locator_ref TEXT NOT NULL,
+  PRIMARY KEY (workspace_ref, source_profile_state, source_domain_state, source_ref, scope_ref, scope_epoch_sequence, capture_ref, evidence_kind)
+);
+CREATE TABLE IF NOT EXISTS capture_scope (
+  scope_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  scope_state TEXT NOT NULL,
+  scope_digest TEXT NOT NULL,
+  aggregate_handle TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS capture_receipt (
+  capture_id TEXT PRIMARY KEY,
+  scope_id TEXT NOT NULL,
+  capture_sequence TEXT NOT NULL,
+  receipt_state TEXT NOT NULL,
+  receipt_digest TEXT NOT NULL,
+  encrypted_content_ref TEXT NOT NULL,
+  encrypted_native_mapping_ref TEXT NOT NULL,
+  aggregate_handle TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS capture_manifest (
+  manifest_id TEXT PRIMARY KEY,
+  scope_id TEXT NOT NULL,
+  manifest_sequence TEXT NOT NULL,
+  manifest_state TEXT NOT NULL,
+  manifest_digest TEXT NOT NULL,
+  aggregate_handle TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS capture_reconciliation (
+  reconciliation_id TEXT PRIMARY KEY,
+  scope_id TEXT NOT NULL,
+  reconciliation_sequence TEXT NOT NULL,
+  reconciliation_state TEXT NOT NULL,
+  reconciliation_digest TEXT NOT NULL,
+  aggregate_handle TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS capture_checkpoint (
+  scope_id TEXT PRIMARY KEY,
+  checkpoint_id TEXT NOT NULL,
+  checkpoint_sequence TEXT NOT NULL,
+  checkpoint_state TEXT NOT NULL,
+  checkpoint_digest TEXT NOT NULL,
+  aggregate_handle TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS migration_registration (
+  registration_id TEXT PRIMARY KEY,
+  scope_id TEXT NOT NULL,
+  registration_sequence TEXT NOT NULL,
+  registration_state TEXT NOT NULL,
+  registration_digest TEXT NOT NULL,
+  aggregate_handle TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS capture_cohort (
+  cohort_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  cohort_state TEXT NOT NULL,
+  cohort_digest TEXT NOT NULL,
+  aggregate_handle TEXT NOT NULL
+);
+"""
+
 # Tables in declaration order, used for both DDL introspection and the
 # plaintext-column allowlist assertion.
 TABLE_NAMES: tuple[str, ...] = (
@@ -382,6 +466,14 @@ TABLE_NAMES: tuple[str, ...] = (
     "generation",
     "floor_candidate",
     "freshness_serve_gate",
+    "capture_identity_binding",
+    "capture_scope",
+    "capture_receipt",
+    "capture_manifest",
+    "capture_reconciliation",
+    "capture_checkpoint",
+    "migration_registration",
+    "capture_cohort",
 )
 
 EVENT_LOG_DOMAIN = "wiki-spike.lifecycle-db.event-log.v1"
@@ -1065,29 +1157,33 @@ class UnitOfWork:
         return event_digest
 
 
-@dataclass
 class LifecycleDatabase:
-    """The encrypted-lifecycle SQLite unit-of-work database (schema-of-record).
+    """The encrypted-lifecycle SQLite unit-of-work database (schema-of-record)."""
 
-    A NEW, standalone database file — separate from the legacy
-    ``wiki_spike.controlplane.ControlPlane`` control plane. Construct with a
-    path and call :meth:`initialize` before use.
-    """
+    def __init__(self, db_path: Path, fixture_capture_mode: bool = False) -> None:
+        self.db_path = db_path
+        self.con: sqlite3.Connection | None = None
+        # Retained as an ignored compatibility argument. A caller cannot grant
+        # fixture capability by passing or mutating a public mode flag.
+        self._fixture_capture_capability = False
 
-    db_path: Path
-    con: sqlite3.Connection | None = None
+    @property
+    def fixture_capture_mode(self) -> bool:
+        return self._fixture_capture_capability
 
     def initialize(self) -> None:
-        """Open (creating if absent) ``db_path``, apply the contract PRAGMAs,
-        and create the full DDL. Idempotent: safe to call repeatedly and safe
-        to call again after a process restart against the same file."""
+        """Open (creating if absent) ``db_path```, apply the contract PRAGMAs,
+        and create ordinary production DDL."""
         self.con = sqlite3.connect(str(self.db_path), isolation_level=None)
         self.con.execute("PRAGMA journal_mode=WAL")
         self.con.execute("PRAGMA synchronous=FULL")
         self.con.execute("PRAGMA foreign_keys=ON")
         self.con.execute("PRAGMA busy_timeout=5000")
         self.con.executescript(SCHEMA)
+        if self._fixture_capture_capability:
+            self.con.executescript(CAPTURE_SCHEMA)
         self.assert_contract_pragmas()
+        assert_no_plaintext_columns(self.con)
 
     def assert_contract_pragmas(self) -> None:
         """Assert the four contract PRAGMAs are active on the open connection."""
@@ -1340,17 +1436,320 @@ class LifecycleDatabase:
         self.close()
 
 
+class FixtureCaptureLifecycleDatabase(LifecycleDatabase):
+    """Dedicated immutable synthetic-store type; never enabled by a public flag."""
+
+    def __init__(self, db_path: Path) -> None:
+        super().__init__(db_path)
+        self._fixture_capture_capability = True
+
+
+def fixture_capture_database(db_path: Path) -> FixtureCaptureLifecycleDatabase:
+    """Construct the only database type permitted to install fixture capture DDL."""
+    return FixtureCaptureLifecycleDatabase(db_path)
+
+
 def table_columns(con: sqlite3.Connection, table: str) -> list[str]:
     """Introspect column names for ``table`` via ``PRAGMA table_info``."""
     return [row[1] for row in con.execute(f"PRAGMA table_info({table})")]
 
 
 def assert_no_plaintext_columns(con: sqlite3.Connection) -> None:
-    """Assert every column of every table in :data:`TABLE_NAMES` is one of
-    the allowlisted id/digest/handle/state/wrapped/ts column kinds."""
+    """Assert every installed schema table, including fixture capture tables, has
+    only allowlisted opaque/id/digest/handle/state/wrapped/timestamp columns."""
+    installed_tables = {
+        row[0] for row in con.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+        )
+    }
     for table in TABLE_NAMES:
+        if table not in installed_tables:
+            continue
         for column in table_columns(con, table):
             if not is_allowed_column_name(column):
                 raise LifecycleDbError(
                     f"non-allowlisted (potential plaintext) column {table}.{column}"
                 )
+
+
+class CapturePersistenceError(LifecycleDbError):
+    """Capture evidence cannot be persisted as one complete durable unit."""
+
+
+class EncryptedCapturePersistence(AtomicCapturePersistencePort):
+    """The sole aggregate writer: encrypted CAS first, SQLite references second.
+
+    CAS is write-once and may retain an unreferenced encrypted blob after a
+    SQLite rollback; SQLite never exposes a partial aggregate.
+    """
+
+    def __init__(self, database: LifecycleDatabase, cas: EncryptedContentStore, dek: bytes) -> None:
+        if len(dek) != 32:
+            raise CapturePersistenceError("capture persistence requires a 32-byte encryption key")
+        self._database, self._cas, self._dek = database, cas, bytes(dek)
+
+    def persist_capture_aggregate(self, aggregate: CapturePersistenceAggregateV1) -> None:
+        if not isinstance(aggregate, CapturePersistenceAggregateV1):
+            raise CapturePersistenceError("only a complete capture persistence aggregate is accepted")
+        if not isinstance(self._database, FixtureCaptureLifecycleDatabase):
+            raise CapturePersistenceError("fixture capture persistence is prohibited for production databases")
+        try:
+            aggregate = CapturePersistenceAggregateV1.from_mapping(aggregate.to_mapping())
+        except (TypeError, ValueError) as exc:
+            raise CapturePersistenceError("capture aggregate fails canonical contract validation") from exc
+        self._validate(aggregate)
+        with self._database.unit_of_work() as uow:
+            con = uow._con
+            scope_digest = hashlib.sha256(
+                canonical_bytes(aggregate.scope.to_mapping())
+            ).hexdigest()
+            existing_scope = con.execute(
+                "SELECT workspace_id, source_id, scope_digest "
+                "FROM capture_scope WHERE scope_id=?",
+                (aggregate.scope.scope_ref,),
+            ).fetchone()
+            if existing_scope is not None and tuple(existing_scope) != (
+                aggregate.scope.workspace_ref,
+                aggregate.scope.source_ref,
+                scope_digest,
+            ):
+                raise CapturePersistenceError("conflicting durable capture_scope evidence")
+            self._validate_receipt_bindings(con, aggregate)
+            existing_aggregate = con.execute(
+                "SELECT cohort_digest, aggregate_handle FROM capture_cohort "
+                "WHERE cohort_id=?",
+                (aggregate.cohort.cohort_ref,),
+            ).fetchone()
+            if existing_aggregate is not None:
+                if existing_aggregate[0] != aggregate.cohort.cohort_digest:
+                    raise CapturePersistenceError("conflicting durable capture_cohort evidence")
+                locator = existing_aggregate[1]
+            else:
+                raw = canonical_bytes(aggregate.to_mapping())
+                nonce = secrets.token_bytes(12).hex()
+                aad = ("second-brain-capture/aggregate/" + aggregate.aggregate_digest).encode("ascii")
+                ciphertext_hex, tag_hex = aes_gcm_seal(self._dek, nonce, raw, aad)
+                locator_digest = self._cas.put(bytes.fromhex(nonce + ciphertext_hex + tag_hex))
+                locator = "encrypted-capture:" + locator_digest
+            if existing_scope is None:
+                self._insert_or_match(
+                    con,
+                    "capture_scope",
+                    "scope_id",
+                    aggregate.scope.scope_ref,
+                    (
+                        aggregate.scope.workspace_ref,
+                        aggregate.scope.source_ref,
+                        "NON_SERVING",
+                        scope_digest,
+                        locator,
+                    ),
+                )
+            for receipt in aggregate.receipts:
+                self._insert_or_match(
+                    con,
+                    "capture_receipt",
+                    "capture_id",
+                    receipt.capture_ref,
+(
+                        aggregate.scope.scope_ref,
+                        receipt.scan_epoch,
+                        receipt.disposition,
+                        receipt.ciphertext_digest,
+                        receipt.encrypted_content_ref,
+                        receipt.encrypted_native_mapping_ref,
+                        locator,
+                    )
+                )
+            self._insert_or_match(
+                con,
+                "capture_manifest",
+                "manifest_id",
+                aggregate.manifest.manifest_ref,
+                (
+                    aggregate.scope.scope_ref,
+                    aggregate.manifest.scan_epoch,
+                    "NON_SERVING",
+                    aggregate.manifest.manifest_digest,
+                    locator,
+                ),
+            )
+            reconciliation = aggregate.advance.reconciliation
+            self._insert_or_match(
+                con,
+                "capture_reconciliation",
+                "reconciliation_id",
+                reconciliation.reconciliation_ref,
+                (
+                    aggregate.scope.scope_ref,
+                    reconciliation.scan_epoch,
+                    "COMPLETE",
+                    reconciliation.reconciliation_digest,
+                    locator,
+                ),
+            )
+            checkpoint = aggregate.advance.checkpoint
+            current = con.execute(
+                "SELECT checkpoint_id, checkpoint_sequence, checkpoint_digest "
+                "FROM capture_checkpoint WHERE scope_id=?",
+                (aggregate.scope.scope_ref,),
+            ).fetchone()
+            if current is None:
+                if aggregate.advance.previous_checkpoint_ref is not None:
+                    raise CapturePersistenceError("stale checkpoint compare-and-swap")
+            else:
+                same_checkpoint = tuple(current) == (
+                    checkpoint.checkpoint_ref,
+                    checkpoint.scan_epoch,
+                    checkpoint.checkpoint_digest,
+                )
+                if not same_checkpoint and current[0] != aggregate.advance.previous_checkpoint_ref:
+                    raise CapturePersistenceError("stale checkpoint compare-and-swap")
+            self._upsert_checkpoint(
+                con,
+                aggregate.scope.scope_ref,
+                checkpoint.checkpoint_ref,
+                checkpoint.scan_epoch,
+                checkpoint.checkpoint_digest,
+                locator,
+            )
+            registration = aggregate.registration
+            self._insert_or_match(
+                con,
+                "migration_registration",
+                "registration_id",
+                registration.registration_ref,
+                (
+                    aggregate.scope.scope_ref,
+                    registration.migration_epoch,
+                    "NON_SERVING",
+                    registration.ciphertext_digest,
+                    locator,
+                ),
+            )
+            self._validate_durable_cohort(con, aggregate)
+            self._insert_or_match(
+                con,
+                "capture_cohort",
+                "cohort_id",
+                aggregate.cohort.cohort_ref,
+                (
+                    aggregate.cohort.final_workspace_ref,
+                    "NON_SERVING",
+                    aggregate.cohort.cohort_digest,
+                    locator,
+                ),
+            )
+
+    def _validate_receipt_bindings(self, con: sqlite3.Connection, aggregate: CapturePersistenceAggregateV1) -> None:
+        scope = aggregate.scope
+        binding_key = (
+            scope.workspace_ref, scope.source_profile, scope.source_domain, scope.source_ref,
+            scope.scope_ref, scope.scope_epoch,
+        )
+        for receipt in aggregate.receipts:
+            for evidence_kind, identity_ref, expected_digest in (
+                ("content", receipt.encrypted_content_ref, receipt.ciphertext_digest),
+                ("native-mapping", receipt.encrypted_native_mapping_ref, None),
+            ):
+                row = con.execute(
+                    "SELECT evidence_digest, identity_ref, cas_locator_ref FROM capture_identity_binding "
+                    "WHERE workspace_ref=? AND source_profile_state=? AND source_domain_state=? "
+                    "AND source_ref=? AND scope_ref=? AND scope_epoch_sequence=? AND capture_ref=? AND evidence_kind=?",
+                    (*binding_key, receipt.capture_ref, evidence_kind),
+                ).fetchone()
+                if (row is None or row[1] != identity_ref
+                        or (expected_digest is not None and row[0] != expected_digest)):
+                    raise CapturePersistenceError("receipt lacks its authority-issued durable identity binding")
+                locator_ref = row[2]
+                if not locator_ref.startswith("encrypted-cas:"):
+                    raise CapturePersistenceError("receipt binding has an invalid CAS locator")
+                try:
+                    self._cas.get(locator_ref.removeprefix("encrypted-cas:"))
+                except Exception as exc:
+                    raise CapturePersistenceError("receipt binding CAS object is unavailable") from exc
+    @staticmethod
+    def _insert_or_match(con: sqlite3.Connection, table: str, key_column: str, key: str, values: tuple[str, ...]) -> None:
+        row = con.execute(f"SELECT * FROM {table} WHERE {key_column}=?", (key,)).fetchone()
+        expected = (key, *values)
+        if row is not None:
+            if tuple(row) != expected:
+                raise CapturePersistenceError(f"conflicting durable {table} evidence")
+            return
+        con.execute(f"INSERT INTO {table} VALUES ({','.join('?' for _ in expected)})", expected)
+
+    @staticmethod
+    def _validate_durable_cohort(con: sqlite3.Connection, aggregate: CapturePersistenceAggregateV1) -> None:
+        for entry in aggregate.cohort.source_roster:
+            scope = con.execute(
+                "SELECT workspace_id, source_id FROM capture_scope WHERE scope_id=?",
+                (entry.scope_ref,),
+            ).fetchone()
+            manifest = con.execute(
+                "SELECT manifest_sequence FROM capture_manifest WHERE manifest_id=? AND scope_id=?",
+                (entry.manifest_ref, entry.scope_ref),
+            ).fetchone()
+            registration = con.execute(
+                "SELECT registration_sequence FROM migration_registration WHERE registration_id=? AND scope_id=?",
+                (entry.registration_ref, entry.scope_ref),
+            ).fetchone()
+            reconciliation = con.execute(
+                "SELECT reconciliation_sequence FROM capture_reconciliation WHERE reconciliation_id=? AND scope_id=? AND reconciliation_state='COMPLETE'",
+                (entry.reconciliation_ref, entry.scope_ref),
+            ).fetchone()
+            checkpoint = con.execute(
+                "SELECT checkpoint_id, checkpoint_sequence FROM capture_checkpoint WHERE scope_id=?",
+                (entry.scope_ref,),
+            ).fetchone()
+            if (
+                scope is None
+                or tuple(scope) != (
+                    aggregate.cohort.final_workspace_ref,
+                    entry.source_ref,
+                )
+                or manifest is None
+                or manifest[0] != entry.reconciliation_epoch
+                or registration is None
+                or registration[0] != entry.reconciliation_epoch
+                or reconciliation is None
+                or reconciliation[0] != entry.reconciliation_epoch
+                or checkpoint is None
+                or checkpoint[0] != entry.checkpoint_ref
+                or checkpoint[1] != entry.checkpoint_epoch
+            ):
+                raise CapturePersistenceError("cohort requires exact durable registration, manifest, reconciliation, and checkpoint evidence")
+    @staticmethod
+    def _upsert_checkpoint(con: sqlite3.Connection, scope_id: str, checkpoint_id: str, sequence: str, digest: str, locator: str) -> None:
+        con.execute("INSERT INTO capture_checkpoint VALUES (?,?,?,?,?,?) ON CONFLICT(scope_id) DO UPDATE SET checkpoint_id=excluded.checkpoint_id, checkpoint_sequence=excluded.checkpoint_sequence, checkpoint_state=excluded.checkpoint_state, checkpoint_digest=excluded.checkpoint_digest, aggregate_handle=excluded.aggregate_handle", (scope_id, checkpoint_id, sequence, "NON_SERVING", digest, locator))
+
+    @staticmethod
+    def _validate(aggregate: CapturePersistenceAggregateV1) -> None:
+        scope = aggregate.scope
+        manifest = aggregate.manifest
+        reconciliation = aggregate.advance.reconciliation
+        checkpoint = aggregate.advance.checkpoint
+        registration = aggregate.registration
+        if reconciliation.disposition_counts["QUARANTINED"] != "0":
+            raise CapturePersistenceError("quarantine blocks capture persistence")
+        if (
+            manifest.scope != scope
+            or registration.scope != scope
+            or checkpoint.scope != scope
+            or reconciliation.scan_epoch != manifest.scan_epoch
+            or checkpoint.scan_epoch != manifest.scan_epoch
+        ):
+            raise CapturePersistenceError("aggregate does not bind one exact scope and scan epoch")
+        if (set(manifest.receipt_refs) != {receipt.capture_ref for receipt in aggregate.receipts}
+                or reconciliation.manifest_ref != manifest.manifest_ref
+                or checkpoint.manifest_ref != manifest.manifest_ref
+                or checkpoint.reconciliation_ref != reconciliation.reconciliation_ref):
+            raise CapturePersistenceError("aggregate manifest, reconciliation, and checkpoint do not reconcile")
+        matched = [entry for entry in aggregate.cohort.source_roster if entry.scope_ref == scope.scope_ref]
+        if len(matched) != 1:
+            raise CapturePersistenceError("cohort lacks one exact durable scope registration")
+        entry = matched[0]
+        if (entry.registration_ref != registration.registration_ref or entry.manifest_ref != manifest.manifest_ref
+                or entry.reconciliation_ref != reconciliation.reconciliation_ref or entry.checkpoint_ref != checkpoint.checkpoint_ref
+                or entry.reconciliation_epoch != reconciliation.reconciliation_epoch or entry.checkpoint_epoch != checkpoint.scan_epoch
+                or entry.source_ref != scope.source_ref or aggregate.cohort.final_workspace_ref != scope.workspace_ref):
+            raise CapturePersistenceError("cohort ownership binding is not exactly reconciled")
