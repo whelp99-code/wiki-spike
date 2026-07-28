@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/ledger-recall-v2.schema.json",
+  "title": "Second-brain ledger and recall public wires v2",
+  "oneOf": [
+    { "$ref": "#/$defs/command" },
+    { "$ref": "#/$defs/receipt" },
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/snapshot" },
+    { "$ref": "#/$defs/continuation" },
+    { "$ref": "#/$defs/citation" }
+  ],
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "positive": { "type": "string", "pattern": "^[1-9][0-9]*$" },
+    "utc": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$"
+    },
+    "ref": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}:[0-9a-f]{64}$" },
+    "candidateRef": { "type": "string", "pattern": "^candidate:[0-9a-f]{64}$" },
+    "workspaceRef": { "type": "string", "pattern": "^workspace:[0-9a-f]{64}$" },
+    "capabilityRef": { "type": "string", "pattern": "^capability:[0-9a-f]{64}$" },
+    "continuationRef": { "type": "string", "pattern": "^continuation:[0-9a-f]{64}$" },
+    "generationRef": { "type": "string", "pattern": "^generation:[0-9a-f]{64}$" },
+    "checkpointRef": { "type": "string", "pattern": "^checkpoint:[0-9a-f]{64}$" },
+    "commandRef": { "type": "string", "pattern": "^command:[0-9a-f]{64}$" },
+    "revisionRef": { "type": "string", "pattern": "^revision:[0-9a-f]{64}$" },
+    "interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valid_from", "valid_to", "recorded_from", "recorded_to"],
+      "properties": {
+        "valid_from": { "$ref": "#/$defs/utc" },
+        "valid_to": { "anyOf": [{ "$ref": "#/$defs/utc" }, { "type": "null" }] },
+        "recorded_from": { "$ref": "#/$defs/utc" },
+        "recorded_to": { "anyOf": [{ "$ref": "#/$defs/utc" }, { "type": "null" }] }
+      }
+    },
+    "supportEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["edge_kind", "from_candidate_ref", "to_candidate_ref", "workspace_ref", "interval"],
+      "properties": {
+        "edge_kind": { "const": "SUPPORT" },
+        "from_candidate_ref": { "$ref": "#/$defs/candidateRef" },
+        "to_candidate_ref": { "$ref": "#/$defs/candidateRef" },
+        "workspace_ref": { "$ref": "#/$defs/workspaceRef" },
+        "interval": { "$ref": "#/$defs/interval" }
+      }
+    },
+    "contradictionEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["edge_kind", "from_candidate_ref", "to_candidate_ref", "workspace_ref", "interval"],
+      "properties": {
+        "edge_kind": { "const": "CONTRADICTION" },
+        "from_candidate_ref": { "$ref": "#/$defs/candidateRef" },
+        "to_candidate_ref": { "$ref": "#/$defs/candidateRef" },
+        "workspace_ref": { "$ref": "#/$defs/workspaceRef" },
+        "interval": { "$ref": "#/$defs/interval" }
+      }
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_ref", "prior_state", "resulting_state", "content_digest", "support_edges", "contradiction_edges"],
+      "properties": {
+        "candidate_ref": { "$ref": "#/$defs/candidateRef" },
+        "prior_state": { "enum": ["ABSENT", "PENDING", "APPROVED", "REJECTED", "REVOKED", "FORGOTTEN"] },
+        "resulting_state": { "enum": ["PENDING", "APPROVED", "REJECTED", "REVOKED", "FORGOTTEN"] },
+        "content_digest": { "anyOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }] },
+        "support_edges": { "type": "array", "items": { "$ref": "#/$defs/supportEdge" } },
+        "contradiction_edges": { "type": "array", "items": { "$ref": "#/$defs/contradictionEdge" } }
+      }
+    },
+    "commandBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command_version", "command_ref", "workspace_ref", "capability_ref", "authority_epoch", "kind", "target_candidate_ref", "related_candidate_refs", "interval", "payload", "command_digest"],
+      "properties": {
+        "command_version": { "const": "second-brain-ledger-command-v2" },
+        "command_ref": { "$ref": "#/$defs/commandRef" },
+        "workspace_ref": { "$ref": "#/$defs/workspaceRef" },
+        "capability_ref": { "$ref": "#/$defs/capabilityRef" },
+        "authority_epoch": { "$ref": "#/$defs/positive" },
+        "kind": { "enum": ["CREATE_CANDIDATE", "REVIEW_APPROVE", "REVIEW_REJECT", "CORRECT", "SUPERSEDE", "REVOKE", "FORGET", "DECLARE_CONTRADICTION"] },
+        "target_candidate_ref": { "anyOf": [{ "$ref": "#/$defs/candidateRef" }, { "type": "null" }] },
+        "related_candidate_refs": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/candidateRef" } },
+        "interval": { "$ref": "#/$defs/interval" },
+        "payload": { "$ref": "#/$defs/payload" },
+        "command_digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "command": {
+      "oneOf": [
+        { "$ref": "#/$defs/createCommand" },
+        { "$ref": "#/$defs/reviewApproveCommand" },
+        { "$ref": "#/$defs/reviewRejectCommand" },
+        { "$ref": "#/$defs/correctCommand" },
+        { "$ref": "#/$defs/supersedeCommand" },
+        { "$ref": "#/$defs/revokeCommand" },
+        { "$ref": "#/$defs/forgetCommand" },
+        { "$ref": "#/$defs/declareContradictionCommand" }
+      ]
+    },
+    "createCommand": {
+      "allOf": [
+        { "$ref": "#/$defs/commandBase" },
+        { "properties": {
+          "kind": { "const": "CREATE_CANDIDATE" }, "target_candidate_ref": { "type": "null" }, "related_candidate_refs": { "maxItems": 0 },
+          "payload": { "allOf": [{ "$ref": "#/$defs/payload" }, { "properties": {
+            "prior_state": { "const": "ABSENT" }, "resulting_state": { "const": "PENDING" }, "content_digest": { "$ref": "#/$defs/digest" }, "support_edges": { "maxItems": 0 }, "contradiction_edges": { "maxItems": 0 }
+          }}] }
+        }}
+      ]
+    },
+    "reviewApproveCommand": { "allOf": [{ "$ref": "#/$defs/commandBase" }, { "properties": { "kind": { "const": "REVIEW_APPROVE" }, "target_candidate_ref": { "$ref": "#/$defs/candidateRef" }, "related_candidate_refs": { "maxItems": 0 }, "payload": { "allOf": [{ "$ref": "#/$defs/payload" }, { "properties": { "prior_state": { "const": "PENDING" }, "resulting_state": { "const": "APPROVED" }, "content_digest": { "type": "null" }, "support_edges": { "maxItems": 0 }, "contradiction_edges": { "maxItems": 0 } }}] } }}] },
+    "reviewRejectCommand": { "allOf": [{ "$ref": "#/$defs/commandBase" }, { "properties": { "kind": { "const": "REVIEW_REJECT" }, "target_candidate_ref": { "$ref": "#/$defs/candidateRef" }, "related_candidate_refs": { "maxItems": 0 }, "payload": { "allOf": [{ "$ref": "#/$defs/payload" }, { "properties": { "prior_state": { "const": "PENDING" }, "resulting_state": { "const": "REJECTED" }, "content_digest": { "type": "null" }, "support_edges": { "maxItems": 0 }, "contradiction_edges": { "maxItems": 0 } }}] } }}] },
+    "correctCommand": { "allOf": [{ "$ref": "#/$defs/commandBase" }, { "properties": { "kind": { "const": "CORRECT" }, "target_candidate_ref": { "$ref": "#/$defs/candidateRef" }, "related_candidate_refs": { "minItems": 1, "maxItems": 1 }, "payload": { "allOf": [{ "$ref": "#/$defs/payload" }, { "properties": { "prior_state": { "const": "APPROVED" }, "resulting_state": { "const": "APPROVED" }, "content_digest": { "$ref": "#/$defs/digest" }, "support_edges": { "minItems": 1, "maxItems": 1 }, "contradiction_edges": { "maxItems": 0 } }}] } }}] },
+    "supersedeCommand": { "allOf": [{ "$ref": "#/$defs/commandBase" }, { "properties": { "kind": { "const": "SUPERSEDE" }, "target_candidate_ref": { "$ref": "#/$defs/candidateRef" }, "related_candidate_refs": { "minItems": 1, "maxItems": 1 }, "payload": { "allOf": [{ "$ref": "#/$defs/payload" }, { "properties": { "prior_state": { "const": "APPROVED" }, "resulting_state": { "const": "APPROVED" }, "content_digest": { "$ref": "#/$defs/digest" }, "support_edges": { "minItems": 1, "maxItems": 1 }, "contradiction_edges": { "maxItems": 0 } }}] } }}] },
+    "revokeCommand": { "allOf": [{ "$ref": "#/$defs/commandBase" }, { "properties": { "kind": { "const": "REVOKE" }, "target_candidate_ref": { "$ref": "#/$defs/candidateRef" }, "related_candidate_refs": { "maxItems": 0 }, "payload": { "allOf": [{ "$ref": "#/$defs/payload" }, { "properties": { "prior_state": { "const": "APPROVED" }, "resulting_state": { "const": "REVOKED" }, "content_digest": { "type": "null" }, "support_edges": { "maxItems": 0 }, "contradiction_edges": { "maxItems": 0 } }}] } }}] },
+    "forgetCommand": { "allOf": [{ "$ref": "#/$defs/commandBase" }, { "properties": { "kind": { "const": "FORGET" }, "target_candidate_ref": { "$ref": "#/$defs/candidateRef" }, "related_candidate_refs": { "maxItems": 0 }, "payload": { "allOf": [{ "$ref": "#/$defs/payload" }, { "properties": { "prior_state": { "const": "APPROVED" }, "resulting_state": { "const": "FORGOTTEN" }, "content_digest": { "type": "null" }, "support_edges": { "maxItems": 0 }, "contradiction_edges": { "maxItems": 0 } }}] } }}] },
+    "declareContradictionCommand": { "allOf": [{ "$ref": "#/$defs/commandBase" }, { "properties": { "kind": { "const": "DECLARE_CONTRADICTION" }, "target_candidate_ref": { "$ref": "#/$defs/candidateRef" }, "related_candidate_refs": { "minItems": 1, "maxItems": 1 }, "payload": { "allOf": [{ "$ref": "#/$defs/payload" }, { "properties": { "prior_state": { "const": "APPROVED" }, "resulting_state": { "const": "APPROVED" }, "content_digest": { "type": "null" }, "support_edges": { "maxItems": 0 }, "contradiction_edges": { "minItems": 1, "maxItems": 1 } }}] } }}] },
+    "authority": {
+      "type": "object", "additionalProperties": false,
+      "required": ["decision", "capability_ref", "authority_epoch", "query_digest", "workspace_ref", "scope_digest"],
+      "properties": { "decision": { "enum": ["ALLOW", "DENY", "ABSTAIN"] }, "capability_ref": { "$ref": "#/$defs/capabilityRef" }, "authority_epoch": { "$ref": "#/$defs/positive" }, "query_digest": { "$ref": "#/$defs/digest" }, "workspace_ref": { "$ref": "#/$defs/workspaceRef" }, "scope_digest": { "$ref": "#/$defs/digest" } }
+    },
+    "gate": {
+      "type": "object", "additionalProperties": false, "required": ["state", "epoch", "digest"],
+      "properties": { "state": { "enum": ["PASS", "DENY", "ABSTAIN"] }, "epoch": { "$ref": "#/$defs/positive" }, "digest": { "$ref": "#/$defs/digest" } }
+    },
+    "candidate": {
+      "type": "object", "additionalProperties": false, "required": ["candidate_ref", "revision_ref", "state", "content_digest", "support_refs"],
+      "properties": { "candidate_ref": { "$ref": "#/$defs/candidateRef" }, "revision_ref": { "$ref": "#/$defs/revisionRef" }, "state": { "enum": ["PENDING", "APPROVED", "REJECTED", "REVOKED", "FORGOTTEN"] }, "content_digest": { "$ref": "#/$defs/digest" }, "support_refs": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/candidateRef" } } }
+    },
+    "conflict": {
+      "type": "object", "additionalProperties": false, "required": ["left_candidate_ref", "right_candidate_ref", "state"],
+      "properties": { "left_candidate_ref": { "$ref": "#/$defs/candidateRef" }, "right_candidate_ref": { "$ref": "#/$defs/candidateRef" }, "state": { "enum": ["OPEN", "RESOLVED"] } }
+    },
+    "authorityFields": {
+      "properties": { "generation_ref": { "$ref": "#/$defs/generationRef" }, "generation_digest": { "$ref": "#/$defs/digest" }, "checkpoint_ref": { "$ref": "#/$defs/checkpointRef" }, "checkpoint_digest": { "$ref": "#/$defs/digest" }, "freshness_digest": { "$ref": "#/$defs/digest" }, "authority_checkpoint_digest": { "$ref": "#/$defs/digest" } }
+    },
+    "continuation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["continuation_version", "continuation_ref", "workspace_ref", "capability_ref", "authority_epoch", "query_digest", "scope_digest", "transaction_cut", "generation_ref", "generation_digest", "checkpoint_ref", "checkpoint_digest", "freshness_digest", "authority_checkpoint_digest", "authority_commitment_digest", "base_snapshot_digest", "cursor", "expires_at", "continuation_digest"],
+      "properties": { "continuation_version": { "const": "second-brain-recall-continuation-v2" }, "continuation_ref": { "$ref": "#/$defs/continuationRef" }, "workspace_ref": { "$ref": "#/$defs/workspaceRef" }, "capability_ref": { "$ref": "#/$defs/capabilityRef" }, "authority_epoch": { "$ref": "#/$defs/positive" }, "query_digest": { "$ref": "#/$defs/digest" }, "scope_digest": { "$ref": "#/$defs/digest" }, "transaction_cut": { "$ref": "#/$defs/positive" }, "generation_ref": { "$ref": "#/$defs/generationRef" }, "generation_digest": { "$ref": "#/$defs/digest" }, "checkpoint_ref": { "$ref": "#/$defs/checkpointRef" }, "checkpoint_digest": { "$ref": "#/$defs/digest" }, "freshness_digest": { "$ref": "#/$defs/digest" }, "authority_checkpoint_digest": { "$ref": "#/$defs/digest" }, "authority_commitment_digest": { "$ref": "#/$defs/digest" }, "base_snapshot_digest": { "$ref": "#/$defs/digest" }, "cursor": { "type": "string", "minLength": 1 }, "expires_at": { "$ref": "#/$defs/utc" }, "continuation_digest": { "$ref": "#/$defs/digest" } }
+    },
+    "request": {
+      "type": "object", "additionalProperties": false,
+      "required": ["request_version", "workspace_ref", "capability_ref", "authority_epoch", "query_digest", "valid_at", "recorded_at", "scope_digest", "continuation", "request_digest"],
+      "properties": { "request_version": { "const": "second-brain-recall-snapshot-request-v2" }, "workspace_ref": { "$ref": "#/$defs/workspaceRef" }, "capability_ref": { "$ref": "#/$defs/capabilityRef" }, "authority_epoch": { "$ref": "#/$defs/positive" }, "query_digest": { "$ref": "#/$defs/digest" }, "valid_at": { "$ref": "#/$defs/utc" }, "recorded_at": { "$ref": "#/$defs/utc" }, "scope_digest": { "$ref": "#/$defs/digest" }, "continuation": { "anyOf": [{ "$ref": "#/$defs/continuation" }, { "type": "null" }] }, "request_digest": { "$ref": "#/$defs/digest" } }
+    },
+    "citation": {
+      "type": "object", "additionalProperties": false, "required": ["citation_version", "candidate_ref", "source_ref", "citation_digest"],
+      "properties": { "citation_version": { "const": "second-brain-recall-citation-v2" }, "candidate_ref": { "$ref": "#/$defs/candidateRef" }, "source_ref": { "$ref": "#/$defs/ref" }, "citation_digest": { "$ref": "#/$defs/digest" } }
+    },
+    "snapshot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["snapshot_version", "workspace_ref", "capability_ref", "authority_epoch", "query_digest", "transaction_cut", "valid_at", "recorded_at", "scope_digest", "generation_ref", "generation_digest", "checkpoint_ref", "checkpoint_digest", "freshness_digest", "authority_checkpoint_digest", "authorization", "global_floor", "binding", "recovery", "route", "cohort", "deletion", "consent", "projection_digest", "contract_digest", "authority_commitment_digest", "base_snapshot_digest", "incoming_cursor_digest", "incoming_continuation_ref", "candidates", "conflicts", "citations", "continuation", "snapshot_digest"],
+      "properties": { "snapshot_version": { "const": "second-brain-recall-serve-snapshot-v2" }, "workspace_ref": { "$ref": "#/$defs/workspaceRef" }, "capability_ref": { "$ref": "#/$defs/capabilityRef" }, "authority_epoch": { "$ref": "#/$defs/positive" }, "query_digest": { "$ref": "#/$defs/digest" }, "transaction_cut": { "$ref": "#/$defs/positive" }, "valid_at": { "$ref": "#/$defs/utc" }, "recorded_at": { "$ref": "#/$defs/utc" }, "scope_digest": { "$ref": "#/$defs/digest" }, "generation_ref": { "$ref": "#/$defs/generationRef" }, "generation_digest": { "$ref": "#/$defs/digest" }, "checkpoint_ref": { "$ref": "#/$defs/checkpointRef" }, "checkpoint_digest": { "$ref": "#/$defs/digest" }, "freshness_digest": { "$ref": "#/$defs/digest" }, "authority_checkpoint_digest": { "$ref": "#/$defs/digest" }, "authorization": { "$ref": "#/$defs/authority" }, "global_floor": { "$ref": "#/$defs/gate" }, "binding": { "$ref": "#/$defs/gate" }, "recovery": { "$ref": "#/$defs/gate" }, "route": { "$ref": "#/$defs/gate" }, "cohort": { "$ref": "#/$defs/gate" }, "deletion": { "$ref": "#/$defs/gate" }, "consent": { "$ref": "#/$defs/gate" }, "projection_digest": { "$ref": "#/$defs/digest" }, "contract_digest": { "$ref": "#/$defs/digest" }, "authority_commitment_digest": { "$ref": "#/$defs/digest" }, "base_snapshot_digest": { "anyOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }] }, "incoming_cursor_digest": { "anyOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }] }, "incoming_continuation_ref": { "anyOf": [{ "$ref": "#/$defs/continuationRef" }, { "type": "null" }] }, "candidates": { "type": "array", "items": { "$ref": "#/$defs/candidate" } }, "conflicts": { "type": "array", "items": { "$ref": "#/$defs/conflict" } }, "citations": { "type": "array", "items": { "$ref": "#/$defs/citation" } }, "continuation": { "anyOf": [{ "$ref": "#/$defs/continuation" }, { "type": "null" }] }, "snapshot_digest": { "$ref": "#/$defs/digest" } },
+      "allOf": [{ "oneOf": [
+        { "properties": { "base_snapshot_digest": { "type": "null" }, "incoming_cursor_digest": { "type": "null" }, "incoming_continuation_ref": { "type": "null" } } },
+        { "properties": { "base_snapshot_digest": { "$ref": "#/$defs/digest" }, "incoming_cursor_digest": { "$ref": "#/$defs/digest" }, "incoming_continuation_ref": { "$ref": "#/$defs/continuationRef" } } }
+      ] }]
+    },
+    "receipt": {
+      "type": "object", "additionalProperties": false, "required": ["receipt_version", "command_ref", "workspace_ref", "transaction_cut", "ledger_epoch", "receipt_digest"],
+      "properties": { "receipt_version": { "const": "second-brain-ledger-receipt-v2" }, "command_ref": { "$ref": "#/$defs/commandRef" }, "workspace_ref": { "$ref": "#/$defs/workspaceRef" }, "transaction_cut": { "$ref": "#/$defs/positive" }, "ledger_epoch": { "$ref": "#/$defs/positive" }, "receipt_digest": { "$ref": "#/$defs/digest" } }
+    }
+  }
+}
