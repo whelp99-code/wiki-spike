@@ -275,6 +275,15 @@ class EncryptedContentStore:
     def is_tombstoned(self, blob_id: str) -> bool:
         return (self.tombstones / blob_id).exists()
 
+    def available(self, blob_id: str) -> bool:
+        """Return true only for a present, untombstoned, hash-valid object."""
+        if not isinstance(blob_id, str) or re.fullmatch(r"[0-9a-f]{64}", blob_id) is None:
+            return False
+        try:
+            self.get(blob_id)
+        except EncryptedCASError:
+            return False
+        return True
     def get(self, blob_id: str) -> bytes:
         """Return the exact stored ciphertext bytes for ``blob_id``.
 

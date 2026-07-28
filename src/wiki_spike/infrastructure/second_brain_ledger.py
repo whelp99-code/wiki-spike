@@ -2,20 +2,26 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
+import json
 import sqlite3
-from typing import Callable, Mapping
+from typing import Any, Callable, Mapping
 
 from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase
 from wiki_spike.memory_core.second_brain_ledger_contracts import (
-    CandidateOutcomeV2, ConflictOutcomeV2, GateStateV2, LedgerCommandV2,
-    LedgerReceiptV2, RecallAuthorityV2, RecallCitationV2, RecallSnapshotRequestV2,
-    canonical_ledger_digest, make_recall_snapshot_v2,
+    AuthorityProvenanceV2, CandidateOutcomeV2, CitationEvidenceV2,
+    ConflictOutcomeV2, LedgerCommandV2, LedgerReceiptV2,
+    RecallAuthorityV2, RecallCitationV2, RecallContinuationV2, RecallSnapshotRequestV2,
+    RecallTrustAuthorityV2, canonical_ledger_bytes, canonical_ledger_digest,
+    canonical_ledger_instant, make_recall_continuation_v2, make_recall_snapshot_v2,
 )
 from wiki_spike.memory_core.second_brain_ledger_ports import (
     AtomicRecallSnapshotPort, LedgerCommandPort, ValidatedRecallSnapshotAcquisitionV2,
 )
 
+
+_CONTINUATION_TTL_SECONDS = 300
 
 class LedgerAuthorityError(RuntimeError):
     """A command did not have the durable authority it claimed."""
@@ -29,180 +35,703 @@ class LedgerAuthority:
 
 
 class LifecycleLedgerAuthority(LedgerCommandPort, AtomicRecallSnapshotPort):
-    """The only Stage-3 writer and snapshot reader.
+    """Stage-3's durable writer and separately-connected immutable snapshot reader."""
 
-    The database is deliberately the sole mutable ledger: CAS objects may be
-    written before the SQLite transaction, but no CAS object is treated as a
-    visible ledger fact until its matching row commits.
-    """
-    def __init__(self, database: LifecycleDatabase, cas: object | None = None) -> None:
-        self._db = database
-        self._cas = cas
+    def __init__(
+        self,
+        database: LifecycleDatabase,
+        cas: object,
+        trust_authority: RecallTrustAuthorityV2,
+        snapshot_signer: Callable[[bytes], str],
+        *,
+        signer_ref: str,
+        key_id: str,
+        page_size: int = 50,
+    ) -> None:
+        if not isinstance(trust_authority, RecallTrustAuthorityV2):
+            raise LedgerAuthorityError("a minted RecallTrustAuthorityV2 is required")
+        if not callable(snapshot_signer):
+            raise LedgerAuthorityError("a trusted snapshot signer is required")
+        if cas is None or not callable(getattr(cas, "available", None)):
+            raise LedgerAuthorityError("a content-addressed availability authority is required")
+        if not isinstance(page_size, int) or isinstance(page_size, bool) or not 1 <= page_size <= 500:
+            raise LedgerAuthorityError("recall page size must be a bounded positive batch")
+        self._db, self._cas = database, cas
+        self._trust_authority, self._snapshot_signer = trust_authority, snapshot_signer
+        self._signer_ref, self._key_id = signer_ref, key_id
+        self._page_size = page_size
 
     def set_authority(self, workspace_ref: str, authority: LedgerAuthority, updated_at: str) -> None:
         if authority.state not in {"ACTIVE", "REVOKED"}:
             raise LedgerAuthorityError("authority state is closed")
-        with self._db.unit_of_work() as uow:
-            uow._con.execute(
-                "INSERT INTO ledger_authority(workspace_ref,capability_ref,authority_epoch,authority_state,updated_at) VALUES(?,?,?,?,?) "
-                "ON CONFLICT(workspace_ref) DO UPDATE SET capability_ref=excluded.capability_ref,authority_epoch=excluded.authority_epoch,authority_state=excluded.authority_state,updated_at=excluded.updated_at",
-                (workspace_ref, authority.capability_ref, authority.authority_epoch, authority.state, updated_at),
-            )
-
-    def append_ledger_command(self, command: LedgerCommandV2) -> LedgerReceiptV2:
-        # CAS is intentionally only an immutable availability check. The closed
-        # command wire contains digests, never plaintext/envelope bytes.
-        if command.payload.content_digest and self._cas is not None and not self._cas.exists(command.payload.content_digest):
-            raise LedgerAuthorityError("immutable encrypted intent/evidence is unavailable")
+        recorded_at = self._trusted_timestamp()
+        self._classify_legacy_workspace(workspace_ref)
         with self._db.unit_of_work() as uow:
             con = uow._con
-            prior = con.execute("SELECT receipt_digest,transaction_sequence,ledger_epoch FROM ledger_command WHERE command_ref=?", (command.command_ref,)).fetchone()
+            if con.execute("SELECT 1 FROM ledger_authority WHERE workspace_ref=?", (workspace_ref,)).fetchone():
+                raise LedgerAuthorityError("authority registration is immutable")
+            sequence, epoch = self._next_sequence(con, workspace_ref, recorded_at)
+            if sequence != "1":
+                raise LedgerAuthorityError("authority registration must be the first workspace mutation")
+            con.execute(
+                "INSERT INTO ledger_authority VALUES(?,?,?,?,?)",
+                (workspace_ref, authority.capability_ref, authority.authority_epoch, authority.state, recorded_at),
+            )
+            digest = canonical_ledger_digest("ledger-migration-v2", {"workspace_ref": workspace_ref, "migration_state": "SERVING_READY", "transaction_cut": sequence})
+            con.execute("INSERT INTO ledger_migration VALUES(?,?,?,?,?)", ("migration:" + sha256((workspace_ref + digest).encode()).hexdigest(), workspace_ref, "SERVING_READY", digest, recorded_at))
+
+    def append_ledger_command(self, command: LedgerCommandV2) -> LedgerReceiptV2:
+        self._classify_legacy_workspace(command.workspace_ref)
+        with self._db.unit_of_work() as uow:
+            con = uow._con
+            prior = con.execute("SELECT command_digest,receipt_digest,transaction_sequence,ledger_epoch FROM ledger_command WHERE command_ref=?", (command.command_ref,)).fetchone()
             if prior:
-                if con.execute("SELECT command_digest FROM ledger_command WHERE command_ref=?", (command.command_ref,)).fetchone()[0] != command.command_digest:
+                if prior[0] != command.command_digest:
                     raise LedgerAuthorityError("command reference was reused with a different digest")
-                return self._receipt(command, prior[1], prior[2], prior[0])
+                return self._receipt(command, prior[2], prior[3], prior[1])
+            now = self._trusted_timestamp()
+            self._require_serving_ready(con, command.workspace_ref)
+            current_sequence = con.execute("SELECT transaction_sequence FROM ledger_sequence WHERE workspace_ref=?", (command.workspace_ref,)).fetchone()
+            provenance = self._verify_command_provenance(command, now)
+            try:
+                content_available = (
+                    self._cas.available(command.payload.content_digest)
+                    if command.payload.content_digest
+                    else True
+                )
+            except Exception as exc:
+                raise LedgerAuthorityError("immutable encrypted intent/evidence availability is unavailable") from exc
+            if not content_available:
+                raise LedgerAuthorityError("immutable encrypted intent/evidence is unavailable")
             authority = con.execute("SELECT capability_ref,authority_epoch,authority_state FROM ledger_authority WHERE workspace_ref=?", (command.workspace_ref,)).fetchone()
             if authority is None or tuple(authority) != (command.capability_ref, command.authority_epoch, "ACTIVE"):
                 raise LedgerAuthorityError("capability or expected authority epoch is stale")
-            current = con.execute("SELECT candidate_state,workspace_ref,revision_ref FROM ledger_candidate WHERE candidate_ref=?", (command.payload.candidate_ref,)).fetchone()
+            self._persist_provenance(con, provenance, command.command_ref, None, now)
+            current = con.execute("SELECT candidate_state,workspace_ref,revision_ref,content_digest FROM ledger_candidate WHERE candidate_ref=?", (command.payload.candidate_ref,)).fetchone()
             if command.kind == "CREATE_CANDIDATE":
-                if current is not None:
-                    raise LedgerAuthorityError("candidate already exists")
-            else:
-                if current is None or current[1] != command.workspace_ref or current[0] != command.payload.prior_state:
-                    raise LedgerAuthorityError("candidate expected revision/state is stale")
+                if current is not None: raise LedgerAuthorityError("candidate already exists")
+            elif current is None or tuple(current[:3]) != (command.payload.prior_state, command.workspace_ref, command.expected_active_revision_ref):
+                raise LedgerAuthorityError("candidate expected revision/state is stale")
+            if provenance.transaction_cut != (current_sequence[0] if current_sequence else None):
+                raise LedgerAuthorityError("authority provenance does not exactly authorize this command")
             self._validate_edges(con, command)
-            sequence = str((con.execute("SELECT COUNT(*) FROM ledger_command WHERE workspace_ref=?", (command.workspace_ref,)).fetchone()[0]) + 1)
-            epoch = sequence
+            sequence, epoch = self._next_sequence(con, command.workspace_ref, now)
             revision_ref = "revision:" + sha256((command.command_ref + command.command_digest).encode()).hexdigest()
-            if command.kind == "CREATE_CANDIDATE":
-                con.execute("INSERT INTO ledger_candidate VALUES(?,?,?,?,?,?,?,?,?,?)", (command.payload.candidate_ref, command.workspace_ref, "PENDING", revision_ref, command.payload.content_digest, command.authority_epoch, command.interval.valid_from, command.interval.valid_to, command.interval.recorded_from, command.interval.recorded_to))
-            else:
-                content = command.payload.content_digest or con.execute("SELECT content_digest FROM ledger_candidate WHERE candidate_ref=?", (command.payload.candidate_ref,)).fetchone()[0]
-                con.execute("UPDATE ledger_candidate SET candidate_state=?,revision_ref=?,content_digest=?,authority_epoch=?,recorded_to_at=? WHERE candidate_ref=?", (command.payload.resulting_state, revision_ref, content, command.authority_epoch, command.interval.recorded_from, command.payload.candidate_ref))
-                con.execute("UPDATE ledger_candidate SET recorded_to_at=NULL,recorded_from_at=? WHERE candidate_ref=?", (command.interval.recorded_from, command.payload.candidate_ref))
-            content = command.payload.content_digest or con.execute("SELECT content_digest FROM ledger_candidate WHERE candidate_ref=?", (command.payload.candidate_ref,)).fetchone()[0]
-            con.execute("INSERT INTO ledger_revision VALUES(?,?,?,?,?,?)", (revision_ref, command.payload.candidate_ref, command.workspace_ref, content, command.payload.resulting_state, command.interval.recorded_from))
-            con.execute("INSERT INTO ledger_transition VALUES(?,?,?,?,?,?,?,?)", (command.command_ref, command.payload.candidate_ref, command.workspace_ref, command.payload.prior_state, command.payload.resulting_state, command.authority_epoch, command.command_digest, command.interval.recorded_from))
+            content = command.payload.content_digest or (current[3] if current else None)
+            if not content: raise LedgerAuthorityError("candidate content is absent")
+            if current is not None:
+                con.execute("UPDATE ledger_candidate SET recorded_to_at=? WHERE candidate_ref=? AND recorded_to_at IS NULL", (now, command.payload.candidate_ref))
+                con.execute("INSERT INTO ledger_candidate_version_closure VALUES(?,?,?,?)", (command.payload.candidate_ref, current[2], sequence, now))
+            values = (command.payload.candidate_ref, command.workspace_ref, command.payload.resulting_state, revision_ref, content, command.authority_epoch, command.interval.valid_from, command.interval.valid_to, now, None)
+            con.execute("INSERT INTO ledger_candidate VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(candidate_ref) DO UPDATE SET workspace_ref=excluded.workspace_ref,candidate_state=excluded.candidate_state,revision_ref=excluded.revision_ref,content_digest=excluded.content_digest,authority_epoch=excluded.authority_epoch,valid_from_at=excluded.valid_from_at,valid_to_at=excluded.valid_to_at,recorded_from_at=excluded.recorded_from_at,recorded_to_at=NULL", values)
+            con.execute("INSERT INTO ledger_candidate_version VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", (command.payload.candidate_ref, revision_ref, command.workspace_ref, command.payload.resulting_state, content, command.authority_epoch, command.interval.valid_from, command.interval.valid_to, now, None, sequence, None, command.command_ref))
+            con.execute("INSERT INTO ledger_revision VALUES(?,?,?,?,?,?)", (revision_ref, command.payload.candidate_ref, command.workspace_ref, content, command.payload.resulting_state, now))
+            self._commit_citation(con, command, revision_ref, content, sequence, epoch, now)
+            con.execute("INSERT INTO ledger_transition VALUES(?,?,?,?,?,?,?,?)", (command.command_ref, command.payload.candidate_ref, command.workspace_ref, command.payload.prior_state, command.payload.resulting_state, command.authority_epoch, command.command_digest, now))
             for edge in command.payload.support_edges + command.payload.contradiction_edges:
                 edge_ref = "edge:" + sha256((command.command_ref + edge.edge_kind + edge.from_candidate_ref + edge.to_candidate_ref).encode()).hexdigest()
-                con.execute("INSERT INTO ledger_edge VALUES(?,?,?,?,?,?,?,?,?,?)", (edge_ref, edge.workspace_ref, edge.edge_kind, edge.from_candidate_ref, edge.to_candidate_ref, "SUPERSEDED" if command.kind == "SUPERSEDE" else "ACTIVE", edge.interval.valid_from, edge.interval.valid_to, edge.interval.recorded_from, edge.interval.recorded_to))
+                con.execute("INSERT INTO ledger_edge VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", (edge_ref, edge.workspace_ref, edge.edge_kind, edge.from_candidate_ref, edge.to_candidate_ref, "SUPERSEDED" if command.kind == "SUPERSEDE" else "ACTIVE", edge.interval.valid_from, edge.interval.valid_to, now, None, sequence, None))
             if command.kind in {"REVOKE", "FORGET"}:
-                self._invalidate_supported_candidates(con, command.payload.candidate_ref, command.interval.recorded_from, command.authority_epoch)
-            receipt_digest = canonical_ledger_digest("receipt-v2", {"receipt_version":"second-brain-ledger-receipt-v2", "command_ref":command.command_ref, "workspace_ref":command.workspace_ref, "transaction_cut":sequence, "ledger_epoch":epoch})
-            con.execute("INSERT INTO ledger_command VALUES(?,?,?,?,?,?,?,?)", (command.command_ref, command.workspace_ref, command.command_digest, receipt_digest, sequence, epoch, "COMMITTED", command.interval.recorded_from))
+                self._invalidate_supported_candidates(con, command.payload.candidate_ref, now, command.authority_epoch, sequence)
+            receipt_digest = canonical_ledger_digest("receipt-v2", {"receipt_version": "second-brain-ledger-receipt-v2", "command_ref": command.command_ref, "workspace_ref": command.workspace_ref, "transaction_cut": sequence, "ledger_epoch": epoch})
+            con.execute("INSERT INTO ledger_command VALUES(?,?,?,?,?,?,?,?)", (command.command_ref, command.workspace_ref, command.command_digest, receipt_digest, sequence, epoch, "COMMITTED", now))
             uow.append_event(uow.event_chain_head(), "LEDGER_COMMAND", command.command_digest)
-            con.execute(
-                "INSERT INTO outbox(event_kind,ref_digest,outbox_state) VALUES(?,?,?)",
-                ("LEDGER_COMMAND", command.command_digest, "PENDING"),
-            )
+            con.execute("INSERT INTO outbox(event_kind,ref_digest,outbox_state) VALUES(?,?,?)", ("LEDGER_COMMAND", command.command_digest, "PENDING"))
             return self._receipt(command, sequence, epoch, receipt_digest)
+
+    def _trusted_timestamp(self) -> str:
+        value = self._trust_authority._now()
+        try:
+            instant = datetime.fromisoformat(value[:-1] + "+00:00").astimezone(timezone.utc)
+        except (TypeError, ValueError) as exc:
+            raise LedgerAuthorityError("trusted clock must return canonical UTC") from exc
+        return instant.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+    def _verify_command_provenance(self, command: LedgerCommandV2, now: str) -> object:
+        try:
+            provenance = self._trust_authority._provenance(command.authority_provenance_ref, command.authority_provenance_digest)
+            provenance.validate_at(now)
+        except Exception as exc:
+            raise LedgerAuthorityError("authority provenance is unavailable or expired") from exc
+        if not self._trust_authority._verify(
+            signer_ref=provenance.signer_ref,
+            algorithm=provenance.signer_algorithm,
+            key_id=provenance.key_id,
+            signature=provenance.signature,
+            body=provenance.signing_body(),
+        ):
+            raise LedgerAuthorityError("authority provenance signature is invalid")
+        expected = (
+            command.workspace_ref,
+            command.capability_ref,
+            command.authority_epoch,
+            command.subject_ref,
+            command.action,
+            command.scope_digest,
+            self._command_provenance_binding(command),
+        )
+        actual = (
+            provenance.workspace_ref,
+            provenance.capability_ref,
+            provenance.authority_epoch,
+            provenance.subject_ref,
+            provenance.action,
+            provenance.scope_digest,
+            provenance.command_payload_digest,
+        )
+        if (
+            tuple(gate.state for gate in provenance.component_states)
+            != ("PASS",) * len(provenance.component_states)
+            or len(provenance.component_states) != 8
+            or actual != expected
+        ):
+            raise LedgerAuthorityError("authority provenance does not exactly authorize this command")
+        return provenance
+
+    @staticmethod
+    def _command_provenance_binding(command: LedgerCommandV2) -> str:
+        """Bind every command field that is independent of signed provenance."""
+        body = command.to_mapping()
+        for field in ("authority_provenance_ref", "authority_provenance_digest", "command_digest"):
+            body.pop(field)
+        return canonical_ledger_digest("command-provenance-binding-v2", body)
+
+    @staticmethod
+    def _legacy_workspace_present(con: sqlite3.Connection, workspace: str) -> bool:
+        return any(
+            con.execute(
+                f"SELECT 1 FROM {table} WHERE workspace_ref=? LIMIT 1", (workspace,)
+            ).fetchone()
+            for table in (
+                "ledger_command",
+                "ledger_candidate",
+                "ledger_candidate_version",
+                "ledger_revision",
+                "ledger_transition",
+                "ledger_edge",
+                "ledger_authority",
+                "ledger_provenance",
+                "ledger_sequence",
+            )
+        )
+
+    def _classify_legacy_workspace(self, workspace: str) -> None:
+        """Commit legacy classification before a later serving rejection can roll it back."""
+        recorded_at = self._trusted_timestamp()
+        with self._db.unit_of_work() as uow:
+            con = uow._con
+            if (
+                self._legacy_workspace_present(con, workspace)
+                and not con.execute(
+                    "SELECT 1 FROM ledger_migration WHERE workspace_ref=?", (workspace,)
+                ).fetchone()
+            ):
+                digest = canonical_ledger_digest(
+                    "ledger-migration-v2",
+                    {"workspace_ref": workspace, "migration_state": "MIGRATION_BLOCKED"},
+                )
+                con.execute(
+                    "INSERT INTO ledger_migration VALUES(?,?,?,?,?)",
+                    (
+                        "migration:" + sha256((workspace + digest).encode()).hexdigest(),
+                        workspace,
+                        "MIGRATION_BLOCKED",
+                        digest,
+                        recorded_at,
+                    ),
+                )
+
+    @staticmethod
+    def _require_serving_ready(con: sqlite3.Connection, workspace: str) -> None:
+        row = con.execute("SELECT migration_state FROM ledger_migration WHERE workspace_ref=? ORDER BY rowid DESC LIMIT 1", (workspace,)).fetchone()
+        if row is None or row[0] != "SERVING_READY":
+            raise LedgerAuthorityError("workspace migration is not serving ready")
+    def promote_legacy_workspace(self, workspace_ref: str, verifier: Callable[[sqlite3.Connection, str], str]) -> str:
+        """Atomically promote only an externally verified legacy replay."""
+        if not callable(verifier):
+            raise LedgerAuthorityError("legacy promotion requires a verifier callback")
+        self._classify_legacy_workspace(workspace_ref)
+        recorded_at = self._trusted_timestamp()
+        with self._db.unit_of_work() as uow:
+            con = uow._con
+            state = con.execute("SELECT migration_state FROM ledger_migration WHERE workspace_ref=? ORDER BY rowid DESC LIMIT 1", (workspace_ref,)).fetchone()
+            if state is None or state[0] != "MIGRATION_BLOCKED":
+                raise LedgerAuthorityError("workspace is not blocked legacy state")
+            receipt_digest = verifier(con, workspace_ref)
+            if not isinstance(receipt_digest, str) or len(receipt_digest) != 64:
+                raise LedgerAuthorityError("legacy verifier must return an atomic receipt digest")
+            receipt = con.execute(
+                "SELECT receipt_state FROM ledger_migration_receipt WHERE receipt_digest=? AND workspace_ref=?",
+                (receipt_digest, workspace_ref),
+            ).fetchone()
+            if receipt is None or receipt[0] != "VERIFIED":
+                raise LedgerAuthorityError("legacy verifier receipt is not durably verified")
+            con.execute("INSERT INTO ledger_migration VALUES(?,?,?,?,?)", ("migration:" + sha256((workspace_ref + receipt_digest).encode()).hexdigest(), workspace_ref, "SERVING_READY", receipt_digest, recorded_at))
+            return receipt_digest
+
+    def _persist_provenance(
+        self, con: sqlite3.Connection, provenance: AuthorityProvenanceV2,
+        command_ref: str | None, request_digest: str | None, recorded_at: str,
+    ) -> None:
+        payload_hex = canonical_ledger_bytes(
+            "authority-provenance-persistence-v2", provenance.to_mapping()
+        ).hex()
+        row = con.execute(
+            "SELECT provenance_digest,workspace_ref,command_ref,request_digest,"
+            "provenance_payload_hex FROM ledger_provenance WHERE provenance_ref=?",
+            (provenance.provenance_ref,),
+        ).fetchone()
+        expected = (provenance.provenance_digest, provenance.workspace_ref,
+                    command_ref, request_digest, payload_hex)
+        if row is not None:
+            if tuple(row) != expected:
+                raise LedgerAuthorityError("provenance reference conflicts with durable evidence")
+            return
+        con.execute(
+            "INSERT INTO ledger_provenance "
+            "(provenance_ref,provenance_digest,workspace_ref,command_ref,"
+            "request_digest,provenance_state,recorded_at,provenance_payload_hex) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (provenance.provenance_ref, *expected[:4], "VERIFIED", recorded_at, payload_hex),
+        )
+
+    @staticmethod
+    def _next_sequence(con: sqlite3.Connection, workspace: str, recorded_at: str) -> tuple[str, str]:
+        row = con.execute("SELECT transaction_sequence,ledger_epoch FROM ledger_sequence WHERE workspace_ref=?", (workspace,)).fetchone()
+        sequence = str(int(row[0]) + 1) if row else "1"; epoch = str(int(row[1]) + 1) if row else "1"
+        con.execute("INSERT INTO ledger_sequence VALUES(?,?,?,?) ON CONFLICT(workspace_ref) DO UPDATE SET transaction_sequence=excluded.transaction_sequence,ledger_epoch=excluded.ledger_epoch,updated_at=excluded.updated_at", (workspace, sequence, epoch, recorded_at))
+        return sequence, epoch
 
     def _receipt(self, command: LedgerCommandV2, cut: str, epoch: str, digest: str) -> LedgerReceiptV2:
         return LedgerReceiptV2("second-brain-ledger-receipt-v2", command.command_ref, command.workspace_ref, cut, epoch, digest)
 
+    @staticmethod
+    def _citation_evidence(candidate_ref: str, workspace_ref: str, revision_ref: str, content_digest: str) -> dict[str, str]:
+        """Derive the immutable citation evidence a served revision must carry."""
+        locator_digest = canonical_ledger_digest(
+            "citation-locator-v2",
+            {
+                "workspace_ref": workspace_ref,
+                "candidate_ref": candidate_ref,
+                "revision_ref": revision_ref,
+                "content_digest": content_digest,
+            },
+        )
+        evidence = {
+            "evidence_version": "second-brain-citation-evidence-v2",
+            "locator_ref": "locator:" + locator_digest,
+            "locator_digest": locator_digest,
+            "immutable_source_ref": "source:" + content_digest,
+            "revision_ref": revision_ref,
+        }
+        evidence["evidence_digest"] = canonical_ledger_digest("citation-evidence-v2", evidence)
+        return evidence
+
+    @classmethod
+    def _citation_digest(cls, candidate_ref: str, evidence: Mapping[str, str]) -> str:
+        return canonical_ledger_digest(
+            "citation-v2",
+            {
+                "citation_version": "second-brain-recall-citation-v2",
+                "candidate_ref": candidate_ref,
+                "evidence": dict(evidence),
+            },
+        )
+
+    def _served_citation(self, workspace_ref: str, row: sqlite3.Row) -> RecallCitationV2:
+        """Serve a committed citation only when it still binds its durable evidence."""
+        evidence = self._citation_evidence(
+            row["candidate_ref"], workspace_ref, row["revision_ref"], row["content_digest"]
+        )
+        committed = (
+            row["locator_ref"],
+            row["locator_digest"],
+            row["immutable_source_ref"],
+            row["citation_digest"],
+        )
+        if committed != (
+            evidence["locator_ref"],
+            evidence["locator_digest"],
+            evidence["immutable_source_ref"],
+            self._citation_digest(row["candidate_ref"], evidence),
+        ):
+            raise LedgerAuthorityError("durable citation commitment failed revalidation")
+        return RecallCitationV2(
+            "second-brain-recall-citation-v2",
+            row["candidate_ref"],
+            CitationEvidenceV2.from_mapping(evidence),
+            row["citation_digest"],
+        )
+
+    def _commit_citation(
+        self, con: sqlite3.Connection, command: LedgerCommandV2, revision_ref: str,
+        content_digest: str, sequence: str, epoch: str, recorded_at: str,
+    ) -> None:
+        """Commit the durable citation evidence that authorizes serving this revision."""
+        candidate_ref, workspace_ref = command.payload.candidate_ref, command.workspace_ref
+        evidence = self._citation_evidence(candidate_ref, workspace_ref, revision_ref, content_digest)
+        citation_digest = self._citation_digest(candidate_ref, evidence)
+        generation_digest = canonical_ledger_digest(
+            "citation-generation-v2",
+            {"workspace_ref": workspace_ref, "transaction_cut": sequence, "ledger_epoch": epoch},
+        )
+        checkpoint_digest = canonical_ledger_digest(
+            "citation-checkpoint-v2",
+            {
+                "workspace_ref": workspace_ref,
+                "transaction_cut": sequence,
+                "command_ref": command.command_ref,
+                "revision_ref": revision_ref,
+            },
+        )
+        con.execute(
+            "INSERT INTO ledger_citation_commitment VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                candidate_ref, revision_ref, workspace_ref,
+                evidence["locator_ref"], evidence["locator_digest"], evidence["immutable_source_ref"],
+                content_digest, "generation:" + generation_digest, "checkpoint:" + checkpoint_digest,
+                command.authority_provenance_digest, citation_digest, "COMMITTED", recorded_at,
+            ),
+        )
+
     def _validate_edges(self, con: sqlite3.Connection, command: LedgerCommandV2) -> None:
         for edge in command.payload.support_edges + command.payload.contradiction_edges:
-            if edge.from_candidate_ref == edge.to_candidate_ref:
-                raise LedgerAuthorityError("self edge is forbidden")
+            if edge.from_candidate_ref == edge.to_candidate_ref: raise LedgerAuthorityError("self edge is forbidden")
             for ref in (edge.from_candidate_ref, edge.to_candidate_ref):
                 row = con.execute("SELECT workspace_ref FROM ledger_candidate WHERE candidate_ref=?", (ref,)).fetchone()
-                # A CREATE command may reference its new candidate only; all
-                # other endpoints must already be durable workspace members.
-                if ref != command.payload.candidate_ref and (row is None or row[0] != command.workspace_ref):
-                    raise LedgerAuthorityError("edge crosses workspace or references an absent candidate")
-            duplicate = con.execute("SELECT 1 FROM ledger_edge WHERE workspace_ref=? AND edge_kind=? AND from_candidate_ref=? AND to_candidate_ref=? AND edge_state='ACTIVE'", (edge.workspace_ref, edge.edge_kind, edge.from_candidate_ref, edge.to_candidate_ref)).fetchone()
-            if duplicate:
-                raise LedgerAuthorityError("duplicate edge")
-            if edge.edge_kind == "SUPPORT" and self._reachable(con, edge.to_candidate_ref, edge.from_candidate_ref):
-                raise LedgerAuthorityError("support graph cycle")
+                if ref != command.payload.candidate_ref and (row is None or row[0] != command.workspace_ref): raise LedgerAuthorityError("edge crosses workspace or references an absent candidate")
+            if con.execute("SELECT 1 FROM ledger_edge WHERE workspace_ref=? AND edge_kind=? AND from_candidate_ref=? AND to_candidate_ref=? AND edge_state='ACTIVE' AND end_cut IS NULL", (edge.workspace_ref, edge.edge_kind, edge.from_candidate_ref, edge.to_candidate_ref)).fetchone(): raise LedgerAuthorityError("duplicate edge")
+            if edge.edge_kind == "SUPPORT" and self._reachable(con, edge.to_candidate_ref, edge.from_candidate_ref): raise LedgerAuthorityError("support graph cycle")
 
     @staticmethod
-    def _invalidate_supported_candidates(con: sqlite3.Connection, root: str, recorded_at: str, authority_epoch: str) -> None:
-        """Revoke reverse-reachable support dependents in the command transaction."""
+    def _invalidate_supported_candidates(con: sqlite3.Connection, root: str, recorded_at: str, authority_epoch: str, cut: str) -> None:
         seen, queue = {root}, [root]
         while queue:
             source = queue.pop(0)
-            for (child,) in con.execute(
-                "SELECT to_candidate_ref FROM ledger_edge WHERE edge_kind='SUPPORT' AND edge_state='ACTIVE' AND from_candidate_ref=?",
-                (source,),
-            ):
-                if child in seen:
-                    continue
-                seen.add(child)
-                queue.append(child)
-                if con.execute("SELECT candidate_state FROM ledger_candidate WHERE candidate_ref=?", (child,)).fetchone()[0] == "APPROVED":
-                    con.execute(
-                        "UPDATE ledger_candidate SET candidate_state='REVOKED',authority_epoch=?,recorded_from_at=?,recorded_to_at=NULL WHERE candidate_ref=?",
-                        (authority_epoch, recorded_at, child),
-                    )
+            for (child,) in con.execute("SELECT to_candidate_ref FROM ledger_edge WHERE edge_kind='SUPPORT' AND edge_state='ACTIVE' AND end_cut IS NULL AND from_candidate_ref=?", (source,)):
+                if child not in seen:
+                    seen.add(child); queue.append(child)
+                    row = con.execute("SELECT candidate_state,revision_ref,workspace_ref,content_digest,valid_from_at,valid_to_at FROM ledger_candidate WHERE candidate_ref=?", (child,)).fetchone()
+                    if row and row[0] == "APPROVED":
+                        revision_ref = "revision:" + sha256(
+                            f"cascade:{child}:{row[1]}:{cut}".encode()
+                        ).hexdigest()
+                        con.execute("INSERT INTO ledger_candidate_version_closure VALUES(?,?,?,?)", (child, row[1], cut, recorded_at))
+                        con.execute("UPDATE ledger_candidate SET candidate_state='REVOKED',revision_ref=?,authority_epoch=?,recorded_from_at=?,recorded_to_at=NULL WHERE candidate_ref=?", (revision_ref, authority_epoch, recorded_at, child))
+                        con.execute("INSERT INTO ledger_candidate_version VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", (child, revision_ref, row[2], "REVOKED", row[3], authority_epoch, row[4], row[5], recorded_at, None, cut, None, "cascade:" + cut))
+                        con.execute("INSERT INTO ledger_revision VALUES(?,?,?,?,?,?)", (revision_ref, child, row[2], row[3], "REVOKED", recorded_at))
+
     @staticmethod
     def _reachable(con: sqlite3.Connection, start: str, target: str) -> bool:
         seen, queue = set(), [start]
         while queue:
             node = queue.pop(0)
-            if node == target:
-                return True
-            if node in seen:
-                continue
-            seen.add(node)
-            queue.extend(r[0] for r in con.execute("SELECT to_candidate_ref FROM ledger_edge WHERE edge_kind='SUPPORT' AND edge_state='ACTIVE' AND from_candidate_ref=?", (node,)))
+            if node == target: return True
+            if node not in seen:
+                seen.add(node)
+                queue.extend(row[0] for row in con.execute("SELECT to_candidate_ref FROM ledger_edge WHERE edge_kind='SUPPORT' AND edge_state='ACTIVE' AND end_cut IS NULL AND from_candidate_ref=?", (node,)))
         return False
+    def _verified_recall_provenance(self, request: RecallSnapshotRequestV2) -> object:
+        now = self._trusted_timestamp()
+        try:
+            provenance = self._trust_authority._provenance(
+                request.authority_provenance_ref, request.authority_provenance_digest
+            )
+            provenance.validate_at(now)
+        except Exception as exc:
+            raise LedgerAuthorityError("recall authority provenance is unavailable or expired") from exc
+        if not self._trust_authority._verify(
+            signer_ref=provenance.signer_ref, algorithm=provenance.signer_algorithm,
+            key_id=provenance.key_id, signature=provenance.signature,
+            body=provenance.signing_body(),
+        ):
+            raise LedgerAuthorityError("recall authority provenance signature is invalid")
+        binding = {
+            key: (
+                request.continuation.to_mapping()
+                if key == "continuation" and request.continuation is not None
+                else getattr(request, key)
+            )
+            for key in RecallSnapshotRequestV2.FIELDS
+            - {"authority_provenance_ref", "authority_provenance_digest", "request_digest"}
+        }
+        expected = (
+            request.workspace_ref, request.capability_ref, request.authority_epoch,
+            request.subject_ref, request.action, request.scope_digest,
+            canonical_ledger_digest("request-provenance-binding-v2", binding),
+        )
+        actual = (
+            provenance.workspace_ref, provenance.capability_ref, provenance.authority_epoch,
+            provenance.subject_ref, provenance.action, provenance.scope_digest,
+            provenance.request_digest,
+        )
+        states = provenance.component_states
+        if len(states) != 8 or actual != expected or states[0].state not in {"PASS", "DENY", "ABSTAIN"}:
+            raise LedgerAuthorityError("recall authority provenance does not exactly authorize request")
+        if states[0].state == "PASS" and any(gate.state != "PASS" for gate in states):
+            raise LedgerAuthorityError("recall authority provenance does not pass every gate")
+        return provenance
+    def _reload_verified_provenance(
+        self, con: sqlite3.Connection, provenance: AuthorityProvenanceV2, now: str,
+    ) -> AuthorityProvenanceV2:
+        row = con.execute(
+            "SELECT provenance_digest,provenance_state,provenance_payload_hex "
+            "FROM ledger_provenance WHERE provenance_ref=?",
+            (provenance.provenance_ref,),
+        ).fetchone()
+        if row is None or row[0] != provenance.provenance_digest or row[1] != "VERIFIED" or not row[2]:
+            raise LedgerAuthorityError("durable authority provenance is unavailable")
+        try:
+            encoded = bytes.fromhex(row[2])
+            persisted = AuthorityProvenanceV2.from_mapping(json.loads(encoded.split(b"\0", 1)[1]))
+            persisted.validate_at(now)
+        except Exception as exc:
+            raise LedgerAuthorityError("durable authority provenance is malformed") from exc
+        if persisted != provenance or not self._trust_authority._verify(
+            signer_ref=persisted.signer_ref, algorithm=persisted.signer_algorithm,
+            key_id=persisted.key_id, signature=persisted.signature,
+            body=persisted.signing_body(),
+        ):
+            raise LedgerAuthorityError("durable authority provenance failed revalidation")
+        return persisted
+
+    @staticmethod
+    def _cursor_state_digest(workspace_ref: str, cut: str, after_candidate_ref: str) -> str:
+        return canonical_ledger_digest(
+            "cursor-state-v2",
+            {
+                "workspace_ref": workspace_ref,
+                "transaction_cut": cut,
+                "after_candidate_ref": after_candidate_ref,
+            },
+        )
+
+    def _resume_after(self, con: sqlite3.Connection, request: RecallSnapshotRequestV2, cut: str) -> str:
+        """Resolve the durable resume position an incoming continuation points at."""
+        continuation = request.continuation
+        if continuation is None:
+            return ""
+        row = con.execute(
+            "SELECT workspace_ref,transaction_sequence,cursor_state_digest,after_candidate_ref "
+            "FROM ledger_recall_cursor WHERE cursor_handle_ref=?",
+            (continuation.cursor_handle_ref,),
+        ).fetchone()
+        if row is None or tuple(row)[:3] != (
+            request.workspace_ref, continuation.transaction_cut, continuation.cursor_state_digest
+        ):
+            raise LedgerAuthorityError("continuation cursor is not durably resolvable")
+        after = row["after_candidate_ref"]
+        if continuation.cursor_state_digest != self._cursor_state_digest(request.workspace_ref, cut, after):
+            raise LedgerAuthorityError("continuation cursor does not bind its durable position")
+        return after
+
+    def _issue_cursor(
+        self, con: sqlite3.Connection, request: RecallSnapshotRequestV2, cut: str, after_candidate_ref: str,
+    ) -> tuple[str, str]:
+        """Durably record the next page position and return its handle/state pair."""
+        state_digest = self._cursor_state_digest(request.workspace_ref, cut, after_candidate_ref)
+        handle_ref = "cursor:" + canonical_ledger_digest(
+            "cursor-handle-v2",
+            {
+                "workspace_ref": request.workspace_ref,
+                "transaction_cut": cut,
+                "query_digest": request.query_digest,
+                "scope_digest": request.scope_digest,
+                "cursor_state_digest": state_digest,
+            },
+        )
+        recorded = (request.workspace_ref, cut, state_digest, after_candidate_ref)
+        existing = con.execute(
+            "SELECT workspace_ref,transaction_sequence,cursor_state_digest,after_candidate_ref "
+            "FROM ledger_recall_cursor WHERE cursor_handle_ref=?",
+            (handle_ref,),
+        ).fetchone()
+        if existing is None:
+            con.execute(
+                "INSERT INTO ledger_recall_cursor VALUES(?,?,?,?,?,?)",
+                (handle_ref, *recorded, self._trusted_timestamp()),
+            )
+        elif tuple(existing) != recorded:
+            raise LedgerAuthorityError("recall cursor handle conflicts with durable evidence")
+        return handle_ref, state_digest
+
+    def _seal_continuation(self, unsigned: Mapping[str, Any]) -> RecallContinuationV2:
+        """Sign an outgoing continuation once Core has bound it to its snapshot."""
+        body = dict(unsigned)
+        body["signature"] = self._snapshot_signer(
+            canonical_ledger_bytes("signed-v2", {k: v for k, v in body.items() if k != "signature"})
+        )
+        return make_recall_continuation_v2(body)
+
+    @staticmethod
+    def _incoming_chain(continuation: RecallContinuationV2 | None) -> tuple[str | None, str | None, str | None, str | None]:
+        """Echo the incoming continuation chain Core revalidates on admission."""
+        if continuation is None:
+            return None, None, None, None
+        return (
+            continuation.base_snapshot_digest,
+            continuation.cursor_state_digest,
+            canonical_ledger_digest(
+                "cursor-v2",
+                {
+                    "cursor_handle_ref": continuation.cursor_handle_ref,
+                    "cursor_state_digest": continuation.cursor_state_digest,
+                    "base_snapshot_digest": continuation.base_snapshot_digest,
+                },
+            ),
+            continuation.continuation_ref,
+        )
+
+    def _outgoing_continuation(
+        self, request: RecallSnapshotRequestV2, cut: str, digest: str, cursor: tuple[str, str] | None,
+    ) -> dict[str, Any] | None:
+        """Unsigned next-page continuation; Core seals it against the bound snapshot."""
+        if cursor is None:
+            return None
+        handle_ref, state_digest = cursor
+        issued = datetime.strptime(self._trusted_timestamp(), "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+        expires = issued + timedelta(seconds=_CONTINUATION_TTL_SECONDS)
+        issued_at, expires_at = (
+            canonical_ledger_instant(moment.strftime("%Y-%m-%dT%H:%M:%S.%fZ")) for moment in (issued, expires)
+        )
+        return {
+            "continuation_version": "second-brain-recall-continuation-v2",
+            "continuation_ref": "continuation:" + canonical_ledger_digest(
+                "continuation-ref-v2", {"cursor_handle_ref": handle_ref, "issued_at": issued_at}
+            ),
+            "workspace_ref": request.workspace_ref,
+            "capability_ref": request.capability_ref,
+            "authority_epoch": request.authority_epoch,
+            "subject_ref": request.subject_ref,
+            "action": request.action,
+            "query_digest": request.query_digest,
+            "scope_digest": request.scope_digest,
+            "valid_at": request.valid_at,
+            "recorded_at": request.recorded_at,
+            "transaction_cut": cut,
+            "authority_provenance_ref": request.authority_provenance_ref,
+            "authority_provenance_digest": request.authority_provenance_digest,
+            "signer_ref": self._signer_ref,
+            "signer_algorithm": "Ed25519",
+            "key_id": self._key_id,
+            "generation_ref": "generation:" + digest,
+            "generation_digest": digest,
+            "checkpoint_ref": "checkpoint:" + digest,
+            "checkpoint_digest": digest,
+            "freshness_digest": digest,
+            "authority_checkpoint_digest": digest,
+            "cursor_handle_ref": handle_ref,
+            "cursor_state_digest": state_digest,
+            "issued_at": issued_at,
+            "expires_at": expires_at,
+        }
+
 
     def acquire_recall_snapshot(self, request: RecallSnapshotRequestV2) -> ValidatedRecallSnapshotAcquisitionV2:
-        con = self._db.con
-        assert con is not None, "initialize() not called"
+        provenance = self._verified_recall_provenance(request)
+        authorization_state = provenance.component_states[0].state
+        if authorization_state == "PASS":
+            self._classify_legacy_workspace(request.workspace_ref)
+        con = self._db.open_read_connection()
         con.row_factory = sqlite3.Row
-        con.execute("BEGIN")
+        con.execute("BEGIN IMMEDIATE")
         try:
+            self._persist_provenance(
+                con, provenance, None, request.request_digest, self._trusted_timestamp()
+            )
+            provenance = self._reload_verified_provenance(
+                con, provenance, self._trusted_timestamp()
+            )
             authority = con.execute("SELECT capability_ref,authority_epoch,authority_state FROM ledger_authority WHERE workspace_ref=?", (request.workspace_ref,)).fetchone()
-            allowed = authority is not None and tuple(authority) == (request.capability_ref, request.authority_epoch, "ACTIVE")
+            migration = con.execute("SELECT migration_state FROM ledger_migration WHERE workspace_ref=? ORDER BY rowid DESC LIMIT 1", (request.workspace_ref,)).fetchone()
+            allowed = authorization_state == "PASS" and authority is not None and migration is not None and migration[0] == "SERVING_READY" and tuple(authority) == (request.capability_ref, request.authority_epoch, "ACTIVE")
+            if authorization_state == "PASS" and not allowed:
+                raise LedgerAuthorityError("recall requires active durable authority and serving migration")
+            cut_row = con.execute("SELECT transaction_sequence FROM ledger_sequence WHERE workspace_ref=?", (request.workspace_ref,)).fetchone()
+            if allowed and (cut_row is None or (len(request.transaction_cut), request.transaction_cut) > (len(cut_row[0]), cut_row[0])):
+                raise LedgerAuthorityError("requested transaction cut is unavailable")
+            cut = request.transaction_cut
+            resume_after = self._resume_after(con, request, cut)
+            visible = "(length({column})<length(?) OR (length({column})=length(?) AND {column}<=?))"
             rows = con.execute(
-                "SELECT * FROM ledger_candidate AS candidate WHERE workspace_ref=? AND candidate_state='APPROVED' "
-                "AND valid_from_at<=? AND (valid_to_at IS NULL OR valid_to_at>?) "
-                "AND NOT EXISTS (SELECT 1 FROM ledger_edge AS edge WHERE edge.workspace_ref=candidate.workspace_ref "
-                "AND edge.from_candidate_ref=candidate.candidate_ref AND edge.edge_state='SUPERSEDED')",
-                (request.workspace_ref, request.valid_at, request.valid_at),
+                f"""SELECT v.*, c.locator_ref, c.locator_digest, c.immutable_source_ref,
+                           c.content_digest AS citation_content_digest, c.citation_digest,
+                           c.generation_ref, c.checkpoint_ref,
+                           c.provenance_digest AS citation_provenance_digest
+                   FROM ledger_candidate_version AS v
+                   JOIN ledger_citation_commitment AS c
+                     ON c.candidate_ref=v.candidate_ref AND c.revision_ref=v.revision_ref
+                    AND c.workspace_ref=v.workspace_ref AND c.commitment_state='COMMITTED'
+                   WHERE v.workspace_ref=? AND v.candidate_state='APPROVED'
+                     AND c.content_digest=v.content_digest
+                     AND {visible.format(column='v.start_cut')}
+                     AND NOT EXISTS (SELECT 1 FROM ledger_candidate_version_closure vc
+                       WHERE vc.candidate_ref=v.candidate_ref AND vc.revision_ref=v.revision_ref
+                         AND {visible.format(column='vc.end_cut')})
+                     AND NOT EXISTS (SELECT 1 FROM ledger_edge e WHERE e.from_candidate_ref=v.candidate_ref
+                       AND e.edge_kind='SUPPORT' AND e.edge_state='SUPERSEDED' AND {visible.format(column='e.start_cut')})
+                     AND v.valid_from_at<=? AND (v.valid_to_at IS NULL OR v.valid_to_at>?)
+                     AND v.recorded_from_at<=? AND (v.recorded_to_at IS NULL OR v.recorded_to_at>?)
+                     AND v.candidate_ref > ?
+                   ORDER BY v.candidate_ref LIMIT ?""",
+                (request.workspace_ref, cut, cut, cut, cut, cut, cut, cut, cut, cut, request.valid_at, request.valid_at, request.recorded_at, request.recorded_at, resume_after, self._page_size + 1),
             ).fetchall() if allowed else []
-            displayed = {r["candidate_ref"] for r in rows}
-            support_refs = {
-                row["candidate_ref"]: tuple(
-                    edge[0] for edge in con.execute(
-                        "SELECT to_candidate_ref FROM ledger_edge WHERE edge_kind='SUPPORT' AND from_candidate_ref=? AND edge_state='ACTIVE'",
-                        (row["candidate_ref"],),
-                    )
-                )
-                for row in rows
-            }
-            conflicts = con.execute("SELECT from_candidate_ref,to_candidate_ref FROM ledger_edge WHERE workspace_ref=? AND edge_kind='CONTRADICTION' AND edge_state='ACTIVE'", (request.workspace_ref,)).fetchall() if allowed else []
-            cut = str(con.execute("SELECT COUNT(*) FROM ledger_command WHERE workspace_ref=?", (request.workspace_ref,)).fetchone()[0] or 1)
+            has_more = len(rows) > self._page_size
+            rows = rows[: self._page_size]
+            outgoing_cursor = self._issue_cursor(con, request, cut, rows[-1]["candidate_ref"]) if has_more else None
+            support_rows = con.execute(
+                f"""SELECT from_candidate_ref,to_candidate_ref FROM ledger_edge e WHERE e.workspace_ref=?
+                   AND e.edge_kind='SUPPORT' AND e.edge_state='ACTIVE' AND {visible.format(column='e.start_cut')}
+                   AND NOT EXISTS (SELECT 1 FROM ledger_edge_closure ec WHERE ec.edge_ref=e.edge_ref AND {visible.format(column='ec.end_cut')})
+                   AND e.valid_from_at<=? AND (e.valid_to_at IS NULL OR e.valid_to_at>?)
+                   AND e.recorded_from_at<=? AND (e.recorded_to_at IS NULL OR e.recorded_to_at>?)""",
+                (request.workspace_ref, cut, cut, cut, cut, cut, cut, request.valid_at, request.valid_at, request.recorded_at, request.recorded_at),
+            ).fetchall() if allowed else []
+            conflict_rows = con.execute(
+                f"""SELECT from_candidate_ref,to_candidate_ref FROM ledger_edge e WHERE e.workspace_ref=? AND e.edge_kind='CONTRADICTION' AND e.edge_state='ACTIVE'
+                   AND {visible.format(column='e.start_cut')}
+                   AND NOT EXISTS (SELECT 1 FROM ledger_edge_closure ec WHERE ec.edge_ref=e.edge_ref AND {visible.format(column='ec.end_cut')})
+                   AND e.valid_from_at<=? AND (e.valid_to_at IS NULL OR e.valid_to_at>?) AND e.recorded_from_at<=? AND (e.recorded_to_at IS NULL OR e.recorded_to_at>?)
+                   ORDER BY from_candidate_ref,to_candidate_ref""",
+                (request.workspace_ref, cut, cut, cut, cut, cut, cut, request.valid_at, request.valid_at, request.recorded_at, request.recorded_at),
+            ).fetchall() if allowed else []
         except BaseException:
-            con.execute("ROLLBACK"); raise
+            con.execute("ROLLBACK")
+            raise
         else:
             con.execute("COMMIT")
+        finally:
+            con.close()
+        if any(not self._cas.available(row["content_digest"]) for row in rows):
+            raise LedgerAuthorityError("citation content is unavailable or corrupt")
         digest = sha256((request.workspace_ref + cut).encode()).hexdigest()
-        ref = lambda kind: f"{kind}:{digest}"
-        gate = GateStateV2("PASS" if allowed else "DENY", request.authority_epoch, digest)
-        candidates = tuple(
-            CandidateOutcomeV2(row["candidate_ref"], row["revision_ref"], row["candidate_state"], row["content_digest"], support_refs[row["candidate_ref"]])
-            for row in rows
-        )
+        gates = provenance.component_states
+        supports: dict[str, list[str]] = {}
+        for edge in support_rows:
+            supports.setdefault(edge["to_candidate_ref"], []).append(edge["from_candidate_ref"])
+        candidates = tuple(CandidateOutcomeV2(row["candidate_ref"], row["revision_ref"], row["candidate_state"], row["content_digest"], tuple(sorted(supports.get(row["candidate_ref"], ())))) for row in rows)
         citations = tuple(
-            RecallCitationV2(
-                "second-brain-recall-citation-v2",
-                row["candidate_ref"],
-                f"source:{row['content_digest']}",
-                canonical_ledger_digest(
-                    "citation-v2",
-                    {
-                        "candidate_ref": row["candidate_ref"],
-                        "revision_ref": row["revision_ref"],
-                        "content_digest": row["content_digest"],
-                        "transaction_cut": cut,
-                    },
-                ),
-            ).to_mapping()
-            for row in rows
+            self._served_citation(request.workspace_ref, row) for row in rows
         )
-        body = {"snapshot_version":"second-brain-recall-serve-snapshot-v2", "workspace_ref":request.workspace_ref, "capability_ref":request.capability_ref, "authority_epoch":request.authority_epoch, "query_digest":request.query_digest, "transaction_cut":cut, "valid_at":request.valid_at, "recorded_at":request.recorded_at, "scope_digest":request.scope_digest, "generation_ref":ref("generation"), "generation_digest":digest, "checkpoint_ref":ref("checkpoint"), "checkpoint_digest":digest, "freshness_digest":digest, "authority_checkpoint_digest":digest, "authorization":RecallAuthorityV2("ALLOW" if allowed else "DENY", request.capability_ref, request.authority_epoch, request.query_digest, request.workspace_ref, request.scope_digest).to_mapping(), "global_floor":gate.to_mapping(), "binding":gate.to_mapping(), "recovery":gate.to_mapping(), "route":gate.to_mapping(), "cohort":gate.to_mapping(), "deletion":gate.to_mapping(), "consent":gate.to_mapping(), "projection_digest":digest, "contract_digest":digest, "base_snapshot_digest":None, "incoming_cursor_digest":None, "incoming_continuation_ref":None, "candidates":[item.to_mapping() for item in candidates], "conflicts":[ConflictOutcomeV2(r[0],r[1],"OPEN").to_mapping() for r in conflicts if r[0] in displayed and r[1] in displayed], "citations":citations, "continuation":None}
-        return ValidatedRecallSnapshotAcquisitionV2(request, make_recall_snapshot_v2(body))
+        displayed = {row["candidate_ref"] for row in rows}
+        conflicts = tuple(
+            ConflictOutcomeV2(
+                "second-brain-conflict-decision-v2", *sorted((row[0], row[1])), "OPEN",
+                None, None, None, None, None,
+                canonical_ledger_digest("conflict-decision-v2", {
+                    "decision_version": "second-brain-conflict-decision-v2",
+                    "left_candidate_ref": min(row[0], row[1]), "right_candidate_ref": max(row[0], row[1]),
+                    "state": "OPEN", "winning_candidate_ref": None,
+                    "expected_decision_revision_ref": None, "authority_provenance_ref": None,
+                    "authority_provenance_digest": None, "winning_revision_citation": None,
+                }),
+            )
+            for row in conflict_rows if row[0] in displayed and row[1] in displayed
+        )
+        chain = self._incoming_chain(request.continuation)
+        outgoing = self._outgoing_continuation(request, cut, digest, outgoing_cursor)
+        body = {"snapshot_version":"second-brain-recall-serve-snapshot-v2","snapshot_attestation_version":"second-brain-recall-snapshot-attestation-v2","snapshot_signer_ref":self._signer_ref,"snapshot_signer_algorithm":"Ed25519","snapshot_key_id":self._key_id,"snapshot_signature":"pending","provenance_component_labels":["authorization","global_floor","binding","recovery","route","cohort","deletion","consent"],"provenance_component_states":[gate.to_mapping() for gate in gates],"has_more":has_more,"workspace_ref":request.workspace_ref,"capability_ref":request.capability_ref,"authority_epoch":request.authority_epoch,"subject_ref":request.subject_ref,"action":request.action,"query_digest":request.query_digest,"transaction_cut":cut,"valid_at":request.valid_at,"recorded_at":request.recorded_at,"scope_digest":request.scope_digest,"authority_provenance_ref":request.authority_provenance_ref,"authority_provenance_digest":request.authority_provenance_digest,"generation_ref":"generation:"+digest,"generation_digest":digest,"checkpoint_ref":"checkpoint:"+digest,"checkpoint_digest":digest,"freshness_digest":digest,"authority_checkpoint_digest":digest,"authorization":RecallAuthorityV2("ALLOW" if allowed else authorization_state,request.capability_ref,request.authority_epoch,request.query_digest,request.workspace_ref,request.scope_digest).to_mapping(),"global_floor":gates[1].to_mapping(),"binding":gates[2].to_mapping(),"recovery":gates[3].to_mapping(),"route":gates[4].to_mapping(),"cohort":gates[5].to_mapping(),"deletion":gates[6].to_mapping(),"consent":gates[7].to_mapping(),"projection_digest":digest,"contract_digest":digest,"base_snapshot_digest":chain[0],"cursor_state_digest":chain[1],"incoming_cursor_digest":chain[2],"incoming_continuation_ref":chain[3],"candidates":[item.to_mapping() for item in candidates],"conflicts":[item.to_mapping() for item in conflicts],"citations":[item.to_mapping() for item in citations],"continuation":outgoing}
+        seal = self._seal_continuation if outgoing is not None else None
+        provisional = make_recall_snapshot_v2(body, seal_continuation=seal)
+        body["snapshot_signature"] = self._snapshot_signer(canonical_ledger_bytes("snapshot-attestation-v2", {k: v for k, v in provisional.to_mapping().items() if k not in {"snapshot_signature", "continuation"}}))
+        return ValidatedRecallSnapshotAcquisitionV2(request, make_recall_snapshot_v2(body, seal_continuation=seal), self._trust_authority)

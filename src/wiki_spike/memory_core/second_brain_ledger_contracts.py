@@ -55,6 +55,24 @@ class RecallTrustAuthorityV2:
         if provenance is None or provenance.provenance_digest != digest:
             raise InvalidContractValue("authority provenance is missing or does not resolve by ref/digest")
         return provenance
+    def register_verified_provenance(
+        self, provenance: "AuthorityProvenanceV2"
+    ) -> None:
+        if not isinstance(provenance, AuthorityProvenanceV2):
+            raise InvalidContractValue("typed authority provenance is required")
+        provenance.validate_at(self._now())
+        if not self._verify(
+            signer_ref=provenance.signer_ref,
+            algorithm=provenance.signer_algorithm,
+            key_id=provenance.key_id,
+            signature=provenance.signature,
+            body=provenance.signing_body(),
+        ):
+            raise InvalidContractValue("authority provenance signature verification failed")
+        existing = self.__provenance.get(provenance.provenance_ref)
+        if existing is not None and existing != provenance:
+            raise InvalidContractValue("authority provenance reference collision")
+        self.__provenance[provenance.provenance_ref] = provenance
 
 def mint_recall_trust_authority_v2(security_authority: SecurityContextAuthority, verifier: RecallTrustVerifierV2, clock: Callable[[], str], provenance: Mapping[str, "AuthorityProvenanceV2"]) -> RecallTrustAuthorityV2:
     require_security_context_authority(security_authority)
@@ -85,6 +103,10 @@ def canonical_ledger_bytes(domain: str, body: Mapping[str, Any]) -> bytes:
 
 def canonical_ledger_digest(domain: str, body: Mapping[str, Any]) -> str:
     return sha256(canonical_ledger_bytes(domain, body)).hexdigest()
+
+def canonical_ledger_instant(value: Any, field: str = "instant") -> str:
+    """Canonical UTC spelling every signed and digest-bound wire must carry."""
+    return _utc(value, field)
 
 
 def _strict(data: Any, fields: set[str]) -> dict[str, Any]:
@@ -610,8 +632,15 @@ def validate_recall_continuation_at(continuation: RecallContinuationV2, authorit
     _verify_continuation(authority, continuation, authority._now())
     return VerifiedRecallContinuationV2(continuation)
 
-def make_recall_snapshot_v2(body: Mapping[str, Any]) -> RecallServeSnapshotV2:
-    """Build a digest-bound snapshot; continuations must already bind its base digest."""
+def make_recall_snapshot_v2(body: Mapping[str, Any], *, seal_continuation: Callable[[Mapping[str, Any]], "RecallContinuationV2"] | None = None) -> RecallServeSnapshotV2:
+    """Build a digest-bound snapshot.
+
+    Without ``seal_continuation`` an outgoing continuation must already bind this
+    snapshot's authority and digest. With it, ``body["continuation"]`` is the
+    unsigned outgoing body; the two values a minter cannot precompute
+    (``authority_commitment_digest`` and ``base_snapshot_digest``) are injected
+    here and the callback returns the signed continuation.
+    """
     values = _strict(body, RecallServeSnapshotV2.FIELDS - {"snapshot_digest", "authority_commitment_digest", "pagination_commitment_digest", "selected_candidates_digest", "selected_citations_digest", "selected_conflicts_digest"})
     authority_values = dict(values)
     if isinstance(authority_values["authorization"], Mapping):
@@ -628,6 +657,13 @@ def make_recall_snapshot_v2(body: Mapping[str, Any]) -> RecallServeSnapshotV2:
     values["pagination_commitment_digest"] = canonical_ledger_digest("snapshot-pagination-v2", {"has_more": values["has_more"], "cursor_state_digest": None if continuation is None else continuation["cursor_state_digest"], "terminal": continuation is None})
     digest_body = {k: v for k, v in values.items() if k not in {"continuation", "snapshot_signature"}}
     values["snapshot_digest"] = canonical_ledger_digest("snapshot-v2", digest_body)
+    if seal_continuation is not None:
+        if not isinstance(continuation, Mapping):
+            raise InvalidContractValue("sealing requires an unsigned outgoing continuation body")
+        values["continuation"] = seal_continuation(dict(continuation) | {
+            "authority_commitment_digest": values["authority_commitment_digest"],
+            "base_snapshot_digest": values["snapshot_digest"],
+        })
     return RecallServeSnapshotV2.from_mapping(values)
 def validate_ledger_recall_v2_semantics(wire: Mapping[str, Any]) -> Any:
     """Structural/semantic parsing only; it never admits cryptographic authority or snapshots."""

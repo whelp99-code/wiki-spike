@@ -20,11 +20,10 @@ def _continuation(value: object) -> RuntimeContinuationV2 | None:
         return None
     return RuntimeContinuationV2(
         value.continuation_ref, value.workspace_ref, value.capability_ref, value.authority_epoch,
-        value.query_digest, value.scope_digest, value.cursor, value.expires_at,
+        value.query_digest, value.scope_digest, value.cursor_handle_ref, value.expires_at,
         value.base_snapshot_digest, value.transaction_cut, value.generation_ref,
         value.generation_digest, value.checkpoint_ref, value.checkpoint_digest,
         value.freshness_digest, value.authority_checkpoint_digest,
-        value.authority_commitment_digest,
     )
 
 
@@ -41,20 +40,20 @@ def convert_validated_recall_snapshot(acquisition: ValidatedRecallSnapshotAcquis
         source.query_digest, source.transaction_cut, source.valid_at, source.recorded_at,
         source.scope_digest, source.generation_ref, source.generation_digest,
         source.checkpoint_ref, source.checkpoint_digest, source.freshness_digest,
-        source.authority_checkpoint_digest, source.authority_commitment_digest,
+        source.authority_checkpoint_digest,
         source.authorization.decision, source.global_floor.state, source.binding.state,
         source.recovery.state, source.route.state, source.cohort.state, source.deletion.state,
         source.consent.state,
         tuple(RuntimeCandidateV2(item.candidate_ref, item.revision_ref, item.state, item.content_digest, item.support_refs) for item in source.candidates),
         tuple(RuntimeConflictV2(item.left_candidate_ref, item.right_candidate_ref, item.state) for item in source.conflicts),
-        tuple(RuntimeCitationV2(item.candidate_ref, item.source_ref, item.citation_digest) for item in source.citations),
+        tuple(RuntimeCitationV2(item.candidate_ref, item.evidence.immutable_source_ref, item.citation_digest) for item in source.citations),
         source.base_snapshot_digest, source.incoming_cursor_digest, source.incoming_continuation_ref,
         _continuation(source.continuation),
     )
     return snapshot, RuntimeRecallRequestV2(
         snapshot.snapshot_digest, request.workspace_ref, request.capability_ref,
         request.authority_epoch, request.query_digest, request.valid_at, request.recorded_at,
-        request.scope_digest, None if request.continuation is None else request.continuation.cursor,
+        request.scope_digest, None if request.continuation is None else request.continuation.cursor_handle_ref,
         _continuation(request.continuation),
     )
 

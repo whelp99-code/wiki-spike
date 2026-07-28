@@ -13,7 +13,7 @@ D = "a" * 64
 def snapshot(*, candidates=(), citations=(), conflicts=(), deletion="PASS", recorded_at="2026-01-01T00:00:00Z"):
     return RuntimePinnedRecallSnapshotV2(
         D, "workspace:" + D, "capability:" + D, "1", D, "1", "2026-01-01T00:00:00Z",
-        recorded_at, D, "generation:" + D, D, "checkpoint:" + D, D, D, D, D,
+        recorded_at, D, "generation:" + D, D, "checkpoint:" + D, D, D, D,
         "ALLOW", "PASS", "PASS", "PASS", "PASS", "PASS", deletion, "PASS",
         candidates, conflicts, citations,
     )

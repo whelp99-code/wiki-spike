@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from hashlib import sha256
 from pathlib import Path
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 import pytest
+from test_stage1_capabilities import authority as security_authority
 
 from wiki_spike.applications.second_brain_ledger_service import SecondBrainLedgerService
 from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore
@@ -15,12 +19,16 @@ from wiki_spike.infrastructure.second_brain_ledger import (
     LifecycleLedgerAuthority,
 )
 from wiki_spike.memory_core.second_brain_ledger_contracts import (
+    AuthorityProvenanceV2,
+    GateStateV2,
     LedgerCommandV2,
     RecallSnapshotRequestV2,
+    RecallTrustVerifierV2,
+    canonical_ledger_bytes,
     canonical_ledger_digest,
     make_recall_continuation_v2,
+    mint_recall_trust_authority_v2,
 )
-from wiki_spike.memory_core.errors import InvalidContractValue
 
 
 NOW = "2026-01-01T00:00:00Z"
@@ -35,6 +43,126 @@ def ref(kind: str, value: str) -> str:
     return f"{kind}:{digest(value)}"
 
 
+_ACTIVE_REVISIONS: dict[str, str] = {}
+_CURRENT_CUT = "1"
+_COMMAND_PROVENANCE: dict[str, AuthorityProvenanceV2] = {}
+
+
+class TrackingLedgerService(SecondBrainLedgerService):
+    def append(self, ledger_command: LedgerCommandV2):
+        item = _COMMAND_PROVENANCE[ledger_command.authority_provenance_ref]
+        self._ledger._trust_authority.register_verified_provenance(item)
+        receipt = super().append(ledger_command)
+        global _CURRENT_CUT
+        _ACTIVE_REVISIONS[ledger_command.payload.candidate_ref] = (
+            "revision:"
+            + sha256(
+                (ledger_command.command_ref + ledger_command.command_digest).encode()
+            ).hexdigest()
+        )
+        _CURRENT_CUT = receipt.transaction_cut
+        return receipt
+
+_SIGNING_KEY = Ed25519PrivateKey.from_private_bytes(bytes(range(32)))
+SIGNER_REF = ref("signer", "stage3-fixture")
+KEY_ID = ref("key", "stage3-fixture")
+
+
+class DeterministicEd25519Verifier(RecallTrustVerifierV2):
+    def verify_signed_bytes(self, *, signer_ref: str, algorithm: str, key_id: str, signature: str, payload: bytes) -> bool:
+        if (signer_ref, algorithm, key_id) != (SIGNER_REF, "Ed25519", KEY_ID):
+            return False
+        try:
+            _SIGNING_KEY.public_key().verify(urlsafe_b64decode(signature + "=" * (-len(signature) % 4)), payload)
+        except (InvalidSignature, ValueError):
+            return False
+        return True
+
+
+def sign(payload: bytes) -> str:
+    return urlsafe_b64encode(_SIGNING_KEY.sign(payload)).rstrip(b"=").decode()
+
+
+def provenance(*, provenance_ref: str, workspace: str, action: str, transaction_cut: str, query_digest: str | None, scope_digest: str | None, request_digest: str | None, command_payload_digest: str | None, authority_epoch: str = "1", authorization_state: str = "PASS") -> AuthorityProvenanceV2:
+    states = (GateStateV2(authorization_state, "1", digest("gate-1")),) + tuple(
+        GateStateV2("PASS", "1", digest(f"gate-{index}")) for index in range(2, 9)
+    )
+    unsigned = {
+        "provenance_version": "second-brain-authority-provenance-v2",
+        "provenance_ref": provenance_ref,
+        "signer_ref": SIGNER_REF,
+        "signer_algorithm": "Ed25519",
+        "key_id": KEY_ID,
+        "component_labels": ["authorization", "global_floor", "binding", "recovery", "route", "cohort", "deletion", "consent"],
+        "component_states": [state.to_mapping() for state in states],
+        "transaction_cut": transaction_cut,
+        "issued_at": "2025-12-31T00:00:00Z",
+        "expires_at": "2026-01-04T00:00:00Z",
+        "workspace_ref": workspace,
+        "capability_ref": ref("capability", "stage3"),
+        "authority_epoch": authority_epoch,
+        "subject_ref": ref("subject", "stage3"),
+        "action": action,
+        "query_digest": query_digest,
+        "scope_digest": scope_digest,
+        "request_digest": request_digest,
+        "command_payload_digest": command_payload_digest,
+    }
+    bound = canonical_ledger_digest("authority-provenance-v2", unsigned)
+    return AuthorityProvenanceV2.from_mapping(unsigned | {
+        "provenance_digest": bound,
+        "signature": sign(canonical_ledger_bytes("signed-v2", unsigned)),
+    })
+
+
+def trust_for_request(value: RecallSnapshotRequestV2, *, authorization_state: str = "PASS"):
+    registry: dict[str, AuthorityProvenanceV2] = {}
+    candidates = [
+        request(
+            value.workspace_ref,
+            transaction_cut=str(cut),
+            authorization_state=authorization_state,
+        )
+        for cut in range(1, 129)
+    ]
+    candidates.append(value)
+    for candidate in candidates:
+        binding_body = {
+            key: (
+                candidate.continuation.to_mapping()
+                if key == "continuation" and candidate.continuation
+                else getattr(candidate, key)
+            )
+            for key in RecallSnapshotRequestV2.FIELDS
+            - {"authority_provenance_ref", "authority_provenance_digest", "request_digest"}
+        }
+        item = provenance(
+            provenance_ref=candidate.authority_provenance_ref,
+            workspace=candidate.workspace_ref,
+            action=candidate.action,
+            transaction_cut=candidate.transaction_cut,
+            query_digest=candidate.query_digest,
+            scope_digest=candidate.scope_digest,
+            request_digest=canonical_ledger_digest(
+                "request-provenance-binding-v2", binding_body
+            ),
+            command_payload_digest=None,
+            authorization_state=authorization_state,
+        )
+        if item.provenance_digest != candidate.authority_provenance_digest:
+            raise AssertionError("request provenance fixture drift")
+        registry[item.provenance_ref] = item
+    return mint_recall_trust_authority_v2(
+        security_authority(),
+        DeterministicEd25519Verifier(),
+        lambda: NOW,
+        registry,
+    )
+
+
+def signed_snapshot_signer(payload: bytes) -> str:
+    return sign(payload)
+
 def command(
     kind: str,
     candidate: str,
@@ -45,6 +173,7 @@ def command(
     workspace: str | None = None,
     content_digest: str | None = None,
     recorded_at: str = NOW,
+    transaction_cut: str | None = None,
 ) -> LedgerCommandV2:
     workspace = workspace or ref("workspace", "stage3")
     prior, result = {
@@ -74,34 +203,102 @@ def command(
         "support_edges": edges,
         "contradiction_edges": contradictions,
     }
+    payload_digest = canonical_ledger_digest("command-payload-v2", payload)
+    provenance_ref = ref("provenance", f"command-{command_name}")
     body = {
         "command_version": "second-brain-ledger-command-v2",
         "command_ref": ref("command", command_name),
         "workspace_ref": workspace,
         "capability_ref": ref("capability", "stage3"),
         "authority_epoch": epoch,
+        "subject_ref": ref("subject", "stage3"),
+        "action": "WRITE",
+        "scope_digest": digest("scope"),
         "kind": kind,
         "target_candidate_ref": None if kind == "CREATE_CANDIDATE" else candidate,
+        "expected_active_revision_ref": None if kind == "CREATE_CANDIDATE" else _ACTIVE_REVISIONS[candidate],
         "related_candidate_refs": [] if related is None else [related],
         "interval": {"valid_from": NOW, "valid_to": None, "recorded_from": recorded_at, "recorded_to": None},
         "payload": payload,
+        "command_payload_digest": payload_digest,
     }
+    provenance_ref = ref("provenance", f"command-{command_name}")
+    binding = canonical_ledger_digest("command-provenance-binding-v2", body)
+    item = provenance(
+        provenance_ref=provenance_ref,
+        workspace=workspace,
+        action="WRITE",
+        transaction_cut=transaction_cut or _CURRENT_CUT,
+        query_digest=None,
+        scope_digest=digest("scope"),
+        request_digest=None,
+        command_payload_digest=binding,
+        authority_epoch=epoch,
+    )
+    _COMMAND_PROVENANCE[provenance_ref] = item
+    body["authority_provenance_ref"] = provenance_ref
+    body["authority_provenance_digest"] = item.provenance_digest
     return LedgerCommandV2.from_mapping(body | {"command_digest": canonical_ledger_digest("command-v2", body)})
 
 
-def request(workspace: str, *, epoch: str = "1") -> RecallSnapshotRequestV2:
-    body = {"request_version": "second-brain-recall-snapshot-request-v2", "workspace_ref": workspace, "capability_ref": ref("capability", "stage3"), "authority_epoch": epoch, "query_digest": digest("query"), "valid_at": NOW, "recorded_at": LATER, "scope_digest": digest("scope"), "continuation": None}
+def request(workspace: str, *, epoch: str = "1", transaction_cut: str | None = None, continuation=None, authorization_state: str = "PASS", recorded_at: str = LATER) -> RecallSnapshotRequestV2:
+    transaction_cut = transaction_cut or _CURRENT_CUT
+    body = {
+        "request_version": "second-brain-recall-snapshot-request-v2",
+        "workspace_ref": workspace,
+        "capability_ref": ref("capability", "stage3"),
+        "authority_epoch": epoch,
+        "subject_ref": ref("subject", "stage3"),
+        "action": "RECALL",
+        "query_digest": digest("query"),
+        "valid_at": NOW,
+        "recorded_at": recorded_at,
+        "scope_digest": digest("scope"),
+        "transaction_cut": transaction_cut,
+        "authority_provenance_ref": ref("provenance", f"request-stage3-{transaction_cut}" if continuation is None else f"request-stage3-{continuation.continuation_ref}"),
+        "authority_provenance_digest": digest("placeholder"),
+        "continuation": None if continuation is None else continuation.to_mapping(),
+    }
+    unsigned = RecallSnapshotRequestV2.from_mapping(body | {"request_digest": canonical_ledger_digest("request-v2", body)})
+    binding_body = {
+        key: (
+            unsigned.continuation.to_mapping()
+            if key == "continuation" and unsigned.continuation is not None
+            else getattr(unsigned, key)
+        )
+        for key in RecallSnapshotRequestV2.FIELDS - {"authority_provenance_ref", "authority_provenance_digest", "request_digest"}
+    }
+    item = provenance(
+        provenance_ref=unsigned.authority_provenance_ref,
+        workspace=workspace,
+        action=unsigned.action,
+        transaction_cut=transaction_cut,
+        query_digest=unsigned.query_digest,
+        scope_digest=unsigned.scope_digest,
+        request_digest=canonical_ledger_digest("request-provenance-binding-v2", binding_body),
+        command_payload_digest=None,
+        authorization_state=authorization_state,
+    )
+    body["authority_provenance_digest"] = item.provenance_digest
     return RecallSnapshotRequestV2.from_mapping(body | {"request_digest": canonical_ledger_digest("request-v2", body)})
 
 
 def store(tmp_path: Path) -> tuple[LifecycleDatabase, EncryptedContentStore, SecondBrainLedgerService, str]:
+    _ACTIVE_REVISIONS.clear()
+    _COMMAND_PROVENANCE.clear()
+    global _CURRENT_CUT
+    _CURRENT_CUT = "1"
     database = LifecycleDatabase(tmp_path / "ledger.sqlite")
     database.initialize()
     cas = EncryptedContentStore(tmp_path / "cas")
     workspace = ref("workspace", "stage3")
-    authority = LifecycleLedgerAuthority(database, cas)
+    trusted_request = request(workspace)
+    authority = LifecycleLedgerAuthority(
+        database, cas, trust_for_request(trusted_request), signed_snapshot_signer,
+        signer_ref=SIGNER_REF, key_id=KEY_ID,
+    )
     authority.set_authority(workspace, LedgerAuthority(ref("capability", "stage3"), "1"), NOW)
-    return database, cas, SecondBrainLedgerService(authority, authority), workspace
+    return database, cas, TrackingLedgerService(authority, authority), workspace
 
 
 def blob(cas: EncryptedContentStore, name: str) -> str:
@@ -128,7 +325,10 @@ def test_real_cas_sqlite_concurrent_and_restart_idempotency(tmp_path: Path) -> N
     def retry() -> str:
         reopened = LifecycleDatabase(tmp_path / "ledger.sqlite")
         reopened.initialize()
-        ledger = LifecycleLedgerAuthority(reopened, cas)
+        ledger = LifecycleLedgerAuthority(
+            reopened, cas, trust_for_request(request(workspace)), signed_snapshot_signer,
+            signer_ref=SIGNER_REF, key_id=KEY_ID,
+        )
         receipt = ledger.append_ledger_command(create)
         reopened.close()
         return receipt.receipt_digest
@@ -234,7 +434,7 @@ def test_contradictions_are_co_displayed_only_for_two_approved_candidates(tmp_pa
     service.append(command("DECLARE_CONTRADICTION", left, command_name="contradiction", related=right, workspace=workspace))
     snapshot = service.acquire(request(workspace)).snapshot
     assert {candidate.candidate_ref for candidate in snapshot.candidates} == {left, right}
-    assert [(conflict.left_candidate_ref, conflict.right_candidate_ref) for conflict in snapshot.conflicts] == [(left, right)]
+    assert [(conflict.left_candidate_ref, conflict.right_candidate_ref) for conflict in snapshot.conflicts] == [tuple(sorted((left, right)))]
     database.close()
 
 
@@ -267,11 +467,14 @@ def test_wal_snapshot_is_one_cut_and_stage2_capture_rows_are_never_served_or_mut
     workspace = ref("workspace", "stage3")
     database.con.execute("INSERT INTO capture_scope VALUES(?,?,?,?,?,?)", (ref("scope", "stage2"), workspace, ref("source", "stage2"), "NON_SERVING", digest("stage2"), "capture-handle"))
     database.con.execute("INSERT INTO capture_receipt VALUES(?,?,?,?,?,?,?,?)", (ref("capture", "stage2"), ref("scope", "stage2"), "1", "ACCEPTED", digest("receipt"), ref("encrypted", "one"), ref("encrypted", "two"), "capture-handle"))
-    ledger = LifecycleLedgerAuthority(database, cas)
+    ledger = LifecycleLedgerAuthority(
+        database, cas, trust_for_request(request(workspace)), signed_snapshot_signer,
+        signer_ref=SIGNER_REF, key_id=KEY_ID,
+    )
     ledger.set_authority(workspace, LedgerAuthority(ref("capability", "stage3"), "1"), NOW)
     service = SecondBrainLedgerService(ledger, ledger)
     before = tuple(database.con.execute("SELECT * FROM capture_receipt").fetchone())
-    snapshot = service.acquire(request(workspace)).snapshot
+    snapshot = service.acquire(request(workspace, transaction_cut="1")).snapshot
     assert snapshot.candidates == () and snapshot.transaction_cut == "1"
     assert tuple(database.con.execute("SELECT * FROM capture_receipt").fetchone()) == before
     database.close()
@@ -286,11 +489,21 @@ def test_wal_snapshot_continuation_is_bound_to_one_cut_despite_later_writer(tmp_
         "continuation_version": "second-brain-recall-continuation-v2",
         "continuation_ref": ref("continuation", "one"),
         "workspace_ref": workspace,
-        "capability_ref": ref("capability", "stage3"),
-        "authority_epoch": "1",
-        "query_digest": digest("query"),
-        "scope_digest": digest("scope"),
+        "capability_ref": first.capability_ref,
+        "authority_epoch": first.authority_epoch,
+        "subject_ref": first.subject_ref,
+        "action": first.action,
+        "query_digest": first.query_digest,
+        "scope_digest": first.scope_digest,
+        "valid_at": first.valid_at,
+        "recorded_at": first.recorded_at,
         "transaction_cut": first.transaction_cut,
+        "authority_provenance_ref": first.authority_provenance_ref,
+        "authority_provenance_digest": first.authority_provenance_digest,
+        "signer_ref": SIGNER_REF,
+        "signer_algorithm": "Ed25519",
+        "key_id": KEY_ID,
+        "signature": "pending",
         "generation_ref": first.generation_ref,
         "generation_digest": first.generation_digest,
         "checkpoint_ref": first.checkpoint_ref,
@@ -299,17 +512,112 @@ def test_wal_snapshot_continuation_is_bound_to_one_cut_despite_later_writer(tmp_
         "authority_checkpoint_digest": first.authority_checkpoint_digest,
         "authority_commitment_digest": first.authority_commitment_digest,
         "base_snapshot_digest": first.snapshot_digest,
-        "cursor": "next-page",
-        "expires_at": "2026-01-03T00:00:00Z",
+        "cursor_handle_ref": ref("cursor", "next-page"),
+        "cursor_state_digest": digest("next-page"),
+        "issued_at": NOW,
+        "expires_at": "2026-01-01T00:05:00Z",
     }
+    continuation_body["signature"] = sign(canonical_ledger_bytes(
+        "signed-v2", {key: value for key, value in continuation_body.items() if key != "signature"}
+    ))
     continuation = make_recall_continuation_v2(continuation_body)
-    body = request(workspace).to_mapping() | {"continuation": continuation.to_mapping()}
-    body.pop("request_digest")
-    continued_request = RecallSnapshotRequestV2.from_mapping(
-        body | {"request_digest": canonical_ledger_digest("request-v2", body)}
+    continued_request = request(
+        workspace, transaction_cut=first.transaction_cut, continuation=continuation
     )
+    authority = LifecycleLedgerAuthority(
+        database, cas, trust_for_request(continued_request), signed_snapshot_signer,
+        signer_ref=SIGNER_REF, key_id=KEY_ID,
+    )
+    service = TrackingLedgerService(authority, authority)
     service.append(command("REVOKE", candidate, command_name="revoke-after-cut", workspace=workspace))
-    with pytest.raises(InvalidContractValue, match="continuation chain drift|continuation authority drift"):
+    # The fabricated cursor handle was never issued, so the durable cursor lookup
+    # refuses the replay before any drift comparison can run.
+    with pytest.raises(LedgerAuthorityError, match="continuation cursor is not durably resolvable"):
         service.acquire(continued_request)
-    assert first.transaction_cut == "2"
+    assert first.transaction_cut == "3"
+    database.close()
+def test_history_and_closure_rows_reject_direct_mutation(tmp_path: Path) -> None:
+    database = LifecycleDatabase(tmp_path / "ledger.sqlite")
+    database.initialize()
+    assert database.con is not None
+    con = database.con
+    con.execute(
+        "INSERT INTO ledger_candidate_version VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("candidate:test", "revision:test", "workspace:test", "APPROVED", digest("body"),
+         "1", NOW, None, NOW, None, "9", None, "command:test"),
+    )
+    con.execute(
+        "INSERT INTO ledger_candidate_version_closure VALUES(?,?,?,?)",
+        ("candidate:test", "revision:test", "10", LATER),
+    )
+    con.execute(
+        "INSERT INTO ledger_edge VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("edge:test", "workspace:test", "SUPPORT", "candidate:test", "candidate:other",
+         "ACTIVE", NOW, None, NOW, None, "9", None),
+    )
+    con.execute("INSERT INTO ledger_edge_closure VALUES(?,?,?)", ("edge:test", "10", LATER))
+    for statement in (
+        "UPDATE ledger_candidate_version SET candidate_state='REVOKED'",
+        "DELETE FROM ledger_candidate_version",
+        "UPDATE ledger_edge SET edge_state='SUPERSEDED'",
+        "DELETE FROM ledger_edge",
+        "UPDATE ledger_candidate_version_closure SET end_cut='11'",
+        "DELETE FROM ledger_candidate_version_closure",
+        "UPDATE ledger_edge_closure SET end_cut='11'",
+        "DELETE FROM ledger_edge_closure",
+    ):
+        with pytest.raises(Exception, match="append-only"):
+            con.execute(statement)
+    database.close()
+
+
+def test_every_served_revision_carries_a_committed_citation_bound_to_command_provenance(tmp_path: Path) -> None:
+    database, cas, service, workspace = store(tmp_path)
+    candidate = ref("candidate", "cited")
+    create_and_approve(service, cas, candidate, "cited", workspace=workspace)
+    assert database.con is not None
+    commitments = database.con.execute(
+        "SELECT candidate_ref,revision_ref,workspace_ref,content_digest,commitment_state,"
+        "provenance_digest,immutable_source_ref FROM ledger_citation_commitment"
+    ).fetchall()
+    versions = dict(
+        database.con.execute("SELECT revision_ref,content_digest FROM ledger_candidate_version")
+    )
+    command_provenance = {
+        row[0]
+        for row in database.con.execute(
+            "SELECT provenance_digest FROM ledger_provenance WHERE command_ref IS NOT NULL"
+        )
+    }
+    assert len(commitments) == len(versions) == 2
+    for row in commitments:
+        assert (row[0], row[2], row[4]) == (candidate, workspace, "COMMITTED")
+        assert row[3] == versions[row[1]] and row[6] == "source:" + row[3]
+        assert row[5] in command_provenance
+    snapshot = service.acquire(request(workspace)).snapshot
+    served, citation = snapshot.candidates[0], snapshot.citations[0]
+    assert citation.candidate_ref == served.candidate_ref
+    assert citation.evidence.revision_ref == served.revision_ref
+    assert citation.evidence.immutable_source_ref == "source:" + served.content_digest
+    database.close()
+
+
+def test_forged_citation_commitment_is_never_served_even_when_append_only_guard_is_bypassed(tmp_path: Path) -> None:
+    database, cas, service, workspace = store(tmp_path)
+    candidate = ref("candidate", "forged-citation")
+    create_and_approve(service, cas, candidate, "forged-citation", workspace=workspace)
+    assert service.acquire(request(workspace)).snapshot.citations
+    assert database.con is not None
+    for statement in (
+        "UPDATE ledger_citation_commitment SET commitment_state='REVOKED'",
+        "DELETE FROM ledger_citation_commitment",
+    ):
+        with pytest.raises(Exception, match="append-only"):
+            database.con.execute(statement)
+    database.con.execute("DROP TRIGGER ledger_citation_commitment_no_update")
+    database.con.execute(
+        "UPDATE ledger_citation_commitment SET locator_ref=?", ("locator:" + digest("forged"),)
+    )
+    with pytest.raises(LedgerAuthorityError, match="durable citation commitment failed revalidation"):
+        service.acquire(request(workspace))
     database.close()

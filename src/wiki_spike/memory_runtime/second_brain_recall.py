@@ -24,7 +24,6 @@ class RuntimeContinuationV2:
     checkpoint_digest: str
     freshness_digest: str
     authority_checkpoint_digest: str
-    authority_commitment_digest: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,7 +69,6 @@ class RuntimePinnedRecallSnapshotV2:
     checkpoint_digest: str
     freshness_digest: str
     authority_checkpoint_digest: str
-    authority_commitment_digest: str
     authorization: str
     global_floor: str
     binding: str
@@ -139,10 +137,19 @@ def _blocked(snapshot: RuntimePinnedRecallSnapshotV2) -> str | None:
     return None
 
 
-def _pinned_fields(snapshot: RuntimePinnedRecallSnapshotV2) -> tuple[str, ...]:
-    return (snapshot.transaction_cut, snapshot.generation_ref, snapshot.generation_digest,
-            snapshot.checkpoint_ref, snapshot.checkpoint_digest, snapshot.freshness_digest,
-            snapshot.authority_checkpoint_digest, snapshot.authority_commitment_digest)
+def _pinned_serving_fields(value: object) -> tuple[str, ...]:
+    """Serving-authority identity shared by every page of one continuation chain.
+
+    ``authority_commitment_digest`` is deliberately excluded: it binds the
+    per-request ``authority_provenance_ref``/``authority_provenance_digest``, so
+    it is page-scoped by construction. Core already binds the continuation to
+    the page it was minted on (``RecallServeSnapshotV2`` requires an outgoing
+    continuation to carry that snapshot's authority and digest) and verifies its
+    signature on the way back, so no cross-page equality is available or needed.
+    """
+    return (value.transaction_cut, value.generation_ref, value.generation_digest,
+            value.checkpoint_ref, value.checkpoint_digest, value.freshness_digest,
+            value.authority_checkpoint_digest)
 
 
 class SecondBrainRecallRuntime:
@@ -159,7 +166,7 @@ class SecondBrainRecallRuntime:
             if request.cursor != continuation.cursor or parse_utc(continuation.expires_at) <= parse_utc(request.recorded_at):
                 return RuntimeRecallAnswerV2((), True, "continuation_invalid")
             continuation_fields = ("workspace_ref", "capability_ref", "authority_epoch", "query_digest", "scope_digest")
-            if tuple(getattr(snapshot, field) for field in continuation_fields) != tuple(getattr(continuation, field) for field in continuation_fields) or (snapshot.base_snapshot_digest, snapshot.incoming_continuation_ref) != (continuation.base_snapshot_digest, continuation.continuation_ref) or _pinned_fields(snapshot) != (continuation.transaction_cut, continuation.generation_ref, continuation.generation_digest, continuation.checkpoint_ref, continuation.checkpoint_digest, continuation.freshness_digest, continuation.authority_checkpoint_digest, continuation.authority_commitment_digest):
+            if tuple(getattr(snapshot, field) for field in continuation_fields) != tuple(getattr(continuation, field) for field in continuation_fields) or (snapshot.base_snapshot_digest, snapshot.incoming_continuation_ref) != (continuation.base_snapshot_digest, continuation.continuation_ref) or _pinned_serving_fields(snapshot) != _pinned_serving_fields(continuation):
                 return RuntimeRecallAnswerV2((), True, "continuation_drift")
         elif request.cursor is not None:
             return RuntimeRecallAnswerV2((), True, "cursor_without_continuation")
