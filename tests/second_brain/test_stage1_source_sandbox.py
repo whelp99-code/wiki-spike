@@ -104,6 +104,12 @@ def test_expired_or_superseded_consent_is_denied_before_file_read(tmp_path):
     stale = SourceConsentState(**{**consent.__dict__, "consent_epoch": "1"})
     result = FixtureSourceSandbox(tmp_path, FixtureLimitPolicy(1, 1, 64, 10)).read(verified, consent=stale, retention=retention, sensitivity=Sensitivity.PUBLIC, now=NOW)
     assert result.disposition is SourceSandboxDisposition.QUARANTINED
+
+
+@pytest.mark.parametrize("path", ["has space.json", "hash#.json", "query?.json"])
+def test_runtime_path_grammar_matches_schema_denials(path):
+    with pytest.raises(SourceFixtureVerificationError, match="canonical relative"):
+        SourceFixtureVerifier().verify(manifest([entry(path, b"x")]))
 def test_deadline_is_checked_before_and_during_fixture_read(tmp_path):
     content = b"x" * 2
     (tmp_path / "normal.json").write_bytes(content)

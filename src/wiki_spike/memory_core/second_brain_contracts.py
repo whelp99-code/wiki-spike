@@ -78,6 +78,15 @@ def _timestamp(value: Any, field: str) -> datetime:
     except ValueError as exc: raise InvalidContractValue(f"{field} must be an ISO-8601 timestamp") from exc
     if parsed.tzinfo is None: raise InvalidContractValue(f"{field} must include a timezone")
     return parsed.astimezone(timezone.utc)
+def _canonical_utc_timestamp(value: Any, field: str) -> datetime:
+    """Parse only the canonical UTC wire representation used by Stage-1 state."""
+    value = _text(value, field)
+    if re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z", value) is None:
+        raise InvalidContractValue(f"{field} must be a canonical UTC timestamp")
+    try:
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise InvalidContractValue(f"{field} must be a canonical UTC timestamp") from exc
 
 
 def _signature_bytes(value: Any, field: str) -> bytes:

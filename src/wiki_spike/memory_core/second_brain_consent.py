@@ -9,7 +9,7 @@ from typing import Any
 
 from .errors import InvalidContractValue
 from .policy import Sensitivity
-from .second_brain_contracts import _digest, _positive_decimal, _timestamp
+from .second_brain_contracts import _canonical_utc_timestamp, _digest, _positive_decimal
 
 _REF = re.compile(r"^[A-Za-z0-9._:-]+$")
 
@@ -85,8 +85,8 @@ class SourceConsentState:
     def from_mapping(cls, data: Mapping[str, Any]) -> "SourceConsentState":
         v = _strict(data, cls.FIELDS)
         expires_at, updated_at = v["expires_at"], v["updated_at"]
-        _timestamp(expires_at, "expires_at")
-        _timestamp(updated_at, "updated_at")
+        _canonical_utc_timestamp(expires_at, "expires_at")
+        _canonical_utc_timestamp(updated_at, "updated_at")
         try:
             state, sensitivity = ConsentState(v["consent_state"]), Sensitivity(v["max_sensitivity"])
         except (TypeError, ValueError) as exc:
@@ -128,8 +128,8 @@ class RetentionPolicy:
     def from_mapping(cls, data: Mapping[str, Any]) -> "RetentionPolicy":
         v = _strict(data, cls.FIELDS)
         expires_at, updated_at = v["expires_at"], v["updated_at"]
-        _timestamp(expires_at, "expires_at")
-        _timestamp(updated_at, "updated_at")
+        _canonical_utc_timestamp(expires_at, "expires_at")
+        _canonical_utc_timestamp(updated_at, "updated_at")
         try:
             state, sensitivity = RetentionState(v["retention_state"]), Sensitivity(v["max_sensitivity"])
         except (TypeError, ValueError) as exc:
@@ -196,7 +196,7 @@ class ConsentRetentionPolicy:
         try:
             current_consent = SourceConsentState.from_mapping(consent.to_mapping())
             current_retention = RetentionPolicy.from_mapping(retention.to_mapping())
-            now_utc = _timestamp(now, "now")
+            now_utc = _canonical_utc_timestamp(now, "now")
             requested_sensitivity = Sensitivity(sensitivity)
             for value, field in ((workspace_id, "workspace_id"), (source_ref_id, "source_ref_id"), (project_ref_id, "project_ref_id")):
                 _ref(value, field)
@@ -209,9 +209,9 @@ class ConsentRetentionPolicy:
                 return self._deny(ConsentRetentionReason.SCOPE_MISMATCH), None, None
         if current_consent.consent_state is not ConsentState.ENABLED or current_retention.retention_state is not RetentionState.ACTIVE:
             return self._deny(ConsentRetentionReason.DISABLED), None, None
-        if _timestamp(current_consent.expires_at, "expires_at") <= now_utc:
+        if _canonical_utc_timestamp(current_consent.expires_at, "expires_at") <= now_utc:
             return self._deny(ConsentRetentionReason.EXPIRED), None, None
-        if _timestamp(current_retention.expires_at, "expires_at") <= now_utc:
+        if _canonical_utc_timestamp(current_retention.expires_at, "expires_at") <= now_utc:
             return ConsentRetentionDecision(False, ConsentRetentionDisposition.DELETION_REQUIRED, ConsentRetentionReason.RETENTION_EXPIRED), None, None
         if requested_sensitivity.rank > current_consent.max_sensitivity.rank or requested_sensitivity.rank > current_retention.max_sensitivity.rank:
             return self._deny(ConsentRetentionReason.SENSITIVITY_EXCEEDED), None, None

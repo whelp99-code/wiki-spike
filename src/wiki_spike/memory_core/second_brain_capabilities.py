@@ -23,6 +23,7 @@ class CapabilityDenied(PermissionError):
 class CapabilityGrantV1:
     capability_ref: str; request_digest: str; trust_root_ref: str; root_digest: str
     device_key_ref: str; workspace_ref: str; actor_key_ref: str; actions: tuple[str, ...]
+    credential_refs: tuple[str, ...]; credential_actions: tuple[str, ...]
     scope_digest: str; expires_at: str; nonce_digest: str; revocation_epoch: str
 
 
@@ -30,38 +31,38 @@ _RECEIPT_MINT = object()
 
 
 class ConsumptionReceipt:
-    """Opaque, store-bound proof of one atomic capability consumption."""
-    __slots__ = ("capability_ref", "credential_ref", "action", "device_key_ref", "expires_at", "_store", "_capability", "_redeemed")
+    """Opaque, immutable, store-bound handle for one capability consumption."""
 
-    def __init__(self, mint: object, store: object, capability: CapabilityGrantV1, credential_ref: str, action: str) -> None:
+    __slots__ = ("__token", "__minted")
+
+    def __init__(self, mint: object, token: str) -> None:
         if mint is not _RECEIPT_MINT:
             raise CapabilityDenied("ConsumptionReceipt must be minted by a capability store")
-        self.capability_ref = capability.capability_ref
-        self.credential_ref = credential_ref
-        self.action = action
-        self.device_key_ref = capability.device_key_ref
-        self.expires_at = capability.expires_at
-        self._store = store
-        self._capability = capability
-        self._redeemed = False
+        object.__setattr__(self, "_ConsumptionReceipt__token", token)
+        object.__setattr__(self, "_ConsumptionReceipt__minted", True)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError("ConsumptionReceipt is immutable")
+
+    def _token_for_store(self) -> str:
+        return self.__token
 
 
-def mint_consumption_receipt(store: object, capability: CapabilityGrantV1, credential_ref: str, action: str) -> ConsumptionReceipt:
-    """Internal store-only receipt minting hook."""
-    if not isinstance(credential_ref, str) or not credential_ref or not isinstance(action, str) or not action:
-        raise CapabilityDenied("credential and action bindings are required")
-    return ConsumptionReceipt(_RECEIPT_MINT, store, capability, credential_ref, action)
+@dataclass(frozen=True)
+class ConsumptionReceiptEvidence:
+    """Immutable non-authority evidence returned only by the owning store."""
+
+    credential_ref: str
+    action: str
+    device_key_ref: str
+    expires_at: str
 
 
-def redeem_consumption_receipt(receipt: object, store: object | None = None) -> ConsumptionReceipt:
-    """Redeem a receipt once, optionally pinning it to a particular store."""
-    if not isinstance(receipt, ConsumptionReceipt) or (store is not None and receipt._store is not store):
-        raise CapabilityDenied("a store-bound ConsumptionReceipt is required")
-    if receipt._redeemed:
-        raise CapabilityDenied("consumption receipt replay is denied")
-    receipt._redeemed = True
-    return receipt
-
+def mint_consumption_receipt(token: str) -> ConsumptionReceipt:
+    """Internal store-only opaque receipt minting hook."""
+    if not isinstance(token, str) or not token:
+        raise CapabilityDenied("receipt token is required")
+    return ConsumptionReceipt(_RECEIPT_MINT, token)
 
 _Result = TypeVar("_Result")
 
@@ -128,16 +129,19 @@ class CapabilityService:
     def __init__(self, store: CapabilityStatePort, *, retry_budget: RetryBudget | None = None, circuit_breaker: CircuitBreaker | None = None, now: Callable[[], datetime] | None = None) -> None:
         self.store, self.retry_budget, self.circuit_breaker, self.now = store, retry_budget, circuit_breaker, now or (lambda: datetime.now(timezone.utc))
 
-    def issue(self, authority: SecurityContextAuthority, request: CapabilityRequestV1, *, trust_root_ref: str, device_key_ref: str, workspace_ref: str, actor_key_ref: str, actions: tuple[str, ...], scope_digest: str, expires_at: str, nonce: str) -> CapabilityGrantV1:
+    def issue(self, authority: SecurityContextAuthority, request: CapabilityRequestV1, *, trust_root_ref: str, device_key_ref: str, workspace_ref: str, actor_key_ref: str, actions: tuple[str, ...], credential_refs: tuple[str, ...], credential_actions: tuple[str, ...], scope_digest: str, expires_at: str, nonce: str) -> CapabilityGrantV1:
         _require(authority); current = _now(self.now()); root, device = self.store.trust_root(trust_root_ref), self.store.device(device_key_ref)
-        ordered_actions = _ordered(actions, "actions"); expected_scope = _digest({"workspace_ref": workspace_ref, "actions": list(ordered_actions), "scope_refs": list(request.scope_refs)})
+        ordered_actions = _ordered(actions, "actions")
+        ordered_credential_refs = _ordered(credential_refs, "credential_refs")
+        ordered_credential_actions = _ordered(credential_actions, "credential_actions")
+        expected_scope = _digest({"workspace_ref": workspace_ref, "actions": list(ordered_actions), "credential_refs": list(ordered_credential_refs), "credential_actions": list(ordered_credential_actions), "scope_refs": list(request.scope_refs)})
         expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00")).astimezone(timezone.utc)
         if root is None or device is None or device.trust_root_ref != trust_root_ref or request.subject_key_ref != actor_key_ref or expiry <= current or expected_scope != scope_digest or not nonce or ordered_actions != request.scope_refs:
             raise CapabilityDenied("capability binding is invalid")
         if datetime.fromisoformat(device.expires_at.replace("Z", "+00:00")).astimezone(timezone.utc) <= current: raise CapabilityDenied("device enrollment is expired")
         if actor_key_ref != root.owner_key_ref and not any(g.grantor_key_ref == root.owner_key_ref and g.expires_at > current.isoformat() and set(request.scope_refs).issubset(g.scope_refs) for g in self.store.grants_for(actor_key_ref)):
             raise CapabilityDenied("delegation does not authorize this exact scope")
-        grant = CapabilityGrantV1(request.capability_ref, request.request_digest, trust_root_ref, root.root_digest, device_key_ref, workspace_ref, actor_key_ref, ordered_actions, scope_digest, expires_at, _digest(nonce), self.store.revocation_epoch(trust_root_ref))
+        grant = CapabilityGrantV1(request.capability_ref, request.request_digest, trust_root_ref, root.root_digest, device_key_ref, workspace_ref, actor_key_ref, ordered_actions, ordered_credential_refs, ordered_credential_actions, scope_digest, expires_at, _digest(nonce), self.store.revocation_epoch(trust_root_ref))
         self.store.record_capability_request(request); self.store.save_capability(grant); return grant
 
     def consume_for_credential(self, authority: SecurityContextAuthority, capability_ref: str, request_digest: str, nonce: str, *, credential_ref: str, action: str) -> ConsumptionReceipt:
@@ -153,15 +157,21 @@ class CapabilityService:
                 if self.circuit_breaker is not None:
                     self.circuit_breaker.cancel_probe()
                 raise CapabilityDenied(budget.error_code or "quota denied")
-        receipt = self.store.compare_consume(capability_ref, request_digest, _digest(nonce), credential_ref, action)
-        if receipt is None: raise CapabilityDenied("capability is missing, replayed, or tampered")
-        capability = receipt._capability; root, device = self.store.trust_root(capability.trust_root_ref), self.store.device(capability.device_key_ref)
+        capability = self.store.capability(capability_ref)
+        if capability is None:
+            raise CapabilityDenied("capability is missing, replayed, or tampered")
+        root, device = self.store.trust_root(capability.trust_root_ref), self.store.device(capability.device_key_ref)
         if root is None or device is None or root.root_digest != capability.root_digest or self.store.revocation_epoch(capability.trust_root_ref) != capability.revocation_epoch or current >= datetime.fromisoformat(capability.expires_at.replace("Z", "+00:00")).astimezone(timezone.utc):
             raise CapabilityDenied("capability is expired or revoked")
+        receipt = self.store.compare_consume(capability_ref, request_digest, _digest(nonce), credential_ref, action)
+        if receipt is None: raise CapabilityDenied("capability is missing, replayed, tampered, or out of scope")
         return receipt
 
     def consume(self, authority: SecurityContextAuthority, capability_ref: str, request_digest: str, nonce: str, invoke: Callable[[], _Result]) -> _Result:
-        receipt = self.consume_for_credential(authority, capability_ref, request_digest, nonce, credential_ref="capability-use", action="capability-use")
+        capability = self.store.capability(capability_ref)
+        if capability is None:
+            raise CapabilityDenied("capability is missing, replayed, or tampered")
+        receipt = self.consume_for_credential(authority, capability_ref, request_digest, nonce, credential_ref=capability.credential_refs[0], action=capability.credential_actions[0])
         try:
             result = invoke()
         except Exception:

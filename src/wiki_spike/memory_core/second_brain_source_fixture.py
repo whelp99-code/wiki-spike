@@ -20,6 +20,10 @@ FIXTURE_PROFILE = "fixture-local-v1"
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _DECIMAL = re.compile(r"^(0|[1-9][0-9]*)$")
 _REF = re.compile(r"^[a-z][a-z0-9_-]{0,63}:[0-9a-f]{64}$")
+_PATH = re.compile(
+    r"^(?!.*(?:^|/)\.{1,2}(?:/|$))(?!/)(?!.*[:\\])"
+    r"[A-Za-z0-9][A-Za-z0-9._/-]*$"
+)
 
 
 class SourceFixtureVerificationError(InvalidContractValue):
@@ -106,10 +110,9 @@ class SourceFixtureVerifier:
 
     @staticmethod
     def _safe_relative_path(path: str) -> bool:
-        if "\\" in path or ":" in path or "$" in path or "{" in path or "}" in path or path.startswith(("/", "~")) or "//" in path:
+        if _PATH.fullmatch(path) is None or "//" in path:
             return False
-        parts = path.split("/")
-        return all(part not in {"", ".", ".."} for part in parts)
+        return all(part not in {"", ".", ".."} for part in path.split("/"))
 
     @staticmethod
     def _decimal(value: Any, field: str) -> int:

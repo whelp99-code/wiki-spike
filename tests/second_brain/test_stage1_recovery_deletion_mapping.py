@@ -1,4 +1,4 @@
-from types import SimpleNamespace
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import pytest
 
@@ -9,9 +9,30 @@ from wiki_spike.infrastructure.deletion import (
     persist_verified_recovery_deletion_overlay,
 )
 from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase, LifecycleDbError
-
+from wiki_spike.memory_core.recovery import SignedDeletionOverlay, VerifiedDeletionOverlay
 
 DIGEST = "a" * 64
+
+
+def verified_overlay(
+    *,
+    seed: bytes,
+    sequence: str = "0",
+    previous_overlay_id: str | None = None,
+    refs: frozenset[str] = frozenset(),
+) -> VerifiedDeletionOverlay:
+    signed = SignedDeletionOverlay.create(
+        workspace_id="workspace",
+        manifest_id="b" * 64,
+        sequence=sequence,
+        previous_overlay_id=previous_overlay_id,
+        deleted_artifact_refs=tuple(sorted(refs)),
+        mapping_digest=None,
+        signer_key_id="recovery-k1",
+        signed_at="2026-01-01T00:00:00Z",
+        private_key=Ed25519PrivateKey.from_private_bytes(seed * 32),
+    )
+    return VerifiedDeletionOverlay(signed, refs)
 
 
 def test_recovered_deleted_artifact_remains_vetoed_while_survivor_is_unmapped(tmp_path):
@@ -39,58 +60,39 @@ def test_recovered_deleted_artifact_remains_vetoed_while_survivor_is_unmapped(tm
 def test_verified_overlay_persists_body_free_vetoes_and_rejects_discontinuous_history(tmp_path):
     database = LifecycleDatabase(tmp_path / "lifecycle.sqlite")
     database.initialize()
-    initial = SimpleNamespace(
-        overlay_id="a" * 64,
-        workspace_id="workspace",
-        manifest_id="b" * 64,
-        sequence="0",
-        previous_overlay_id=None,
-        mapping_digest=None,
-        signer_key_id="recovery-k1",
-        signed_at="2026-01-01T00:00:00Z",
-    )
+    initial = verified_overlay(seed=b"a", refs=frozenset({"artifact-deleted"}))
     with database.unit_of_work() as uow:
-        persist_verified_recovery_deletion_overlay(
-            uow, overlay=initial, deleted_artifact_refs=frozenset({"artifact-deleted"})
-        )
+        receipt = persist_verified_recovery_deletion_overlay(uow, overlay=initial)
+        assert receipt.deleted_artifact_refs == initial.deleted_artifact_refs
         assert uow.recovery_deletion_vetoed("artifact-deleted") is True
         assert uow.recovery_deletion_vetoed("artifact-survivor") is False
-        assert [row["artifact_id"] for row in uow.list_recovery_deletion_vetoes(initial.overlay_id)] == [
+        assert [row["artifact_id"] for row in uow.list_recovery_deletion_vetoes(initial.overlay.overlay_id)] == [
             "artifact-deleted"
         ]
 
-    discontinuous = SimpleNamespace(
-        overlay_id="c" * 64,
-        workspace_id="workspace",
-        manifest_id="b" * 64,
-        sequence="2",
-        previous_overlay_id=initial.overlay_id,
-        mapping_digest=None,
-        signer_key_id="recovery-k1",
-        signed_at="2026-01-01T00:01:00Z",
+    discontinuous = verified_overlay(
+        seed=b"c", sequence="2", previous_overlay_id=initial.overlay.overlay_id
     )
     with pytest.raises(LifecycleDbError, match="rollback or discontinuity"):
         with database.unit_of_work() as uow:
-            persist_verified_recovery_deletion_overlay(
-                uow, overlay=discontinuous, deleted_artifact_refs=frozenset()
-            )
+            persist_verified_recovery_deletion_overlay(uow, overlay=discontinuous)
 
 
-def test_recovery_overlay_requires_resolved_refs_to_be_a_frozenset(tmp_path):
+def test_recovery_overlay_requires_valid_resolved_refs(tmp_path):
     database = LifecycleDatabase(tmp_path / "lifecycle.sqlite")
     database.initialize()
-    overlay = SimpleNamespace(
-        overlay_id="a" * 64,
-        workspace_id="workspace",
-        manifest_id="b" * 64,
-        sequence="0",
-        previous_overlay_id=None,
-        mapping_digest=None,
-        signer_key_id="recovery-k1",
-        signed_at="2026-01-01T00:00:00Z",
-    )
-    with pytest.raises(DeletionError, match="deleted artifact refs"):
+    signed = verified_overlay(seed=b"a").overlay
+    invalid = VerifiedDeletionOverlay(signed, frozenset({""}))
+    with pytest.raises(DeletionError, match="verified deletion overlay is invalid"):
         with database.unit_of_work() as uow:
-            persist_verified_recovery_deletion_overlay(
-                uow, overlay=overlay, deleted_artifact_refs=frozenset({""})
-            )
+            persist_verified_recovery_deletion_overlay(uow, overlay=invalid)
+def test_replay_rejects_a_changed_veto_set(tmp_path):
+    database = LifecycleDatabase(tmp_path / "lifecycle.sqlite")
+    database.initialize()
+    initial = verified_overlay(seed=b"a", refs=frozenset({"artifact-deleted"}))
+    with database.unit_of_work() as uow:
+        persist_verified_recovery_deletion_overlay(uow, overlay=initial)
+    changed_refs = VerifiedDeletionOverlay(initial.overlay, frozenset({"artifact-survivor"}))
+    with pytest.raises(LifecycleDbError, match="persisted veto set"):
+        with database.unit_of_work() as uow:
+            persist_verified_recovery_deletion_overlay(uow, overlay=changed_refs)

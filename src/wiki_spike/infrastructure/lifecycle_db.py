@@ -62,6 +62,7 @@ from pathlib import Path
 from typing import Iterator
 
 from wiki_spike.memory_core.contracts import canonical_bytes
+from wiki_spike.memory_core.recovery import AppliedDeletionOverlayReceipt, VerifiedDeletionOverlay
 
 # --------------------------------------------------------------------------- #
 # Column-kind allowlist (no plaintext columns anywhere in this schema).
@@ -689,45 +690,49 @@ class UnitOfWork:
             (artifact_id,),
         ).fetchone()
 
-    def persist_recovery_deletion_overlay(
-        self,
-        *,
-        overlay_id: str,
-        workspace_id: str,
-        manifest_id: str,
-        overlay_sequence: str,
-        previous_overlay_id: str | None,
-        mapping_digest: str | None,
-        signer_key_id: str,
-        signed_at: str,
-        deleted_artifact_refs: tuple[str, ...],
-    ) -> None:
+    def persist_verified_recovery_deletion_overlay(
+        self, overlay: VerifiedDeletionOverlay
+    ) -> AppliedDeletionOverlayReceipt:
+        """Atomically persist verified overlay metadata and its complete veto set."""
+        signed = overlay.overlay
+        deleted_artifact_refs = tuple(sorted(overlay.deleted_artifact_refs))
         self._con.row_factory = sqlite3.Row
         existing = self._con.execute(
-            "SELECT * FROM recovery_deletion_overlay WHERE overlay_id=?", (overlay_id,)
+            "SELECT * FROM recovery_deletion_overlay WHERE overlay_id=?", (signed.overlay_id,)
         ).fetchone()
         if existing is not None:
             if (
-                existing["workspace_id"] != workspace_id
-                or existing["manifest_id"] != manifest_id
-                or existing["overlay_sequence"] != overlay_sequence
-                or existing["previous_overlay_id"] != previous_overlay_id
-                or existing["mapping_digest"] != mapping_digest
+                existing["workspace_id"] != signed.workspace_id
+                or existing["manifest_id"] != signed.manifest_id
+                or existing["overlay_sequence"] != signed.sequence
+                or existing["previous_overlay_id"] != signed.previous_overlay_id
+                or existing["mapping_digest"] != signed.mapping_digest
+                or existing["signer_key_id"] != signed.signer_key_id
+                or existing["signed_at"] != signed.signed_at
             ):
                 raise LifecycleDbError("recovery deletion overlay id conflicts with persisted truth")
-            return
+            persisted_refs = tuple(
+                row[0]
+                for row in self._con.execute(
+                    "SELECT artifact_id FROM recovery_deletion_veto WHERE overlay_id=? ORDER BY artifact_id",
+                    (signed.overlay_id,),
+                )
+            )
+            if persisted_refs != deleted_artifact_refs:
+                raise LifecycleDbError("recovery deletion overlay id conflicts with persisted veto set")
+            return AppliedDeletionOverlayReceipt._mint(overlay)
         head = self._con.execute(
             "SELECT overlay_id, overlay_sequence FROM recovery_deletion_overlay "
             "WHERE workspace_id=? AND manifest_id=? "
             "ORDER BY CAST(overlay_sequence AS INTEGER) DESC LIMIT 1",
-            (workspace_id, manifest_id),
+            (signed.workspace_id, signed.manifest_id),
         ).fetchone()
         if head is None:
-            if overlay_sequence != "0" or previous_overlay_id is not None:
+            if signed.sequence != "0" or signed.previous_overlay_id is not None:
                 raise LifecycleDbError("recovery deletion overlay history is discontinuous")
         elif (
-            overlay_sequence != str(int(head["overlay_sequence"]) + 1)
-            or previous_overlay_id != head["overlay_id"]
+            signed.sequence != str(int(head["overlay_sequence"]) + 1)
+            or signed.previous_overlay_id != head["overlay_id"]
         ):
             raise LifecycleDbError("recovery deletion overlay rollback or discontinuity")
         self._con.execute(
@@ -735,14 +740,22 @@ class UnitOfWork:
             "(overlay_id, workspace_id, manifest_id, overlay_sequence, previous_overlay_id, "
             " mapping_digest, signer_key_id, signed_at, overlay_state) VALUES (?,?,?,?,?,?,?,?,?)",
             (
-                overlay_id, workspace_id, manifest_id, overlay_sequence, previous_overlay_id,
-                mapping_digest, signer_key_id, signed_at, "VERIFIED_APPLIED",
+                signed.overlay_id,
+                signed.workspace_id,
+                signed.manifest_id,
+                signed.sequence,
+                signed.previous_overlay_id,
+                signed.mapping_digest,
+                signed.signer_key_id,
+                signed.signed_at,
+                "VERIFIED_APPLIED",
             ),
         )
         self._con.executemany(
             "INSERT INTO recovery_deletion_veto (overlay_id, artifact_id, veto_state) VALUES (?,?,?)",
-            [(overlay_id, artifact_id, "ACTIVE") for artifact_id in deleted_artifact_refs],
+            [(signed.overlay_id, artifact_id, "ACTIVE") for artifact_id in deleted_artifact_refs],
         )
+        return AppliedDeletionOverlayReceipt._mint(overlay)
 
     def recovery_deletion_vetoed(self, artifact_id: str) -> bool:
         return self._con.execute(

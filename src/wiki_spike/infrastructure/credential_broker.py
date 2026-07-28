@@ -9,11 +9,7 @@ from pathlib import Path
 from typing import Any, Protocol
 from uuid import uuid4
 
-from wiki_spike.memory_core.second_brain_capabilities import (
-    CapabilityDenied,
-    ConsumptionReceipt,
-    redeem_consumption_receipt,
-)
+from wiki_spike.memory_core.second_brain_capabilities import ConsumptionReceipt
 
 
 class CredentialDenied(PermissionError):
@@ -73,8 +69,8 @@ class LocalCredentialBroker:
     def lease(self, receipt: ConsumptionReceipt) -> OpaqueCredentialLease:
         """Redeem an exact one-time receipt before exposing a fixture secret."""
         if not isinstance(receipt, ConsumptionReceipt): raise CredentialDenied("a store-minted ConsumptionReceipt is required")
-        try: evidence = redeem_consumption_receipt(receipt, self._capability_store)
-        except CapabilityDenied as error: raise CredentialDenied("consumption receipt is invalid, cross-store, or replayed") from error
+        evidence = self._capability_store.redeem_consumption_receipt(receipt)
+        if evidence is None: raise CredentialDenied("consumption receipt is invalid, cross-store, or replayed")
         current = self._now().astimezone(timezone.utc)
         if self._timestamp(evidence.expires_at) <= current: raise CredentialDenied("capability is expired")
         policy = self._policy.get(evidence.credential_ref)

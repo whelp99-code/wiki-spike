@@ -3,12 +3,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from threading import RLock
-from typing import Any
+from uuid import uuid4
 
 from wiki_spike.memory_core.second_brain_ports import CapabilityStatePort
 from wiki_spike.memory_core.second_brain_capabilities import (
     CapabilityGrantV1,
     ConsumptionReceipt,
+    ConsumptionReceiptEvidence,
     mint_consumption_receipt,
 )
 from wiki_spike.memory_core.second_brain_security_contracts import (
@@ -19,6 +20,11 @@ from wiki_spike.memory_core.second_brain_security_contracts import (
     TrustRootV1,
 )
 
+
+@dataclass(frozen=True)
+class _ReceiptState:
+    evidence: ConsumptionReceiptEvidence
+    redeemed: bool = False
 
 
 class CapabilityStore(CapabilityStatePort):
@@ -33,6 +39,7 @@ class CapabilityStore(CapabilityStatePort):
         self._receipts: dict[str, CapabilityReceiptV1] = {}
         self._capabilities: dict[str, CapabilityGrantV1] = {}
         self._consumed: set[str] = set()
+        self._receipt_states: dict[str, _ReceiptState] = {}
         self._revocation_epochs: dict[str, int] = {}
 
     def record_trust_root(self, trust_root: TrustRootV1) -> None:
@@ -94,6 +101,10 @@ class CapabilityStore(CapabilityStatePort):
                 raise ValueError("capability already exists")
             self._capabilities[capability.capability_ref] = capability
 
+    def capability(self, capability_ref: str) -> CapabilityGrantV1 | None:
+        with self._lock:
+            return self._capabilities.get(capability_ref)
+
     def compare_consume(
         self,
         capability_ref: str,
@@ -102,12 +113,30 @@ class CapabilityStore(CapabilityStatePort):
         credential_ref: str,
         action: str,
     ) -> ConsumptionReceipt | None:
-        """Atomically consume and mint an exact, store-bound credential receipt."""
+        """Atomically validate persisted scope and mint only an opaque receipt token."""
         with self._lock:
             capability = self._capabilities.get(capability_ref)
             if (capability is None or capability_ref in self._consumed
                     or capability.request_digest != request_digest
-                    or capability.nonce_digest != nonce_digest):
+                    or capability.nonce_digest != nonce_digest
+                    or credential_ref not in capability.credential_refs
+                    or action not in capability.credential_actions):
                 return None
             self._consumed.add(capability_ref)
-            return mint_consumption_receipt(self, capability, credential_ref, action)
+            token = uuid4().hex
+            self._receipt_states[token] = _ReceiptState(
+                ConsumptionReceiptEvidence(credential_ref, action, capability.device_key_ref, capability.expires_at)
+            )
+            return mint_consumption_receipt(token)
+
+    def redeem_consumption_receipt(self, token: ConsumptionReceipt) -> ConsumptionReceiptEvidence | None:
+        """Atomically redeem an opaque token owned by this concrete store."""
+        if not isinstance(token, ConsumptionReceipt):
+            return None
+        with self._lock:
+            receipt_token = token._token_for_store()
+            state = self._receipt_states.get(receipt_token)
+            if state is None or state.redeemed:
+                return None
+            self._receipt_states[receipt_token] = _ReceiptState(state.evidence, redeemed=True)
+            return state.evidence

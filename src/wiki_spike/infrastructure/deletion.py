@@ -31,11 +31,17 @@ from hashlib import sha256
 import re
 from enum import Enum
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Mapping
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .lifecycle_db import UnitOfWork
+from wiki_spike.memory_core.recovery import (
+    AppliedDeletionOverlayReceipt,
+    SignedDeletionOverlay,
+    VerifiedDeletionOverlay,
+)
+from wiki_spike.memory_core.errors import InvalidContractValue
 
 try:
     import jsonschema  # type: ignore
@@ -387,26 +393,25 @@ def map_source_deletion_request(
 def persist_verified_recovery_deletion_overlay(
     uow: "UnitOfWork",
     *,
-    overlay: Any,
-    deleted_artifact_refs: frozenset[str],
-) -> None:
-    """Persist signed recovery deletion truth before restore staging.
+    overlay: VerifiedDeletionOverlay,
+) -> AppliedDeletionOverlayReceipt:
+    """Atomically persist verified deletion truth and return its store receipt.
 
     The lifecycle cache stores only overlay metadata and vetoed artifact refs;
     it never receives artifact bodies and makes no provider-erasure claim.
     """
-    if not isinstance(deleted_artifact_refs, frozenset) or any(
-        not isinstance(ref, str) or not ref for ref in deleted_artifact_refs
+    if (
+        not isinstance(overlay, VerifiedDeletionOverlay)
+        or not isinstance(overlay.overlay, SignedDeletionOverlay)
+        or not isinstance(overlay.deleted_artifact_refs, frozenset)
+        or any(not isinstance(ref, str) or not ref for ref in overlay.deleted_artifact_refs)
     ):
-        raise DeletionError("invalid_recovery_deletion_overlay", "deleted artifact refs are invalid")
-    uow.persist_recovery_deletion_overlay(
-        overlay_id=overlay.overlay_id,
-        workspace_id=overlay.workspace_id,
-        manifest_id=overlay.manifest_id,
-        overlay_sequence=overlay.sequence,
-        previous_overlay_id=overlay.previous_overlay_id,
-        mapping_digest=overlay.mapping_digest,
-        signer_key_id=overlay.signer_key_id,
-        signed_at=overlay.signed_at,
-        deleted_artifact_refs=tuple(sorted(deleted_artifact_refs)),
-    )
+        raise DeletionError(
+            "invalid_recovery_deletion_overlay", "verified deletion overlay is invalid"
+        )
+    try:
+        return uow.persist_verified_recovery_deletion_overlay(overlay)
+    except (AttributeError, TypeError, ValueError, InvalidContractValue) as exc:
+        raise DeletionError(
+            "invalid_recovery_deletion_overlay", "verified deletion overlay is invalid"
+        ) from exc

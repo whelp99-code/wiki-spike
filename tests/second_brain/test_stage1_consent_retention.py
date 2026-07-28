@@ -84,7 +84,7 @@ def test_disable_and_expired_retention_fail_closed():
     assert not downgrade.allowed
 def test_authorization_reparses_timestamps_epochs_enums_and_dto_shape():
     policy = ConsentRetentionPolicy()
-    for malformed in ("2030-02-01", "2030-02-01T00:00:00", "2030-02-01T00:00:00+25:00"):
+    for malformed in ("2030-02-01", "2030-02-01T00:00:00", "2030-02-01T00:00:00+25:00", "2030-02-01 00:00:00Z", "2030-02-01T00:00:00z", "2030-02-01T00:00:00+00:00", "2030-02-01T00:00:00.001Z"):
         assert not policy.authorize_capture(
             workspace_id="workspace-1", source_ref_id="source-1", project_ref_id="project-1",
             consent=consent(expires_at=malformed), retention=retention(),

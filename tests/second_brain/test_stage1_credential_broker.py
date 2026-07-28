@@ -36,19 +36,23 @@ def test_redeems_only_store_minted_exact_receipt_once():
     with pytest.raises(CredentialDenied):
         broker(store).lease({})  # type: ignore[arg-type]
     with pytest.raises(CapabilityDenied):
-        ConsumptionReceipt(object(), store, object(), "credential", "action")  # type: ignore[arg-type]
+        ConsumptionReceipt(object(), "token")  # type: ignore[arg-type]
+    with pytest.raises(AttributeError):
+        evidence.credential_ref = "credential:forged"  # type: ignore[attr-defined]
+    with pytest.raises(AttributeError):
+        evidence._redeemed = False  # type: ignore[attr-defined]
 
 
-def test_rejects_cross_store_and_tampered_policy_binding_before_consumer():
+def test_rejects_cross_store_and_out_of_scope_bindings_before_consumer():
     evidence, source_store = receipt()
     calls = []
     with pytest.raises(CredentialDenied, match="cross-store"):
         broker(CapabilityStore(), lambda *_: calls.append(True)).lease(evidence)
     assert calls == []
-    evidence, source_store = receipt(action="source.write")
-    with pytest.raises(CredentialDenied, match="binding"):
-        broker(source_store, lambda *_: calls.append(True)).lease(evidence)
-    assert calls == []
+    with pytest.raises(CapabilityDenied, match="out of scope"):
+        receipt(action="source.write")
+    with pytest.raises(CapabilityDenied, match="out of scope"):
+        receipt(credential_ref="credential:" + "b" * 64)
 
 
 def test_fixture_secret_is_mutable_and_zeroized_after_truthful_one_shot_lifetime():
