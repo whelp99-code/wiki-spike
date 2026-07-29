@@ -1,0 +1,165 @@
+{
+  "architectReview": {
+    "architectureStatus": "CLEAR",
+    "productStatus": "CLEAR",
+    "codeStatus": "CLEAR",
+    "recommendation": "APPROVE",
+    "evidence": "Architect on ddbb24b: REQUEST CHANGES for multi-source cohorts vs DB-07 one-source-at-a-time. Fixed: MigrationCohortManifestV1 requires exactly one source. Confirmed no unauthorized live switch path in-tree. Red-team 119+ cases green after single-source enforcement. Suite green.",
+    "commands": [
+      "subagent 17-Stage6Architect",
+      "subagent 18-Stage6RedTeam",
+      "pytest -q"
+    ],
+    "blockers": []
+  },
+  "executorQa": {
+    "status": "passed",
+    "e2eStatus": "passed",
+    "redTeamStatus": "passed",
+    "evidence": "Stage6 cutover red-team covers formula underflows, approvers, disabled sources, illegal transitions, live switch without human approvals, decommission before 90d, post-mutation rollback, digest tamper, single-source enforcement.",
+    "e2eCommands": [
+      "/usr/local/bin/python3.12 -m pytest -q",
+      "/usr/local/bin/python3.12 scripts/check_architecture_boundaries.py",
+      "/usr/local/bin/python3.12 scripts/scan_secrets.py"
+    ],
+    "redTeamCommands": [
+      "/usr/local/bin/python3.12 -m pytest -q tests/second_brain/test_stage6_cutover_red_team.py"
+    ],
+    "artifactRefs": [
+      {
+        "id": "g018-red-team",
+        "kind": "api-package-test-report",
+        "path": "artifacts/conformance/second-brain/g018-red-team-report.json",
+        "description": "Stage6 cutover adversarial matrix"
+      },
+      {
+        "id": "g018-suite",
+        "kind": "black-box-api-receipt",
+        "path": "artifacts/conformance/second-brain/g018-suite-receipt.json",
+        "description": "Full suite receipt"
+      }
+    ],
+    "contractCoverage": [
+      {
+        "id": "cc-formula",
+        "contractRef": "cutover-pass-formula",
+        "obligation": "S\u2227W\u2227N\u2227P\u2227C\u2227A\u2227holdout",
+        "status": "covered",
+        "surfaceEvidenceRefs": [
+          "surf-api"
+        ],
+        "adversarialCaseRefs": [
+          "adv-formula"
+        ]
+      },
+      {
+        "id": "cc-cohort",
+        "contractRef": "one-source-cohort",
+        "obligation": "Exactly one enabled migration source; subset of scope",
+        "status": "covered",
+        "surfaceEvidenceRefs": [
+          "surf-api"
+        ],
+        "adversarialCaseRefs": [
+          "adv-cohort"
+        ]
+      },
+      {
+        "id": "cc-human",
+        "contractRef": "human-external-approvals",
+        "obligation": "Live switch and decommission require human approvals; no unauthorized switch path",
+        "status": "covered",
+        "surfaceEvidenceRefs": [
+          "surf-api"
+        ],
+        "adversarialCaseRefs": [
+          "adv-human"
+        ]
+      },
+      {
+        "id": "cc-sm",
+        "contractRef": "cohort-state-machine",
+        "obligation": "Legal transitions; pre-mutation rollback; post-mutation fail-closed",
+        "status": "covered",
+        "surfaceEvidenceRefs": [
+          "surf-api"
+        ],
+        "adversarialCaseRefs": [
+          "adv-sm"
+        ]
+      }
+    ],
+    "surfaceEvidence": [
+      {
+        "id": "surf-api",
+        "contractRef": "stage6-cutover",
+        "surface": "api",
+        "invocation": "pytest stage6 + full suite",
+        "verdict": "passed",
+        "artifactRefs": [
+          "g018-red-team",
+          "g018-suite"
+        ]
+      }
+    ],
+    "adversarialCases": [
+      {
+        "id": "adv-formula",
+        "contractRef": "cutover-pass-formula",
+        "scenario": "underflows claiming pass",
+        "expectedBehavior": "refuse",
+        "verdict": "passed",
+        "artifactRefs": [
+          "g018-red-team"
+        ]
+      },
+      {
+        "id": "adv-cohort",
+        "contractRef": "one-source-cohort",
+        "scenario": "multi-source or disabled source",
+        "expectedBehavior": "refuse",
+        "verdict": "passed",
+        "artifactRefs": [
+          "g018-red-team"
+        ]
+      },
+      {
+        "id": "adv-human",
+        "contractRef": "human-external-approvals",
+        "scenario": "live switch/decommission without human approvals",
+        "expectedBehavior": "refuse",
+        "verdict": "passed",
+        "artifactRefs": [
+          "g018-red-team"
+        ]
+      },
+      {
+        "id": "adv-sm",
+        "contractRef": "cohort-state-machine",
+        "scenario": "illegal transitions and post-mutation rollback",
+        "expectedBehavior": "refuse",
+        "verdict": "passed",
+        "artifactRefs": [
+          "g018-red-team"
+        ]
+      }
+    ],
+    "blockers": []
+  },
+  "iteration": {
+    "status": "passed",
+    "evidence": "DB-07 single-source fix after architect REQUEST CHANGES; full suite clean.",
+    "fullRerun": true,
+    "rerunCommands": [
+      "/usr/local/bin/python3.12 -m pytest -q",
+      "/usr/local/bin/python3.12 scripts/check_architecture_boundaries.py",
+      "/usr/local/bin/python3.12 scripts/scan_secrets.py"
+    ],
+    "blockers": []
+  },
+  "criticReview": {
+    "verdict": "OKAY",
+    "evidence": "Terminal critic of final required-goal state: Stages 3-6 implemented on second-brain-stage3 with gate-clean evidence; no unauthorized production route switch; remaining deferred items (crypto signatures on cutover, composition wiring of live switch) are explicitly gated behind human_external_approvals and out of unauthorized automation. Aggregate objectives under original brief constraints satisfied for the implemented product stages without claiming a live cutover.",
+    "blockers": []
+  }
+}

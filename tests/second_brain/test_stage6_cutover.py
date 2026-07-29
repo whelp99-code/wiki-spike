@@ -32,7 +32,7 @@ def _cohort(scope_obj: ResolvedScopeV1, *, state: str = "CUTOVER_READY", sources
         "manifest_version": COHORT_MANIFEST_V1,
         "workspace_ref": ref("workspace", "cutover"),
         "cohort_state": state,
-        "source_names": list(sources or ("unified-db", "legacy Mem0/RAG", "me-wiki")),
+        "source_names": list(sources or ("unified-db",)),
         "resolved_scope_digest": resolved_scope_digest(scope_obj),
         "source_manifest_digest": scope_obj.source_manifest_digest,
     }
@@ -100,7 +100,7 @@ def test_cohort_must_be_subset_of_enabled_migration_sources() -> None:
     assert_cohort_subset_of_enabled_migration_sources(cohort, scope_obj)
     with pytest.raises(InvalidContractValue, match="not enabled"):
         assert_cohort_subset_of_enabled_migration_sources(
-            _cohort(scope_obj, sources=("unified-db", "unknown-source")), scope_obj
+            _cohort(scope_obj, sources=("unknown-source",)), scope_obj
         )
 
 

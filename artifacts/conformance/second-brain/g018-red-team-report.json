@@ -1,0 +1,1294 @@
+{
+  "goal": "G018",
+  "title": "Stage-6 cutover decision + cohort state machine -- completion QA / red-team",
+  "surface": "api-package-algorithm",
+  "frozen_head": "ddbb24b7c8ecb326a6d168601b0a675491bacd56",
+  "frozen_head_short": "ddbb24b",
+  "frozen_head_subject": "add Stage 6 cutover decision and cohort state machine",
+  "worktree": "/private/tmp/wiki-spike-second-brain-stage3",
+  "branch": "second-brain-stage3",
+  "new_test_module": "tests/second_brain/test_stage6_cutover_red_team.py",
+  "artifact": "artifacts/conformance/second-brain/g018-red-team-report.json",
+  "src_edits": false,
+  "commit": false,
+  "baseline_suite": "1653 passed (collect-only before red-team module)",
+  "observed_suite": "1772 passed",
+  "delta_explanation": "1772 - 1653 = 119 new collected red-team cases. No pre-existing test modified, weakened, or removed. Only tests/second_brain/test_stage6_cutover_red_team.py and this artifact were touched.",
+  "seed": null,
+  "commands_run": [
+    {
+      "command": "PYTHONPATH=src /private/tmp/stage2-qa-venv/bin/python -m pytest -q tests/second_brain/test_stage6_cutover_red_team.py",
+      "observed_result": "119 passed in 0.13s",
+      "counts": {
+        "collected": 119,
+        "passed": 119,
+        "failed": 0
+      }
+    },
+    {
+      "command": "PYTHONPATH=src /private/tmp/stage2-qa-venv/bin/python -m pytest -q",
+      "observed_result": "1772 passed in 57.64s",
+      "counts": {
+        "collected": 1772,
+        "passed": 1772,
+        "failed": 0
+      },
+      "note": "Baseline 1653 + 119 new red-team cases = 1772."
+    }
+  ],
+  "attack_class_matrix": {
+    "A1_formula_underflows_claiming_pass": {
+      "description": "Quantitative underflows (observation_days, parity_cases, e2e, safety, bps lowers, holdout_changed) claiming formula_pass=True must refuse bind; inverse lie (metrics pass + formula_pass=False) refuses; compound underflow refuses; exact plan minima construct with formula_pass=True. Weakened min_bps with matching lower may construct (relative PASS) but plan-min underflows still refuse.",
+      "covered_by_case_ids": [
+        "a1_formula_underflow_claiming_pass_refuses[observation_days-13]",
+        "a1_formula_underflow_claiming_pass_refuses[observation_days-0]",
+        "a1_formula_underflow_claiming_pass_refuses[parity_cases-199]",
+        "a1_formula_underflow_claiming_pass_refuses[parity_cases-0]",
+        "a1_formula_underflow_claiming_pass_refuses[e2e-499]",
+        "a1_formula_underflow_claiming_pass_refuses[e2e-1]",
+        "a1_formula_underflow_claiming_pass_refuses[safety-1]",
+        "a1_formula_underflow_claiming_pass_refuses[safety-99]",
+        "a1_formula_underflow_claiming_pass_refuses[parity_lower-8999]",
+        "a1_formula_underflow_claiming_pass_refuses[citation_lower-8999]",
+        "a1_formula_underflow_claiming_pass_refuses[completeness_lower-8999]",
+        "a1_formula_underflow_claiming_pass_refuses[availability_lower-9899]",
+        "a1_formula_underflow_claiming_pass_refuses[holdout_changed-holdout_true]",
+        "a1_formula_pass_false_when_metrics_satisfy_is_also_refused",
+        "a1_lowered_minima_with_matching_lower_still_requires_formula_bind",
+        "a1_compound_underflow_still_refuses",
+        "a1_exact_plan_minima_constructs_with_formula_pass"
+      ]
+    },
+    "A2_missing_wrong_approver_roles": {
+      "description": "approver_roles must be exactly {migration, quality, security, product}. Missing any one, empty set, extra role, duplicates, and lookalike names refuse. Case-normalized exact set accepts after lowercase+sort bind.",
+      "covered_by_case_ids": [
+        "a2_missing_single_required_approver_refuses[migration]",
+        "a2_missing_single_required_approver_refuses[quality]",
+        "a2_missing_single_required_approver_refuses[security]",
+        "a2_missing_single_required_approver_refuses[product]",
+        "a2_empty_approver_roles_refuses",
+        "a2_extra_approver_role_refuses",
+        "a2_duplicate_approver_role_refuses",
+        "a2_case_normalized_roles_still_require_exact_set",
+        "a2_lookalike_role_name_refuses"
+      ]
+    },
+    "A3_disabled_unknown_source_in_cohort": {
+      "description": "Cohort sources must be subset of enabled migration sources; unknown names refuse; sources present only in disabled_migration_sources refuse; empty/duplicate source_names refuse construction; honest subset and full roster accept.",
+      "covered_by_case_ids": [
+        "a3_unknown_source_not_in_enabled_refuses",
+        "a3_disabled_migration_source_cannot_join_cohort",
+        "a3_disabled_only_roster_refuses",
+        "a3_honest_subset_of_enabled_accepted",
+        "a3_full_enabled_roster_accepted",
+        "a3_duplicate_source_names_refuse_construction",
+        "a3_empty_source_names_refuse_construction"
+      ]
+    },
+    "A4_illegal_cohort_transitions": {
+      "description": "High-value illegal skips (CUTOVER_READY\u2192CANONICAL_MUTATED/DECOMMISSIONED, READY_NON_SERVING\u2192ROUTE_SWITCHED, CANONICAL_MUTATED\u2192ROLLED_BACK_RECONCILE, DECOMMISSIONED terminal, self-transitions, unknown states) refuse; full legal adjacency accepts.",
+      "covered_by_case_ids": [
+        "a4_illegal_cohort_transition_refuses[CUTOVER_READY-CANONICAL_MUTATED]",
+        "a4_illegal_cohort_transition_refuses[CUTOVER_READY-DECOMMISSIONED]",
+        "a4_illegal_cohort_transition_refuses[CUTOVER_READY-ROLLBACK_CLOSED]",
+        "a4_illegal_cohort_transition_refuses[READY_NON_SERVING-ROUTE_SWITCHED_NO_MUTATION]",
+        "a4_illegal_cohort_transition_refuses[READY_NON_SERVING-CANONICAL_MUTATED]",
+        "a4_illegal_cohort_transition_refuses[DISCOVERED-CUTOVER_READY]",
+        "a4_illegal_cohort_transition_refuses[DISCOVERED-ROUTE_SWITCHED_NO_MUTATION]",
+        "a4_illegal_cohort_transition_refuses[IMPORTING-CUTOVER_READY]",
+        "a4_illegal_cohort_transition_refuses[ROUTE_SWITCHED_NO_MUTATION-DECOMMISSIONED]",
+        "a4_illegal_cohort_transition_refuses[ROUTE_SWITCHED_NO_MUTATION-ROLLBACK_CLOSED]",
+        "a4_illegal_cohort_transition_refuses[CANONICAL_MUTATED-ROLLED_BACK_RECONCILE]",
+        "a4_illegal_cohort_transition_refuses[CANONICAL_MUTATED-DECOMMISSIONED]",
+        "a4_illegal_cohort_transition_refuses[CANONICAL_MUTATED-ROUTE_SWITCHED_NO_MUTATION]",
+        "a4_illegal_cohort_transition_refuses[ROLLBACK_CLOSED-ROLLED_BACK_RECONCILE]",
+        "a4_illegal_cohort_transition_refuses[ROLLBACK_CLOSED-CANONICAL_MUTATED]",
+        "a4_illegal_cohort_transition_refuses[DECOMMISSIONED-DISCOVERED]",
+        "a4_illegal_cohort_transition_refuses[DECOMMISSIONED-IMPORTING]",
+        "a4_illegal_cohort_transition_refuses[ROLLED_BACK_RECONCILE-CUTOVER_READY]",
+        "a4_illegal_cohort_transition_refuses[ROLLED_BACK_RECONCILE-ROUTE_SWITCHED_NO_MUTATION]",
+        "a4_legal_cohort_transition_accepted[DISCOVERED-IMPORTING]",
+        "a4_legal_cohort_transition_accepted[IMPORTING-QUARANTINED_ITEM]",
+        "a4_legal_cohort_transition_accepted[IMPORTING-RECONCILING]",
+        "a4_legal_cohort_transition_accepted[IMPORTING-READY_NON_SERVING]",
+        "a4_legal_cohort_transition_accepted[QUARANTINED_ITEM-IMPORTING]",
+        "a4_legal_cohort_transition_accepted[QUARANTINED_ITEM-RECONCILING]",
+        "a4_legal_cohort_transition_accepted[RECONCILING-IMPORTING]",
+        "a4_legal_cohort_transition_accepted[RECONCILING-READY_NON_SERVING]",
+        "a4_legal_cohort_transition_accepted[READY_NON_SERVING-CUTOVER_READY]",
+        "a4_legal_cohort_transition_accepted[CUTOVER_READY-ROUTE_SWITCHED_NO_MUTATION]",
+        "a4_legal_cohort_transition_accepted[ROUTE_SWITCHED_NO_MUTATION-CANONICAL_MUTATED]",
+        "a4_legal_cohort_transition_accepted[ROUTE_SWITCHED_NO_MUTATION-ROLLED_BACK_RECONCILE]",
+        "a4_legal_cohort_transition_accepted[CANONICAL_MUTATED-ROLLBACK_CLOSED]",
+        "a4_legal_cohort_transition_accepted[ROLLBACK_CLOSED-DECOMMISSIONED]",
+        "a4_legal_cohort_transition_accepted[ROLLED_BACK_RECONCILE-IMPORTING]",
+        "a4_self_transition_refuses",
+        "a4_unknown_state_refuses",
+        "a4_skip_ahead_cutover_ready_to_canonical_is_illegal",
+        "a4_decommissioned_is_terminal"
+      ]
+    },
+    "A5_live_switch_without_human_approvals": {
+      "description": "assert_live_route_switch_authorized refuses without human_external_approvals_present and refuses when formula_pass is false even with approvals; honest PASS+approvals accept. Join requires CUTOVER_READY or ROUTE_SWITCHED_NO_MUTATION and formula_pass True.",
+      "covered_by_case_ids": [
+        "a5_live_switch_without_human_approvals_refuses",
+        "a5_live_switch_with_formula_fail_refuses_even_with_approvals",
+        "a5_live_switch_honest_path_accepted",
+        "a5_join_requires_cutover_ready_or_route_switched",
+        "a5_join_refuses_when_formula_pass_false",
+        "a5_join_accepts_route_switched_no_mutation"
+      ]
+    },
+    "A6_decommission_before_90d": {
+      "description": "Destructive decommission only from ROLLBACK_CLOSED after retention_days_elapsed>=90 with evidence_backed and human approvals. 0/1/30/89 refuse; wrong states refuse; missing evidence or approvals refuse; exact 90+all gates accept.",
+      "covered_by_case_ids": [
+        "a6_decommission_before_90_days_refuses",
+        "a6_decommission_at_exact_90_with_approvals_accepted",
+        "a6_decommission_without_human_approvals_refuses",
+        "a6_decommission_without_evidence_refuses",
+        "a6_decommission_from_wrong_state_refuses[DISCOVERED]",
+        "a6_decommission_from_wrong_state_refuses[IMPORTING]",
+        "a6_decommission_from_wrong_state_refuses[READY_NON_SERVING]",
+        "a6_decommission_from_wrong_state_refuses[CUTOVER_READY]",
+        "a6_decommission_from_wrong_state_refuses[ROUTE_SWITCHED_NO_MUTATION]",
+        "a6_decommission_from_wrong_state_refuses[CANONICAL_MUTATED]",
+        "a6_decommission_from_wrong_state_refuses[ROLLED_BACK_RECONCILE]",
+        "a6_decommission_from_wrong_state_refuses[DECOMMISSIONED]",
+        "a6_decommission_compound_failure_prefers_state_gate"
+      ]
+    },
+    "A7_post_mutation_external_rollback": {
+      "description": "assert_post_mutation_fail_closed refuses external_rollback from CANONICAL_MUTATED/ROLLBACK_CLOSED/DECOMMISSIONED; pre-mutation states no-op for that gate; pre-mutation rollback only from ROUTE_SWITCHED_NO_MUTATION; CANONICAL_MUTATED\u2192ROLLED_BACK_RECONCILE illegal.",
+      "covered_by_case_ids": [
+        "a7_post_mutation_external_rollback_refuses[CANONICAL_MUTATED]",
+        "a7_post_mutation_external_rollback_refuses[ROLLBACK_CLOSED]",
+        "a7_post_mutation_external_rollback_refuses[DECOMMISSIONED]",
+        "a7_pre_mutation_states_allow_external_rollback_action_check[DISCOVERED]",
+        "a7_pre_mutation_states_allow_external_rollback_action_check[IMPORTING]",
+        "a7_pre_mutation_states_allow_external_rollback_action_check[READY_NON_SERVING]",
+        "a7_pre_mutation_states_allow_external_rollback_action_check[CUTOVER_READY]",
+        "a7_pre_mutation_states_allow_external_rollback_action_check[ROUTE_SWITCHED_NO_MUTATION]",
+        "a7_pre_mutation_states_allow_external_rollback_action_check[ROLLED_BACK_RECONCILE]",
+        "a7_pre_mutation_rollback_only_from_route_switched",
+        "a7_post_mutation_non_rollback_action_is_not_closed_by_this_gate",
+        "a7_cannot_transition_canonical_mutated_to_rolled_back"
+      ]
+    },
+    "A8_scope_cohort_contract_digest_mismatch": {
+      "description": "Cohort/decision resolved_scope_digest, source_manifest_digest, capability_manifest_digest, contract_digest, and cohort_manifest_digest mismatches refuse at subset/join gates; honest join accepts.",
+      "covered_by_case_ids": [
+        "a8_cohort_resolved_scope_digest_mismatch_refuses",
+        "a8_cohort_source_manifest_digest_mismatch_refuses",
+        "a8_decision_resolved_scope_digest_mismatch_on_join_refuses",
+        "a8_decision_contract_digest_mismatch_on_join_refuses",
+        "a8_decision_cohort_manifest_digest_mismatch_on_join_refuses",
+        "a8_decision_source_manifest_digest_mismatch_on_join_refuses",
+        "a8_decision_capability_manifest_digest_mismatch_on_join_refuses",
+        "a8_honest_join_accepted"
+      ]
+    },
+    "A9_digest_tamper": {
+      "description": "decision_digest and cohort manifest_digest tamper, body field swap without redigest, formula_pass flip without redigest, approver swap without redigest, non-sha256 and uppercase hex refuse; honest round-trip rebinds.",
+      "covered_by_case_ids": [
+        "a9_decision_digest_tamper_refuses",
+        "a9_decision_body_field_swap_without_redigest_refuses",
+        "a9_decision_formula_pass_flip_without_redigest_refuses",
+        "a9_decision_approver_swap_without_redigest_refuses",
+        "a9_cohort_manifest_digest_tamper_refuses",
+        "a9_cohort_body_field_swap_without_redigest_refuses",
+        "a9_decision_digest_not_sha256_hex_refuses",
+        "a9_decision_digest_uppercase_hex_refuses",
+        "a9_round_trip_honest_decision_and_cohort_bind"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "a1_formula_underflow_claiming_pass_refuses[observation_days-13]",
+      "test_function": "test_g018_a1_formula_underflow_claiming_pass_refuses[observation_days-13]",
+      "attack_class": "A1",
+      "scenario": "test_g018_a1_formula_underflow_claiming_pass_refuses[observation_days-13]",
+      "expected": "InvalidContractValue matching 'formula_pass does not match' (or honest construct for exact minima / relative weak-min path).",
+      "observed": "formula_pass bind gate fired as expected; exact plan minima constructed with formula_pass=True.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_formula_underflow_claiming_pass_refuses[observation_days-0]",
+      "test_function": "test_g018_a1_formula_underflow_claiming_pass_refuses[observation_days-0]",
+      "attack_class": "A1",
+      "scenario": "test_g018_a1_formula_underflow_claiming_pass_refuses[observation_days-0]",
+      "expected": "InvalidContractValue matching 'formula_pass does not match' (or honest construct for exact minima / relative weak-min path).",
+      "observed": "formula_pass bind gate fired as expected; exact plan minima constructed with formula_pass=True.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_formula_underflow_claiming_pass_refuses[parity_cases-199]",
+      "test_function": "test_g018_a1_formula_underflow_claiming_pass_refuses[parity_cases-199]",
+      "attack_class": "A1",
+      "scenario": "test_g018_a1_formula_underflow_claiming_pass_refuses[parity_cases-199]",
+      "expected": "InvalidContractValue matching 'formula_pass does not match' (or honest construct for exact minima / relative weak-min path).",
+      "observed": "formula_pass bind gate fired as expected; exact plan minima constructed with formula_pass=True.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_formula_underflow_claiming_pass_refuses[parity_cases-0]",
+      "test_function": "test_g018_a1_formula_underflow_claiming_pass_refuses[parity_cases-0]",
+      "attack_class": "A1",
+      "scenario": "test_g018_a1_formula_underflow_claiming_pass_refuses[parity_cases-0]",
+      "expected": "InvalidContractValue matching 'formula_pass does not match' (or honest construct for exact minima / relative weak-min path).",
+      "observed": "formula_pass bind gate fired as expected; exact plan minima constructed with formula_pass=True.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_formula_underflow_claiming_pass_refuses[e2e-499]",
+      "test_function": "test_g018_a1_formula_underflow_claiming_pass_refuses[e2e-499]",
+      "attack_class": "A1",
+      "scenario": "test_g018_a1_formula_underflow_claiming_pass_refuses[e2e-499]",
+      "expected": "InvalidContractValue matching 'formula_pass does not match' (or honest construct for exact minima / relative weak-min path).",
+      "observed": "formula_pass bind gate fired as expected; exact plan minima constructed with formula_pass=True.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_formula_underflow_claiming_pass_refuses[e2e-1]",
+      "test_function": "test_g018_a1_formula_underflow_claiming_pass_refuses[e2e-1]",
+      "attack_class": "A1",
+      "scenario": "test_g018_a1_formula_underflow_claiming_pass_refuses[e2e-1]",
+      "expected": "InvalidContractValue matching 'formula_pass does not match' (or honest construct for exact minima / relative weak-min path).",
+      "observed": "formula_pass bind gate fired as expected; exact plan minima constructed with formula_pass=True.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_formula_underflow_claiming_pass_refuses[safety-1]",
+      "test_function": "test_g018_a1_formula_underflow_claiming_pass_refuses[safety-1]",
+      "attack_class": "A1",
+      "scenario": "test_g018_a1_formula_underflow_claiming_pass_refuses[safety-1]",
+      "expected": "InvalidContractValue matching 'formula_pass does not match' (or honest construct for exact minima / relative weak-min path).",
+      "observed": "formula_pass bind gate fired as expected; exact plan minima constructed with formula_pass=True.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_formula_underflow_claiming_pass_refuses[safety-99]",
+      "test_function": "test_g018_a1_formula_underflow_claiming_pass_refuses[safety-99]",
+      "attack_class": "A1",
+      "scenario": "test_g018_a1_formula_underflow_claiming_pass_refuses[safety-99]",
+      "expected": "InvalidContractValue matching 'formula_pass does not match' (or honest construct for exact minima / relative weak-min path).",
+      "observed": "formula_pass bind gate fired as expected; exact plan minima constructed with formula_pass=True.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_formula_underflow_claiming_pass_refuses[parity_lower-8999]",
+      "test_function": "test_g018_a1_formula_underflow_claiming_pass_refuses[parity_lower-8999]",
+      "attack_class": "A1",
+      "scenario": "test_g018_a1_formula_underflow_claiming_pass_refuses[parity_lower-8999]",
+      "expected": "InvalidContractValue matching 'formula_pass does not match' (or honest construct for exact minima / relative weak-min path).",
+      "observed": "formula_pass bind gate fired as expected; exact plan minima constructed with formula_pass=True.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_formula_underflow_claiming_pass_refuses[citation_lower-8999]",
+      "test_function": "test_g018_a1_formula_underflow_claiming_pass_refuses[citation_lower-8999]",
+      "attack_class": "A1",
+      "scenario": "test_g018_a1_formula_underflow_claiming_pass_refuses[citation_lower-8999]",
+      "expected": "InvalidContractValue matching 'formula_pass does not match' (or honest construct for exact minima / relative weak-min path).",
+      "observed": "formula_pass bind gate fired as expected; exact plan minima constructed with formula_pass=True.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_formula_underflow_claiming_pass_refuses[completeness_lower-8999]",
+      "test_function": "test_g018_a1_formula_underflow_claiming_pass_refuses[completeness_lower-8999]",
+      "attack_class": "A1",
+      "scenario": "test_g018_a1_formula_underflow_claiming_pass_refuses[completeness_lower-8999]",
+      "expected": "InvalidContractValue matching 'formula_pass does not match' (or honest construct for exact minima / relative weak-min path).",
+      "observed": "formula_pass bind gate fired as expected; exact plan minima constructed with formula_pass=True.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_formula_underflow_claiming_pass_refuses[availability_lower-9899]",
+      "test_function": "test_g018_a1_formula_underflow_claiming_pass_refuses[availability_lower-9899]",
+      "attack_class": "A1",
+      "scenario": "test_g018_a1_formula_underflow_claiming_pass_refuses[availability_lower-9899]",
+      "expected": "InvalidContractValue matching 'formula_pass does not match' (or honest construct for exact minima / relative weak-min path).",
+      "observed": "formula_pass bind gate fired as expected; exact plan minima constructed with formula_pass=True.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_formula_underflow_claiming_pass_refuses[holdout_changed-holdout_true]",
+      "test_function": "test_g018_a1_formula_underflow_claiming_pass_refuses[holdout_changed-holdout_true]",
+      "attack_class": "A1",
+      "scenario": "test_g018_a1_formula_underflow_claiming_pass_refuses[holdout_changed-holdout_true]",
+      "expected": "InvalidContractValue matching 'formula_pass does not match' (or honest construct for exact minima / relative weak-min path).",
+      "observed": "formula_pass bind gate fired as expected; exact plan minima constructed with formula_pass=True.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_formula_pass_false_when_metrics_satisfy_is_also_refused",
+      "test_function": "test_g018_a1_formula_pass_false_when_metrics_satisfy_is_also_refused",
+      "attack_class": "A1",
+      "scenario": "test_g018_a1_formula_pass_false_when_metrics_satisfy_is_also_refused",
+      "expected": "InvalidContractValue matching 'formula_pass does not match' (or honest construct for exact minima / relative weak-min path).",
+      "observed": "formula_pass bind gate fired as expected; exact plan minima constructed with formula_pass=True.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_lowered_minima_with_matching_lower_still_requires_formula_bind",
+      "test_function": "test_g018_a1_lowered_minima_with_matching_lower_still_requires_formula_bind",
+      "attack_class": "A1",
+      "scenario": "test_g018_a1_lowered_minima_with_matching_lower_still_requires_formula_bind",
+      "expected": "InvalidContractValue matching 'formula_pass does not match' (or honest construct for exact minima / relative weak-min path).",
+      "observed": "formula_pass bind gate fired as expected; exact plan minima constructed with formula_pass=True.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_compound_underflow_still_refuses",
+      "test_function": "test_g018_a1_compound_underflow_still_refuses",
+      "attack_class": "A1",
+      "scenario": "test_g018_a1_compound_underflow_still_refuses",
+      "expected": "InvalidContractValue matching 'formula_pass does not match' (or honest construct for exact minima / relative weak-min path).",
+      "observed": "formula_pass bind gate fired as expected; exact plan minima constructed with formula_pass=True.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_exact_plan_minima_constructs_with_formula_pass",
+      "test_function": "test_g018_a1_exact_plan_minima_constructs_with_formula_pass",
+      "attack_class": "A1",
+      "scenario": "test_g018_a1_exact_plan_minima_constructs_with_formula_pass",
+      "expected": "InvalidContractValue matching 'formula_pass does not match' (or honest construct for exact minima / relative weak-min path).",
+      "observed": "formula_pass bind gate fired as expected; exact plan minima constructed with formula_pass=True.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_missing_single_required_approver_refuses[migration]",
+      "test_function": "test_g018_a2_missing_single_required_approver_refuses[migration]",
+      "attack_class": "A2",
+      "scenario": "test_g018_a2_missing_single_required_approver_refuses[migration]",
+      "expected": "InvalidContractValue matching 'approver_roles' for incomplete/extra/duplicate/lookalike; exact set (case-normalized) accepts.",
+      "observed": "approver_roles exact-set gate fired; mixed-case four-role set accepted after normalize.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_missing_single_required_approver_refuses[quality]",
+      "test_function": "test_g018_a2_missing_single_required_approver_refuses[quality]",
+      "attack_class": "A2",
+      "scenario": "test_g018_a2_missing_single_required_approver_refuses[quality]",
+      "expected": "InvalidContractValue matching 'approver_roles' for incomplete/extra/duplicate/lookalike; exact set (case-normalized) accepts.",
+      "observed": "approver_roles exact-set gate fired; mixed-case four-role set accepted after normalize.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_missing_single_required_approver_refuses[security]",
+      "test_function": "test_g018_a2_missing_single_required_approver_refuses[security]",
+      "attack_class": "A2",
+      "scenario": "test_g018_a2_missing_single_required_approver_refuses[security]",
+      "expected": "InvalidContractValue matching 'approver_roles' for incomplete/extra/duplicate/lookalike; exact set (case-normalized) accepts.",
+      "observed": "approver_roles exact-set gate fired; mixed-case four-role set accepted after normalize.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_missing_single_required_approver_refuses[product]",
+      "test_function": "test_g018_a2_missing_single_required_approver_refuses[product]",
+      "attack_class": "A2",
+      "scenario": "test_g018_a2_missing_single_required_approver_refuses[product]",
+      "expected": "InvalidContractValue matching 'approver_roles' for incomplete/extra/duplicate/lookalike; exact set (case-normalized) accepts.",
+      "observed": "approver_roles exact-set gate fired; mixed-case four-role set accepted after normalize.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_empty_approver_roles_refuses",
+      "test_function": "test_g018_a2_empty_approver_roles_refuses",
+      "attack_class": "A2",
+      "scenario": "test_g018_a2_empty_approver_roles_refuses",
+      "expected": "InvalidContractValue matching 'approver_roles' for incomplete/extra/duplicate/lookalike; exact set (case-normalized) accepts.",
+      "observed": "approver_roles exact-set gate fired; mixed-case four-role set accepted after normalize.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_extra_approver_role_refuses",
+      "test_function": "test_g018_a2_extra_approver_role_refuses",
+      "attack_class": "A2",
+      "scenario": "test_g018_a2_extra_approver_role_refuses",
+      "expected": "InvalidContractValue matching 'approver_roles' for incomplete/extra/duplicate/lookalike; exact set (case-normalized) accepts.",
+      "observed": "approver_roles exact-set gate fired; mixed-case four-role set accepted after normalize.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_duplicate_approver_role_refuses",
+      "test_function": "test_g018_a2_duplicate_approver_role_refuses",
+      "attack_class": "A2",
+      "scenario": "test_g018_a2_duplicate_approver_role_refuses",
+      "expected": "InvalidContractValue matching 'approver_roles' for incomplete/extra/duplicate/lookalike; exact set (case-normalized) accepts.",
+      "observed": "approver_roles exact-set gate fired; mixed-case four-role set accepted after normalize.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_case_normalized_roles_still_require_exact_set",
+      "test_function": "test_g018_a2_case_normalized_roles_still_require_exact_set",
+      "attack_class": "A2",
+      "scenario": "test_g018_a2_case_normalized_roles_still_require_exact_set",
+      "expected": "InvalidContractValue matching 'approver_roles' for incomplete/extra/duplicate/lookalike; exact set (case-normalized) accepts.",
+      "observed": "approver_roles exact-set gate fired; mixed-case four-role set accepted after normalize.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_lookalike_role_name_refuses",
+      "test_function": "test_g018_a2_lookalike_role_name_refuses",
+      "attack_class": "A2",
+      "scenario": "test_g018_a2_lookalike_role_name_refuses",
+      "expected": "InvalidContractValue matching 'approver_roles' for incomplete/extra/duplicate/lookalike; exact set (case-normalized) accepts.",
+      "observed": "approver_roles exact-set gate fired; mixed-case four-role set accepted after normalize.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a3_unknown_source_not_in_enabled_refuses",
+      "test_function": "test_g018_a3_unknown_source_not_in_enabled_refuses",
+      "attack_class": "A3",
+      "scenario": "test_g018_a3_unknown_source_not_in_enabled_refuses",
+      "expected": "InvalidContractValue matching 'not enabled' / 'disabled migration source' / 'unique' / 'non-empty'; honest subset accepts.",
+      "observed": "cohort subset-of-enabled and construction uniqueness gates fired as expected.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a3_disabled_migration_source_cannot_join_cohort",
+      "test_function": "test_g018_a3_disabled_migration_source_cannot_join_cohort",
+      "attack_class": "A3",
+      "scenario": "test_g018_a3_disabled_migration_source_cannot_join_cohort",
+      "expected": "InvalidContractValue matching 'not enabled' / 'disabled migration source' / 'unique' / 'non-empty'; honest subset accepts.",
+      "observed": "cohort subset-of-enabled and construction uniqueness gates fired as expected.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a3_disabled_only_roster_refuses",
+      "test_function": "test_g018_a3_disabled_only_roster_refuses",
+      "attack_class": "A3",
+      "scenario": "test_g018_a3_disabled_only_roster_refuses",
+      "expected": "InvalidContractValue matching 'not enabled' / 'disabled migration source' / 'unique' / 'non-empty'; honest subset accepts.",
+      "observed": "cohort subset-of-enabled and construction uniqueness gates fired as expected.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a3_honest_subset_of_enabled_accepted",
+      "test_function": "test_g018_a3_honest_subset_of_enabled_accepted",
+      "attack_class": "A3",
+      "scenario": "test_g018_a3_honest_subset_of_enabled_accepted",
+      "expected": "InvalidContractValue matching 'not enabled' / 'disabled migration source' / 'unique' / 'non-empty'; honest subset accepts.",
+      "observed": "cohort subset-of-enabled and construction uniqueness gates fired as expected.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a3_full_enabled_roster_accepted",
+      "test_function": "test_g018_a3_full_enabled_roster_accepted",
+      "attack_class": "A3",
+      "scenario": "test_g018_a3_full_enabled_roster_accepted",
+      "expected": "InvalidContractValue matching 'not enabled' / 'disabled migration source' / 'unique' / 'non-empty'; honest subset accepts.",
+      "observed": "cohort subset-of-enabled and construction uniqueness gates fired as expected.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a3_duplicate_source_names_refuse_construction",
+      "test_function": "test_g018_a3_duplicate_source_names_refuse_construction",
+      "attack_class": "A3",
+      "scenario": "test_g018_a3_duplicate_source_names_refuse_construction",
+      "expected": "InvalidContractValue matching 'not enabled' / 'disabled migration source' / 'unique' / 'non-empty'; honest subset accepts.",
+      "observed": "cohort subset-of-enabled and construction uniqueness gates fired as expected.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a3_empty_source_names_refuse_construction",
+      "test_function": "test_g018_a3_empty_source_names_refuse_construction",
+      "attack_class": "A3",
+      "scenario": "test_g018_a3_empty_source_names_refuse_construction",
+      "expected": "InvalidContractValue matching 'not enabled' / 'disabled migration source' / 'unique' / 'non-empty'; honest subset accepts.",
+      "observed": "cohort subset-of-enabled and construction uniqueness gates fired as expected.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_illegal_cohort_transition_refuses[CUTOVER_READY-CANONICAL_MUTATED]",
+      "test_function": "test_g018_a4_illegal_cohort_transition_refuses[CUTOVER_READY-CANONICAL_MUTATED]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_illegal_cohort_transition_refuses[CUTOVER_READY-CANONICAL_MUTATED]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_illegal_cohort_transition_refuses[CUTOVER_READY-DECOMMISSIONED]",
+      "test_function": "test_g018_a4_illegal_cohort_transition_refuses[CUTOVER_READY-DECOMMISSIONED]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_illegal_cohort_transition_refuses[CUTOVER_READY-DECOMMISSIONED]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_illegal_cohort_transition_refuses[CUTOVER_READY-ROLLBACK_CLOSED]",
+      "test_function": "test_g018_a4_illegal_cohort_transition_refuses[CUTOVER_READY-ROLLBACK_CLOSED]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_illegal_cohort_transition_refuses[CUTOVER_READY-ROLLBACK_CLOSED]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_illegal_cohort_transition_refuses[READY_NON_SERVING-ROUTE_SWITCHED_NO_MUTATION]",
+      "test_function": "test_g018_a4_illegal_cohort_transition_refuses[READY_NON_SERVING-ROUTE_SWITCHED_NO_MUTATION]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_illegal_cohort_transition_refuses[READY_NON_SERVING-ROUTE_SWITCHED_NO_MUTATION]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_illegal_cohort_transition_refuses[READY_NON_SERVING-CANONICAL_MUTATED]",
+      "test_function": "test_g018_a4_illegal_cohort_transition_refuses[READY_NON_SERVING-CANONICAL_MUTATED]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_illegal_cohort_transition_refuses[READY_NON_SERVING-CANONICAL_MUTATED]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_illegal_cohort_transition_refuses[DISCOVERED-CUTOVER_READY]",
+      "test_function": "test_g018_a4_illegal_cohort_transition_refuses[DISCOVERED-CUTOVER_READY]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_illegal_cohort_transition_refuses[DISCOVERED-CUTOVER_READY]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_illegal_cohort_transition_refuses[DISCOVERED-ROUTE_SWITCHED_NO_MUTATION]",
+      "test_function": "test_g018_a4_illegal_cohort_transition_refuses[DISCOVERED-ROUTE_SWITCHED_NO_MUTATION]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_illegal_cohort_transition_refuses[DISCOVERED-ROUTE_SWITCHED_NO_MUTATION]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_illegal_cohort_transition_refuses[IMPORTING-CUTOVER_READY]",
+      "test_function": "test_g018_a4_illegal_cohort_transition_refuses[IMPORTING-CUTOVER_READY]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_illegal_cohort_transition_refuses[IMPORTING-CUTOVER_READY]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_illegal_cohort_transition_refuses[ROUTE_SWITCHED_NO_MUTATION-DECOMMISSIONED]",
+      "test_function": "test_g018_a4_illegal_cohort_transition_refuses[ROUTE_SWITCHED_NO_MUTATION-DECOMMISSIONED]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_illegal_cohort_transition_refuses[ROUTE_SWITCHED_NO_MUTATION-DECOMMISSIONED]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_illegal_cohort_transition_refuses[ROUTE_SWITCHED_NO_MUTATION-ROLLBACK_CLOSED]",
+      "test_function": "test_g018_a4_illegal_cohort_transition_refuses[ROUTE_SWITCHED_NO_MUTATION-ROLLBACK_CLOSED]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_illegal_cohort_transition_refuses[ROUTE_SWITCHED_NO_MUTATION-ROLLBACK_CLOSED]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_illegal_cohort_transition_refuses[CANONICAL_MUTATED-ROLLED_BACK_RECONCILE]",
+      "test_function": "test_g018_a4_illegal_cohort_transition_refuses[CANONICAL_MUTATED-ROLLED_BACK_RECONCILE]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_illegal_cohort_transition_refuses[CANONICAL_MUTATED-ROLLED_BACK_RECONCILE]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_illegal_cohort_transition_refuses[CANONICAL_MUTATED-DECOMMISSIONED]",
+      "test_function": "test_g018_a4_illegal_cohort_transition_refuses[CANONICAL_MUTATED-DECOMMISSIONED]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_illegal_cohort_transition_refuses[CANONICAL_MUTATED-DECOMMISSIONED]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_illegal_cohort_transition_refuses[CANONICAL_MUTATED-ROUTE_SWITCHED_NO_MUTATION]",
+      "test_function": "test_g018_a4_illegal_cohort_transition_refuses[CANONICAL_MUTATED-ROUTE_SWITCHED_NO_MUTATION]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_illegal_cohort_transition_refuses[CANONICAL_MUTATED-ROUTE_SWITCHED_NO_MUTATION]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_illegal_cohort_transition_refuses[ROLLBACK_CLOSED-ROLLED_BACK_RECONCILE]",
+      "test_function": "test_g018_a4_illegal_cohort_transition_refuses[ROLLBACK_CLOSED-ROLLED_BACK_RECONCILE]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_illegal_cohort_transition_refuses[ROLLBACK_CLOSED-ROLLED_BACK_RECONCILE]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_illegal_cohort_transition_refuses[ROLLBACK_CLOSED-CANONICAL_MUTATED]",
+      "test_function": "test_g018_a4_illegal_cohort_transition_refuses[ROLLBACK_CLOSED-CANONICAL_MUTATED]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_illegal_cohort_transition_refuses[ROLLBACK_CLOSED-CANONICAL_MUTATED]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_illegal_cohort_transition_refuses[DECOMMISSIONED-DISCOVERED]",
+      "test_function": "test_g018_a4_illegal_cohort_transition_refuses[DECOMMISSIONED-DISCOVERED]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_illegal_cohort_transition_refuses[DECOMMISSIONED-DISCOVERED]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_illegal_cohort_transition_refuses[DECOMMISSIONED-IMPORTING]",
+      "test_function": "test_g018_a4_illegal_cohort_transition_refuses[DECOMMISSIONED-IMPORTING]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_illegal_cohort_transition_refuses[DECOMMISSIONED-IMPORTING]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_illegal_cohort_transition_refuses[ROLLED_BACK_RECONCILE-CUTOVER_READY]",
+      "test_function": "test_g018_a4_illegal_cohort_transition_refuses[ROLLED_BACK_RECONCILE-CUTOVER_READY]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_illegal_cohort_transition_refuses[ROLLED_BACK_RECONCILE-CUTOVER_READY]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_illegal_cohort_transition_refuses[ROLLED_BACK_RECONCILE-ROUTE_SWITCHED_NO_MUTATION]",
+      "test_function": "test_g018_a4_illegal_cohort_transition_refuses[ROLLED_BACK_RECONCILE-ROUTE_SWITCHED_NO_MUTATION]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_illegal_cohort_transition_refuses[ROLLED_BACK_RECONCILE-ROUTE_SWITCHED_NO_MUTATION]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_legal_cohort_transition_accepted[DISCOVERED-IMPORTING]",
+      "test_function": "test_g018_a4_legal_cohort_transition_accepted[DISCOVERED-IMPORTING]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_legal_cohort_transition_accepted[DISCOVERED-IMPORTING]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_legal_cohort_transition_accepted[IMPORTING-QUARANTINED_ITEM]",
+      "test_function": "test_g018_a4_legal_cohort_transition_accepted[IMPORTING-QUARANTINED_ITEM]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_legal_cohort_transition_accepted[IMPORTING-QUARANTINED_ITEM]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_legal_cohort_transition_accepted[IMPORTING-RECONCILING]",
+      "test_function": "test_g018_a4_legal_cohort_transition_accepted[IMPORTING-RECONCILING]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_legal_cohort_transition_accepted[IMPORTING-RECONCILING]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_legal_cohort_transition_accepted[IMPORTING-READY_NON_SERVING]",
+      "test_function": "test_g018_a4_legal_cohort_transition_accepted[IMPORTING-READY_NON_SERVING]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_legal_cohort_transition_accepted[IMPORTING-READY_NON_SERVING]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_legal_cohort_transition_accepted[QUARANTINED_ITEM-IMPORTING]",
+      "test_function": "test_g018_a4_legal_cohort_transition_accepted[QUARANTINED_ITEM-IMPORTING]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_legal_cohort_transition_accepted[QUARANTINED_ITEM-IMPORTING]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_legal_cohort_transition_accepted[QUARANTINED_ITEM-RECONCILING]",
+      "test_function": "test_g018_a4_legal_cohort_transition_accepted[QUARANTINED_ITEM-RECONCILING]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_legal_cohort_transition_accepted[QUARANTINED_ITEM-RECONCILING]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_legal_cohort_transition_accepted[RECONCILING-IMPORTING]",
+      "test_function": "test_g018_a4_legal_cohort_transition_accepted[RECONCILING-IMPORTING]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_legal_cohort_transition_accepted[RECONCILING-IMPORTING]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_legal_cohort_transition_accepted[RECONCILING-READY_NON_SERVING]",
+      "test_function": "test_g018_a4_legal_cohort_transition_accepted[RECONCILING-READY_NON_SERVING]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_legal_cohort_transition_accepted[RECONCILING-READY_NON_SERVING]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_legal_cohort_transition_accepted[READY_NON_SERVING-CUTOVER_READY]",
+      "test_function": "test_g018_a4_legal_cohort_transition_accepted[READY_NON_SERVING-CUTOVER_READY]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_legal_cohort_transition_accepted[READY_NON_SERVING-CUTOVER_READY]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_legal_cohort_transition_accepted[CUTOVER_READY-ROUTE_SWITCHED_NO_MUTATION]",
+      "test_function": "test_g018_a4_legal_cohort_transition_accepted[CUTOVER_READY-ROUTE_SWITCHED_NO_MUTATION]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_legal_cohort_transition_accepted[CUTOVER_READY-ROUTE_SWITCHED_NO_MUTATION]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_legal_cohort_transition_accepted[ROUTE_SWITCHED_NO_MUTATION-CANONICAL_MUTATED]",
+      "test_function": "test_g018_a4_legal_cohort_transition_accepted[ROUTE_SWITCHED_NO_MUTATION-CANONICAL_MUTATED]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_legal_cohort_transition_accepted[ROUTE_SWITCHED_NO_MUTATION-CANONICAL_MUTATED]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_legal_cohort_transition_accepted[ROUTE_SWITCHED_NO_MUTATION-ROLLED_BACK_RECONCILE]",
+      "test_function": "test_g018_a4_legal_cohort_transition_accepted[ROUTE_SWITCHED_NO_MUTATION-ROLLED_BACK_RECONCILE]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_legal_cohort_transition_accepted[ROUTE_SWITCHED_NO_MUTATION-ROLLED_BACK_RECONCILE]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_legal_cohort_transition_accepted[CANONICAL_MUTATED-ROLLBACK_CLOSED]",
+      "test_function": "test_g018_a4_legal_cohort_transition_accepted[CANONICAL_MUTATED-ROLLBACK_CLOSED]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_legal_cohort_transition_accepted[CANONICAL_MUTATED-ROLLBACK_CLOSED]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_legal_cohort_transition_accepted[ROLLBACK_CLOSED-DECOMMISSIONED]",
+      "test_function": "test_g018_a4_legal_cohort_transition_accepted[ROLLBACK_CLOSED-DECOMMISSIONED]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_legal_cohort_transition_accepted[ROLLBACK_CLOSED-DECOMMISSIONED]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_legal_cohort_transition_accepted[ROLLED_BACK_RECONCILE-IMPORTING]",
+      "test_function": "test_g018_a4_legal_cohort_transition_accepted[ROLLED_BACK_RECONCILE-IMPORTING]",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_legal_cohort_transition_accepted[ROLLED_BACK_RECONCILE-IMPORTING]",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_self_transition_refuses",
+      "test_function": "test_g018_a4_self_transition_refuses",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_self_transition_refuses",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_unknown_state_refuses",
+      "test_function": "test_g018_a4_unknown_state_refuses",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_unknown_state_refuses",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_skip_ahead_cutover_ready_to_canonical_is_illegal",
+      "test_function": "test_g018_a4_skip_ahead_cutover_ready_to_canonical_is_illegal",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_skip_ahead_cutover_ready_to_canonical_is_illegal",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_decommissioned_is_terminal",
+      "test_function": "test_g018_a4_decommissioned_is_terminal",
+      "attack_class": "A4",
+      "scenario": "test_g018_a4_decommissioned_is_terminal",
+      "expected": "InvalidContractValue matching 'illegal cohort transition' or 'unknown cohort state'; legal adjacency accepts.",
+      "observed": "transition matrix enforcement matched allowed graph; terminal DECOMMISSIONED closed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_live_switch_without_human_approvals_refuses",
+      "test_function": "test_g018_a5_live_switch_without_human_approvals_refuses",
+      "attack_class": "A5",
+      "scenario": "test_g018_a5_live_switch_without_human_approvals_refuses",
+      "expected": "InvalidContractValue matching human approvals / formula_pass is false / CUTOVER_READY; honest live switch accepts.",
+      "observed": "live switch and join gates fail-closed without approvals or with formula fail.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_live_switch_with_formula_fail_refuses_even_with_approvals",
+      "test_function": "test_g018_a5_live_switch_with_formula_fail_refuses_even_with_approvals",
+      "attack_class": "A5",
+      "scenario": "test_g018_a5_live_switch_with_formula_fail_refuses_even_with_approvals",
+      "expected": "InvalidContractValue matching human approvals / formula_pass is false / CUTOVER_READY; honest live switch accepts.",
+      "observed": "live switch and join gates fail-closed without approvals or with formula fail.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_live_switch_honest_path_accepted",
+      "test_function": "test_g018_a5_live_switch_honest_path_accepted",
+      "attack_class": "A5",
+      "scenario": "test_g018_a5_live_switch_honest_path_accepted",
+      "expected": "InvalidContractValue matching human approvals / formula_pass is false / CUTOVER_READY; honest live switch accepts.",
+      "observed": "live switch and join gates fail-closed without approvals or with formula fail.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_join_requires_cutover_ready_or_route_switched",
+      "test_function": "test_g018_a5_join_requires_cutover_ready_or_route_switched",
+      "attack_class": "A5",
+      "scenario": "test_g018_a5_join_requires_cutover_ready_or_route_switched",
+      "expected": "InvalidContractValue matching human approvals / formula_pass is false / CUTOVER_READY; honest live switch accepts.",
+      "observed": "live switch and join gates fail-closed without approvals or with formula fail.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_join_refuses_when_formula_pass_false",
+      "test_function": "test_g018_a5_join_refuses_when_formula_pass_false",
+      "attack_class": "A5",
+      "scenario": "test_g018_a5_join_refuses_when_formula_pass_false",
+      "expected": "InvalidContractValue matching human approvals / formula_pass is false / CUTOVER_READY; honest live switch accepts.",
+      "observed": "live switch and join gates fail-closed without approvals or with formula fail.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_join_accepts_route_switched_no_mutation",
+      "test_function": "test_g018_a5_join_accepts_route_switched_no_mutation",
+      "attack_class": "A5",
+      "scenario": "test_g018_a5_join_accepts_route_switched_no_mutation",
+      "expected": "InvalidContractValue matching human approvals / formula_pass is false / CUTOVER_READY; honest live switch accepts.",
+      "observed": "live switch and join gates fail-closed without approvals or with formula fail.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a6_decommission_before_90_days_refuses",
+      "test_function": "test_g018_a6_decommission_before_90_days_refuses",
+      "attack_class": "A6",
+      "scenario": "test_g018_a6_decommission_before_90_days_refuses",
+      "expected": "InvalidContractValue matching '90-day' / 'ROLLBACK_CLOSED' / 'evidence-backed' / human approvals; exact 90 accepts.",
+      "observed": "decommission authorization compound gates fired in documented order.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a6_decommission_at_exact_90_with_approvals_accepted",
+      "test_function": "test_g018_a6_decommission_at_exact_90_with_approvals_accepted",
+      "attack_class": "A6",
+      "scenario": "test_g018_a6_decommission_at_exact_90_with_approvals_accepted",
+      "expected": "InvalidContractValue matching '90-day' / 'ROLLBACK_CLOSED' / 'evidence-backed' / human approvals; exact 90 accepts.",
+      "observed": "decommission authorization compound gates fired in documented order.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a6_decommission_without_human_approvals_refuses",
+      "test_function": "test_g018_a6_decommission_without_human_approvals_refuses",
+      "attack_class": "A6",
+      "scenario": "test_g018_a6_decommission_without_human_approvals_refuses",
+      "expected": "InvalidContractValue matching '90-day' / 'ROLLBACK_CLOSED' / 'evidence-backed' / human approvals; exact 90 accepts.",
+      "observed": "decommission authorization compound gates fired in documented order.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a6_decommission_without_evidence_refuses",
+      "test_function": "test_g018_a6_decommission_without_evidence_refuses",
+      "attack_class": "A6",
+      "scenario": "test_g018_a6_decommission_without_evidence_refuses",
+      "expected": "InvalidContractValue matching '90-day' / 'ROLLBACK_CLOSED' / 'evidence-backed' / human approvals; exact 90 accepts.",
+      "observed": "decommission authorization compound gates fired in documented order.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a6_decommission_from_wrong_state_refuses[DISCOVERED]",
+      "test_function": "test_g018_a6_decommission_from_wrong_state_refuses[DISCOVERED]",
+      "attack_class": "A6",
+      "scenario": "test_g018_a6_decommission_from_wrong_state_refuses[DISCOVERED]",
+      "expected": "InvalidContractValue matching '90-day' / 'ROLLBACK_CLOSED' / 'evidence-backed' / human approvals; exact 90 accepts.",
+      "observed": "decommission authorization compound gates fired in documented order.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a6_decommission_from_wrong_state_refuses[IMPORTING]",
+      "test_function": "test_g018_a6_decommission_from_wrong_state_refuses[IMPORTING]",
+      "attack_class": "A6",
+      "scenario": "test_g018_a6_decommission_from_wrong_state_refuses[IMPORTING]",
+      "expected": "InvalidContractValue matching '90-day' / 'ROLLBACK_CLOSED' / 'evidence-backed' / human approvals; exact 90 accepts.",
+      "observed": "decommission authorization compound gates fired in documented order.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a6_decommission_from_wrong_state_refuses[READY_NON_SERVING]",
+      "test_function": "test_g018_a6_decommission_from_wrong_state_refuses[READY_NON_SERVING]",
+      "attack_class": "A6",
+      "scenario": "test_g018_a6_decommission_from_wrong_state_refuses[READY_NON_SERVING]",
+      "expected": "InvalidContractValue matching '90-day' / 'ROLLBACK_CLOSED' / 'evidence-backed' / human approvals; exact 90 accepts.",
+      "observed": "decommission authorization compound gates fired in documented order.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a6_decommission_from_wrong_state_refuses[CUTOVER_READY]",
+      "test_function": "test_g018_a6_decommission_from_wrong_state_refuses[CUTOVER_READY]",
+      "attack_class": "A6",
+      "scenario": "test_g018_a6_decommission_from_wrong_state_refuses[CUTOVER_READY]",
+      "expected": "InvalidContractValue matching '90-day' / 'ROLLBACK_CLOSED' / 'evidence-backed' / human approvals; exact 90 accepts.",
+      "observed": "decommission authorization compound gates fired in documented order.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a6_decommission_from_wrong_state_refuses[ROUTE_SWITCHED_NO_MUTATION]",
+      "test_function": "test_g018_a6_decommission_from_wrong_state_refuses[ROUTE_SWITCHED_NO_MUTATION]",
+      "attack_class": "A6",
+      "scenario": "test_g018_a6_decommission_from_wrong_state_refuses[ROUTE_SWITCHED_NO_MUTATION]",
+      "expected": "InvalidContractValue matching '90-day' / 'ROLLBACK_CLOSED' / 'evidence-backed' / human approvals; exact 90 accepts.",
+      "observed": "decommission authorization compound gates fired in documented order.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a6_decommission_from_wrong_state_refuses[CANONICAL_MUTATED]",
+      "test_function": "test_g018_a6_decommission_from_wrong_state_refuses[CANONICAL_MUTATED]",
+      "attack_class": "A6",
+      "scenario": "test_g018_a6_decommission_from_wrong_state_refuses[CANONICAL_MUTATED]",
+      "expected": "InvalidContractValue matching '90-day' / 'ROLLBACK_CLOSED' / 'evidence-backed' / human approvals; exact 90 accepts.",
+      "observed": "decommission authorization compound gates fired in documented order.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a6_decommission_from_wrong_state_refuses[ROLLED_BACK_RECONCILE]",
+      "test_function": "test_g018_a6_decommission_from_wrong_state_refuses[ROLLED_BACK_RECONCILE]",
+      "attack_class": "A6",
+      "scenario": "test_g018_a6_decommission_from_wrong_state_refuses[ROLLED_BACK_RECONCILE]",
+      "expected": "InvalidContractValue matching '90-day' / 'ROLLBACK_CLOSED' / 'evidence-backed' / human approvals; exact 90 accepts.",
+      "observed": "decommission authorization compound gates fired in documented order.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a6_decommission_from_wrong_state_refuses[DECOMMISSIONED]",
+      "test_function": "test_g018_a6_decommission_from_wrong_state_refuses[DECOMMISSIONED]",
+      "attack_class": "A6",
+      "scenario": "test_g018_a6_decommission_from_wrong_state_refuses[DECOMMISSIONED]",
+      "expected": "InvalidContractValue matching '90-day' / 'ROLLBACK_CLOSED' / 'evidence-backed' / human approvals; exact 90 accepts.",
+      "observed": "decommission authorization compound gates fired in documented order.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a6_decommission_compound_failure_prefers_state_gate",
+      "test_function": "test_g018_a6_decommission_compound_failure_prefers_state_gate",
+      "attack_class": "A6",
+      "scenario": "test_g018_a6_decommission_compound_failure_prefers_state_gate",
+      "expected": "InvalidContractValue matching '90-day' / 'ROLLBACK_CLOSED' / 'evidence-backed' / human approvals; exact 90 accepts.",
+      "observed": "decommission authorization compound gates fired in documented order.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_post_mutation_external_rollback_refuses[CANONICAL_MUTATED]",
+      "test_function": "test_g018_a7_post_mutation_external_rollback_refuses[CANONICAL_MUTATED]",
+      "attack_class": "A7",
+      "scenario": "test_g018_a7_post_mutation_external_rollback_refuses[CANONICAL_MUTATED]",
+      "expected": "InvalidContractValue matching 'external rollback is closed' / 'pre-mutation rollback' / illegal transition; pre-mutation no-op ok.",
+      "observed": "post-mutation external rollback closed; pre-mutation only from ROUTE_SWITCHED_NO_MUTATION.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_post_mutation_external_rollback_refuses[ROLLBACK_CLOSED]",
+      "test_function": "test_g018_a7_post_mutation_external_rollback_refuses[ROLLBACK_CLOSED]",
+      "attack_class": "A7",
+      "scenario": "test_g018_a7_post_mutation_external_rollback_refuses[ROLLBACK_CLOSED]",
+      "expected": "InvalidContractValue matching 'external rollback is closed' / 'pre-mutation rollback' / illegal transition; pre-mutation no-op ok.",
+      "observed": "post-mutation external rollback closed; pre-mutation only from ROUTE_SWITCHED_NO_MUTATION.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_post_mutation_external_rollback_refuses[DECOMMISSIONED]",
+      "test_function": "test_g018_a7_post_mutation_external_rollback_refuses[DECOMMISSIONED]",
+      "attack_class": "A7",
+      "scenario": "test_g018_a7_post_mutation_external_rollback_refuses[DECOMMISSIONED]",
+      "expected": "InvalidContractValue matching 'external rollback is closed' / 'pre-mutation rollback' / illegal transition; pre-mutation no-op ok.",
+      "observed": "post-mutation external rollback closed; pre-mutation only from ROUTE_SWITCHED_NO_MUTATION.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_pre_mutation_states_allow_external_rollback_action_check[DISCOVERED]",
+      "test_function": "test_g018_a7_pre_mutation_states_allow_external_rollback_action_check[DISCOVERED]",
+      "attack_class": "A7",
+      "scenario": "test_g018_a7_pre_mutation_states_allow_external_rollback_action_check[DISCOVERED]",
+      "expected": "InvalidContractValue matching 'external rollback is closed' / 'pre-mutation rollback' / illegal transition; pre-mutation no-op ok.",
+      "observed": "post-mutation external rollback closed; pre-mutation only from ROUTE_SWITCHED_NO_MUTATION.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_pre_mutation_states_allow_external_rollback_action_check[IMPORTING]",
+      "test_function": "test_g018_a7_pre_mutation_states_allow_external_rollback_action_check[IMPORTING]",
+      "attack_class": "A7",
+      "scenario": "test_g018_a7_pre_mutation_states_allow_external_rollback_action_check[IMPORTING]",
+      "expected": "InvalidContractValue matching 'external rollback is closed' / 'pre-mutation rollback' / illegal transition; pre-mutation no-op ok.",
+      "observed": "post-mutation external rollback closed; pre-mutation only from ROUTE_SWITCHED_NO_MUTATION.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_pre_mutation_states_allow_external_rollback_action_check[READY_NON_SERVING]",
+      "test_function": "test_g018_a7_pre_mutation_states_allow_external_rollback_action_check[READY_NON_SERVING]",
+      "attack_class": "A7",
+      "scenario": "test_g018_a7_pre_mutation_states_allow_external_rollback_action_check[READY_NON_SERVING]",
+      "expected": "InvalidContractValue matching 'external rollback is closed' / 'pre-mutation rollback' / illegal transition; pre-mutation no-op ok.",
+      "observed": "post-mutation external rollback closed; pre-mutation only from ROUTE_SWITCHED_NO_MUTATION.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_pre_mutation_states_allow_external_rollback_action_check[CUTOVER_READY]",
+      "test_function": "test_g018_a7_pre_mutation_states_allow_external_rollback_action_check[CUTOVER_READY]",
+      "attack_class": "A7",
+      "scenario": "test_g018_a7_pre_mutation_states_allow_external_rollback_action_check[CUTOVER_READY]",
+      "expected": "InvalidContractValue matching 'external rollback is closed' / 'pre-mutation rollback' / illegal transition; pre-mutation no-op ok.",
+      "observed": "post-mutation external rollback closed; pre-mutation only from ROUTE_SWITCHED_NO_MUTATION.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_pre_mutation_states_allow_external_rollback_action_check[ROUTE_SWITCHED_NO_MUTATION]",
+      "test_function": "test_g018_a7_pre_mutation_states_allow_external_rollback_action_check[ROUTE_SWITCHED_NO_MUTATION]",
+      "attack_class": "A7",
+      "scenario": "test_g018_a7_pre_mutation_states_allow_external_rollback_action_check[ROUTE_SWITCHED_NO_MUTATION]",
+      "expected": "InvalidContractValue matching 'external rollback is closed' / 'pre-mutation rollback' / illegal transition; pre-mutation no-op ok.",
+      "observed": "post-mutation external rollback closed; pre-mutation only from ROUTE_SWITCHED_NO_MUTATION.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_pre_mutation_states_allow_external_rollback_action_check[ROLLED_BACK_RECONCILE]",
+      "test_function": "test_g018_a7_pre_mutation_states_allow_external_rollback_action_check[ROLLED_BACK_RECONCILE]",
+      "attack_class": "A7",
+      "scenario": "test_g018_a7_pre_mutation_states_allow_external_rollback_action_check[ROLLED_BACK_RECONCILE]",
+      "expected": "InvalidContractValue matching 'external rollback is closed' / 'pre-mutation rollback' / illegal transition; pre-mutation no-op ok.",
+      "observed": "post-mutation external rollback closed; pre-mutation only from ROUTE_SWITCHED_NO_MUTATION.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_pre_mutation_rollback_only_from_route_switched",
+      "test_function": "test_g018_a7_pre_mutation_rollback_only_from_route_switched",
+      "attack_class": "A7",
+      "scenario": "test_g018_a7_pre_mutation_rollback_only_from_route_switched",
+      "expected": "InvalidContractValue matching 'external rollback is closed' / 'pre-mutation rollback' / illegal transition; pre-mutation no-op ok.",
+      "observed": "post-mutation external rollback closed; pre-mutation only from ROUTE_SWITCHED_NO_MUTATION.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_post_mutation_non_rollback_action_is_not_closed_by_this_gate",
+      "test_function": "test_g018_a7_post_mutation_non_rollback_action_is_not_closed_by_this_gate",
+      "attack_class": "A7",
+      "scenario": "test_g018_a7_post_mutation_non_rollback_action_is_not_closed_by_this_gate",
+      "expected": "InvalidContractValue matching 'external rollback is closed' / 'pre-mutation rollback' / illegal transition; pre-mutation no-op ok.",
+      "observed": "post-mutation external rollback closed; pre-mutation only from ROUTE_SWITCHED_NO_MUTATION.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_cannot_transition_canonical_mutated_to_rolled_back",
+      "test_function": "test_g018_a7_cannot_transition_canonical_mutated_to_rolled_back",
+      "attack_class": "A7",
+      "scenario": "test_g018_a7_cannot_transition_canonical_mutated_to_rolled_back",
+      "expected": "InvalidContractValue matching 'external rollback is closed' / 'pre-mutation rollback' / illegal transition; pre-mutation no-op ok.",
+      "observed": "post-mutation external rollback closed; pre-mutation only from ROUTE_SWITCHED_NO_MUTATION.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_cohort_resolved_scope_digest_mismatch_refuses",
+      "test_function": "test_g018_a8_cohort_resolved_scope_digest_mismatch_refuses",
+      "attack_class": "A8",
+      "scenario": "test_g018_a8_cohort_resolved_scope_digest_mismatch_refuses",
+      "expected": "InvalidContractValue matching the relevant digest mismatch field; honest join accepts.",
+      "observed": "scope/cohort/contract/capability digest mismatch gates fired; honest join ok.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_cohort_source_manifest_digest_mismatch_refuses",
+      "test_function": "test_g018_a8_cohort_source_manifest_digest_mismatch_refuses",
+      "attack_class": "A8",
+      "scenario": "test_g018_a8_cohort_source_manifest_digest_mismatch_refuses",
+      "expected": "InvalidContractValue matching the relevant digest mismatch field; honest join accepts.",
+      "observed": "scope/cohort/contract/capability digest mismatch gates fired; honest join ok.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_decision_resolved_scope_digest_mismatch_on_join_refuses",
+      "test_function": "test_g018_a8_decision_resolved_scope_digest_mismatch_on_join_refuses",
+      "attack_class": "A8",
+      "scenario": "test_g018_a8_decision_resolved_scope_digest_mismatch_on_join_refuses",
+      "expected": "InvalidContractValue matching the relevant digest mismatch field; honest join accepts.",
+      "observed": "scope/cohort/contract/capability digest mismatch gates fired; honest join ok.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_decision_contract_digest_mismatch_on_join_refuses",
+      "test_function": "test_g018_a8_decision_contract_digest_mismatch_on_join_refuses",
+      "attack_class": "A8",
+      "scenario": "test_g018_a8_decision_contract_digest_mismatch_on_join_refuses",
+      "expected": "InvalidContractValue matching the relevant digest mismatch field; honest join accepts.",
+      "observed": "scope/cohort/contract/capability digest mismatch gates fired; honest join ok.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_decision_cohort_manifest_digest_mismatch_on_join_refuses",
+      "test_function": "test_g018_a8_decision_cohort_manifest_digest_mismatch_on_join_refuses",
+      "attack_class": "A8",
+      "scenario": "test_g018_a8_decision_cohort_manifest_digest_mismatch_on_join_refuses",
+      "expected": "InvalidContractValue matching the relevant digest mismatch field; honest join accepts.",
+      "observed": "scope/cohort/contract/capability digest mismatch gates fired; honest join ok.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_decision_source_manifest_digest_mismatch_on_join_refuses",
+      "test_function": "test_g018_a8_decision_source_manifest_digest_mismatch_on_join_refuses",
+      "attack_class": "A8",
+      "scenario": "test_g018_a8_decision_source_manifest_digest_mismatch_on_join_refuses",
+      "expected": "InvalidContractValue matching the relevant digest mismatch field; honest join accepts.",
+      "observed": "scope/cohort/contract/capability digest mismatch gates fired; honest join ok.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_decision_capability_manifest_digest_mismatch_on_join_refuses",
+      "test_function": "test_g018_a8_decision_capability_manifest_digest_mismatch_on_join_refuses",
+      "attack_class": "A8",
+      "scenario": "test_g018_a8_decision_capability_manifest_digest_mismatch_on_join_refuses",
+      "expected": "InvalidContractValue matching the relevant digest mismatch field; honest join accepts.",
+      "observed": "scope/cohort/contract/capability digest mismatch gates fired; honest join ok.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_honest_join_accepted",
+      "test_function": "test_g018_a8_honest_join_accepted",
+      "attack_class": "A8",
+      "scenario": "test_g018_a8_honest_join_accepted",
+      "expected": "InvalidContractValue matching the relevant digest mismatch field; honest join accepts.",
+      "observed": "scope/cohort/contract/capability digest mismatch gates fired; honest join ok.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a9_decision_digest_tamper_refuses",
+      "test_function": "test_g018_a9_decision_digest_tamper_refuses",
+      "attack_class": "A9",
+      "scenario": "test_g018_a9_decision_digest_tamper_refuses",
+      "expected": "InvalidContractValue matching 'does not bind' / 'sha256' / approver_roles; honest round-trip binds.",
+      "observed": "digest integrity gates refused tamper and stale-body swaps; honest round-trip ok.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a9_decision_body_field_swap_without_redigest_refuses",
+      "test_function": "test_g018_a9_decision_body_field_swap_without_redigest_refuses",
+      "attack_class": "A9",
+      "scenario": "test_g018_a9_decision_body_field_swap_without_redigest_refuses",
+      "expected": "InvalidContractValue matching 'does not bind' / 'sha256' / approver_roles; honest round-trip binds.",
+      "observed": "digest integrity gates refused tamper and stale-body swaps; honest round-trip ok.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a9_decision_formula_pass_flip_without_redigest_refuses",
+      "test_function": "test_g018_a9_decision_formula_pass_flip_without_redigest_refuses",
+      "attack_class": "A9",
+      "scenario": "test_g018_a9_decision_formula_pass_flip_without_redigest_refuses",
+      "expected": "InvalidContractValue matching 'does not bind' / 'sha256' / approver_roles; honest round-trip binds.",
+      "observed": "digest integrity gates refused tamper and stale-body swaps; honest round-trip ok.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a9_decision_approver_swap_without_redigest_refuses",
+      "test_function": "test_g018_a9_decision_approver_swap_without_redigest_refuses",
+      "attack_class": "A9",
+      "scenario": "test_g018_a9_decision_approver_swap_without_redigest_refuses",
+      "expected": "InvalidContractValue matching 'does not bind' / 'sha256' / approver_roles; honest round-trip binds.",
+      "observed": "digest integrity gates refused tamper and stale-body swaps; honest round-trip ok.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a9_cohort_manifest_digest_tamper_refuses",
+      "test_function": "test_g018_a9_cohort_manifest_digest_tamper_refuses",
+      "attack_class": "A9",
+      "scenario": "test_g018_a9_cohort_manifest_digest_tamper_refuses",
+      "expected": "InvalidContractValue matching 'does not bind' / 'sha256' / approver_roles; honest round-trip binds.",
+      "observed": "digest integrity gates refused tamper and stale-body swaps; honest round-trip ok.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a9_cohort_body_field_swap_without_redigest_refuses",
+      "test_function": "test_g018_a9_cohort_body_field_swap_without_redigest_refuses",
+      "attack_class": "A9",
+      "scenario": "test_g018_a9_cohort_body_field_swap_without_redigest_refuses",
+      "expected": "InvalidContractValue matching 'does not bind' / 'sha256' / approver_roles; honest round-trip binds.",
+      "observed": "digest integrity gates refused tamper and stale-body swaps; honest round-trip ok.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a9_decision_digest_not_sha256_hex_refuses",
+      "test_function": "test_g018_a9_decision_digest_not_sha256_hex_refuses",
+      "attack_class": "A9",
+      "scenario": "test_g018_a9_decision_digest_not_sha256_hex_refuses",
+      "expected": "InvalidContractValue matching 'does not bind' / 'sha256' / approver_roles; honest round-trip binds.",
+      "observed": "digest integrity gates refused tamper and stale-body swaps; honest round-trip ok.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a9_decision_digest_uppercase_hex_refuses",
+      "test_function": "test_g018_a9_decision_digest_uppercase_hex_refuses",
+      "attack_class": "A9",
+      "scenario": "test_g018_a9_decision_digest_uppercase_hex_refuses",
+      "expected": "InvalidContractValue matching 'does not bind' / 'sha256' / approver_roles; honest round-trip binds.",
+      "observed": "digest integrity gates refused tamper and stale-body swaps; honest round-trip ok.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a9_round_trip_honest_decision_and_cohort_bind",
+      "test_function": "test_g018_a9_round_trip_honest_decision_and_cohort_bind",
+      "attack_class": "A9",
+      "scenario": "test_g018_a9_round_trip_honest_decision_and_cohort_bind",
+      "expected": "InvalidContractValue matching 'does not bind' / 'sha256' / approver_roles; honest round-trip binds.",
+      "observed": "digest integrity gates refused tamper and stale-body swaps; honest round-trip ok.",
+      "verdict": "passed"
+    }
+  ],
+  "summary": {
+    "collected": 119,
+    "passed": 119,
+    "failed": 0,
+    "attack_classes_covered": 9,
+    "full_suite_passed": 1772,
+    "full_suite_failed": 0
+  },
+  "blockers": [],
+  "notes": [
+    "No src/ edits. No commit. No nested workflows.",
+    "Assertions were not weakened; all nine attack classes fail-closed as implemented on HEAD ddbb24b.",
+    "Attack coverage: formula underflows claiming PASS; missing approver; disabled source in cohort; illegal transitions; live switch without human approvals; decommission before 90d; post-mutation external rollback; scope/cohort digest mismatch; digest tamper.",
+    "Observed gap (not a blocker): CutoverDecisionV1 allows weakening parity_min_bps (and sibling mins) below plan defaults as long as formula_pass matches the weakened thresholds. Plan-minima are not hard-coded floors on the min_* fields themselves \u2014 only the PASS formula equality is enforced. Live switch still requires formula_pass True and human external approvals."
+  ],
+  "pytest_full": "1772 passed in 57.64s"
+}

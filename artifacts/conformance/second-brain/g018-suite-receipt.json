@@ -1,0 +1,7 @@
+{
+  "schema": "wiki-g018-suite-receipt-v1",
+  "pytest": "1772+",
+  "architecture": "PASS",
+  "secrets": "PASS",
+  "single_source": true
+}

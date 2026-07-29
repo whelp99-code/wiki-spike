@@ -109,6 +109,9 @@ class MigrationCohortManifestV1:
         sources = tuple(_text(name, "source_names") for name in values["source_names"])
         if len(set(sources)) != len(sources):
             raise InvalidContractValue("source_names must be unique")
+        # DB-07 / ADR-0028: source-by-source cutover — one migration source per cohort.
+        if len(sources) != 1:
+            raise InvalidContractValue("cohort must contain exactly one migration source at a time")
         body = {
             "manifest_version": COHORT_MANIFEST_V1,
             "workspace_ref": _text(values["workspace_ref"], "workspace_ref"),
