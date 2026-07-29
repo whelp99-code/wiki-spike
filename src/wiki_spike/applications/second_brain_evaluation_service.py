@@ -19,8 +19,9 @@ from wiki_spike.memory_core.second_brain_evaluation_contracts import (
     ReflectionProposalV1,
     assert_evaluation_isolated_from_serving,
     assert_projection_export_allowed,
+    assert_rationale_egress_allowed,
     assert_reflection_allowed,
-    invalidate_reflection_support,
+    invalidate_reflection_support_transitive,
 )
 from wiki_spike.memory_core.second_brain_ledger_ports import AtomicRecallSnapshotPort
 from wiki_spike.memory_core.second_brain_ledger_contracts import RecallSnapshotRequestV2
@@ -63,6 +64,10 @@ class SecondBrainEvaluationService:
         self._recall = recall
         self._proposals: list[ReflectionProposalV1] = []
         self._projections: list[ManagedProjectionV1] = []
+        self._support_edges: list[tuple[str, str]] = []
+        self._forbidden_serving_digests = set(benchmark.item_digests) | set(holdout.item_digests)
+        self._forbidden_serving_keys = {benchmark.corpus_key_ref, holdout.holdout_key_ref}
+        self._forbidden_serving_capabilities = {benchmark.capability_ref, holdout.capability_ref}
 
     @property
     def slo(self) -> RecallSloV1:
@@ -91,6 +96,7 @@ class SecondBrainEvaluationService:
                 serving_key_refs=serving_key_refs,
                 serving_capability_refs=serving_capability_refs,
             )
+            self.assert_serving_content_allowed(served)
         except InvalidContractValue as exc:
             raise EvaluationGovernanceError(str(exc)) from exc
         return EvaluationIsolationReport(
@@ -101,9 +107,28 @@ class SecondBrainEvaluationService:
             isolated=True,
         )
 
-    def submit_reflection(self, proposal: ReflectionProposalV1) -> ReflectionProposalV1:
+    def register_support_edge(self, supporter_ref: str, dependent_ref: str) -> None:
+        """Record a directed support edge for transitive reflection invalidation."""
+        if not isinstance(supporter_ref, str) or not isinstance(dependent_ref, str):
+            raise EvaluationGovernanceError("support edge refs must be strings")
+        self._support_edges.append((supporter_ref, dependent_ref))
+
+    def submit_reflection(
+        self,
+        proposal: ReflectionProposalV1,
+        *,
+        rationale_text: str = "",
+        allowed_classes: Sequence[str] = (),
+        proposal_class: str | None = None,
+    ) -> ReflectionProposalV1:
         try:
-            assert_reflection_allowed(self._scope, proposal)
+            assert_rationale_egress_allowed(
+                self._scope,
+                proposal,
+                rationale_text=rationale_text,
+                allowed_classes=allowed_classes,
+                proposal_class=proposal_class,
+            )
         except InvalidContractValue as exc:
             raise EvaluationGovernanceError(str(exc)) from exc
         if proposal.workspace_ref != self._governance.workspace_ref:
@@ -112,9 +137,25 @@ class SecondBrainEvaluationService:
         return proposal
 
     def withdraw_support(self, candidate_refs: Sequence[str]) -> tuple[ReflectionProposalV1, ...]:
-        remaining = invalidate_reflection_support(self._proposals, candidate_refs)
+        remaining = invalidate_reflection_support_transitive(
+            self._proposals, candidate_refs, self._support_edges,
+        )
         self._proposals = list(remaining)
         return remaining
+
+    def assert_serving_content_allowed(self, content_digests: Sequence[str]) -> None:
+        """Hard serving-path gate: refuse any content digest from evaluation corpora."""
+        overlap = self._forbidden_serving_digests.intersection(content_digests)
+        if overlap:
+            raise EvaluationGovernanceError("serving path refused evaluation corpus content")
+
+    def forbidden_serving_material(self) -> dict[str, tuple[str, ...]]:
+        """Expose the evaluation material the serving path must never accept."""
+        return {
+            "content_digests": tuple(sorted(self._forbidden_serving_digests)),
+            "key_refs": tuple(sorted(self._forbidden_serving_keys)),
+            "capability_refs": tuple(sorted(self._forbidden_serving_capabilities)),
+        }
 
     def publish_projection(self, projection: ManagedProjectionV1) -> ManagedProjectionV1:
         try:

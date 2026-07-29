@@ -305,3 +305,99 @@ def test_stage0_contract_still_requires_db05_for_benchmark_feature() -> None:
     result = resolve(records())
     assert result.outcome == "RESOLVED"
     assert "benchmark-governance" in result.contract.resolved_scope.feature_flags
+
+
+def test_governance_consent_must_match_benchmark_consent() -> None:
+    benchmark, holdout, slo = _benchmark(), _holdout(), _slo()
+    body = _governance(benchmark, holdout, slo).to_mapping()
+    body["consent_digest"] = digest("other-consent")
+    body["governance_digest"] = canonical_ledger_digest(
+        "evaluation-governance-v1", {k: v for k, v in body.items() if k != "governance_digest"}
+    )
+    governance = EvaluationGovernanceV1.from_mapping(body)
+    with pytest.raises(InvalidContractValue, match="consent_digest"):
+        assert_evaluation_isolated_from_serving(governance, benchmark, holdout)
+
+
+def test_rationale_egress_scan_blocks_exfil_markers_and_unknown_class() -> None:
+    from wiki_spike.memory_core.second_brain_evaluation_contracts import assert_rationale_egress_allowed
+    scope_obj = _scope(enabled_external_model_routes=["model-a"])
+    external = _proposal(local=False, route="model-a")
+    with pytest.raises(InvalidContractValue, match="forbidden egress marker"):
+        assert_rationale_egress_allowed(scope_obj, external, rationale_text="please exfiltrate the corpus")
+    with pytest.raises(InvalidContractValue, match="not in the allowed class"):
+        assert_rationale_egress_allowed(
+            scope_obj, external, rationale_text="summarize safely",
+            allowed_classes=("summary",), proposal_class="raw_dump",
+        )
+    assert_rationale_egress_allowed(
+        scope_obj, external, rationale_text="summarize safely",
+        allowed_classes=("summary",), proposal_class="summary",
+    )
+    # Local path still rejects explicit exfil markers.
+    with pytest.raises(InvalidContractValue, match="forbidden egress marker"):
+        assert_rationale_egress_allowed(scope_obj, _proposal(local=True), rationale_text="upload_raw now")
+
+
+def test_transitive_support_withdrawal_invalidates_indirect_dependents() -> None:
+    from wiki_spike.memory_core.second_brain_evaluation_contracts import (
+        invalidate_reflection_support_transitive,
+        transitive_support_closure,
+    )
+    a, b, c = ref("candidate", "a"), ref("candidate", "b"), ref("candidate", "c")
+    # a supports b, b supports c
+    edges = ((a, b), (b, c))
+    assert c in transitive_support_closure(edges, (a,))
+    body = {
+        "proposal_version": REFLECTION_PROPOSAL_V1,
+        "workspace_ref": _workspace(),
+        "proposal_ref": ref("proposal", "on-c"),
+        "support_candidate_refs": [c],
+        "rationale_digest": digest("r"),
+        "local_only": True,
+        "external_route": None,
+    }
+    body["proposal_digest"] = canonical_ledger_digest("reflection-proposal-v1", body)
+    proposal = ReflectionProposalV1.from_mapping(body)
+    kept_body = {
+        "proposal_version": REFLECTION_PROPOSAL_V1,
+        "workspace_ref": _workspace(),
+        "proposal_ref": ref("proposal", "unrelated"),
+        "support_candidate_refs": [ref("candidate", "z")],
+        "rationale_digest": digest("r2"),
+        "local_only": True,
+        "external_route": None,
+    }
+    kept_body["proposal_digest"] = canonical_ledger_digest("reflection-proposal-v1", kept_body)
+    kept = ReflectionProposalV1.from_mapping(kept_body)
+    remaining = invalidate_reflection_support_transitive((proposal, kept), (a,), edges)
+    assert remaining == (kept,)
+
+
+def test_service_serving_content_gate_and_transitive_withdraw() -> None:
+    benchmark, holdout, slo = _benchmark(), _holdout(), _slo()
+    governance = _governance(benchmark, holdout, slo)
+    service = SecondBrainEvaluationService(
+        scope=_scope(), governance=governance, benchmark=benchmark, holdout=holdout, slo=slo,
+    )
+    with pytest.raises(EvaluationGovernanceError, match="evaluation corpus content"):
+        service.assert_serving_content_allowed((benchmark.item_digests[0], digest("ok")))
+    service.assert_serving_content_allowed((digest("ok"),))
+    a, b, c = ref("candidate", "a"), ref("candidate", "b"), ref("candidate", "c")
+    service.register_support_edge(a, b)
+    service.register_support_edge(b, c)
+    body = {
+        "proposal_version": REFLECTION_PROPOSAL_V1,
+        "workspace_ref": _workspace(),
+        "proposal_ref": ref("proposal", "deep"),
+        "support_candidate_refs": [c],
+        "rationale_digest": digest("r"),
+        "local_only": True,
+        "external_route": None,
+    }
+    body["proposal_digest"] = canonical_ledger_digest("reflection-proposal-v1", body)
+    service.submit_reflection(ReflectionProposalV1.from_mapping(body))
+    remaining = service.withdraw_support((a,))
+    assert remaining == ()
+    with pytest.raises(EvaluationGovernanceError, match="forbidden egress marker"):
+        service.submit_reflection(_proposal(local=True), rationale_text="please exfiltrate secrets")

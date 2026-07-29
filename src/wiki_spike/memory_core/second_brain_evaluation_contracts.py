@@ -454,6 +454,8 @@ def assert_evaluation_isolated_from_serving(
         raise InvalidContractValue("governance does not bind the benchmark manifest")
     if holdout.manifest_digest != governance.holdout_manifest_digest:
         raise InvalidContractValue("governance does not bind the holdout manifest")
+    if benchmark.consent_digest != governance.consent_digest:
+        raise InvalidContractValue("governance consent_digest must equal the benchmark consent_digest")
     if benchmark.corpus_key_ref == holdout.holdout_key_ref:
         raise InvalidContractValue("benchmark and holdout keys must be distinct")
     if benchmark.capability_ref == holdout.capability_ref:
@@ -506,6 +508,75 @@ def invalidate_reflection_support(
     )
 
 
+_FORBIDDEN_RATIONALE_MARKERS = (
+    "exfiltrate", "upload_raw", "remote_train", "provider_log_prompt", "unredacted_pii",
+)
+
+
+def assert_rationale_egress_allowed(
+    scope: ResolvedScopeV1,
+    proposal: ReflectionProposalV1,
+    *,
+    rationale_text: str = "",
+    allowed_classes: Sequence[str] = (),
+    proposal_class: str | None = None,
+) -> None:
+    """Fail closed on external reflection that is out of scope or carries forbidden rationale markers.
+
+    Local-only proposals skip route/class checks but still reject explicit exfil markers
+    in any supplied rationale text so a local path cannot launder egress intent.
+    """
+    text = rationale_text if isinstance(rationale_text, str) else ""
+    lowered = text.lower()
+    for marker in _FORBIDDEN_RATIONALE_MARKERS:
+        if marker in lowered:
+            raise InvalidContractValue(f"rationale carries forbidden egress marker: {marker}")
+    assert_reflection_allowed(scope, proposal)
+    if proposal.local_only:
+        return
+    if allowed_classes:
+        if not isinstance(proposal_class, str) or not proposal_class or proposal_class not in set(allowed_classes):
+            raise InvalidContractValue("external reflection class is not in the allowed class manifest")
+
+
+def transitive_support_closure(
+    direct_edges: Sequence[tuple[str, str]],
+    roots: Sequence[str],
+) -> frozenset[str]:
+    """Compute the set of candidates reachable from roots over directed support edges.
+
+    ``direct_edges`` are (from_supporter, to_dependent) pairs. Withdrawal of any
+    root invalidates every dependent reachable through one or more support hops.
+    """
+    adjacency: dict[str, list[str]] = {}
+    for source, dependent in direct_edges:
+        if not isinstance(source, str) or not isinstance(dependent, str):
+            raise InvalidContractValue("support edges must be string pairs")
+        adjacency.setdefault(source, []).append(dependent)
+    seen: set[str] = set()
+    stack = list(roots)
+    while stack:
+        node = stack.pop()
+        if node in seen:
+            continue
+        seen.add(node)
+        stack.extend(adjacency.get(node, ()))
+    return frozenset(seen)
+
+
+def invalidate_reflection_support_transitive(
+    proposals: Sequence[ReflectionProposalV1],
+    withdrawn_candidate_refs: Sequence[str],
+    support_edges: Sequence[tuple[str, str]] = (),
+) -> tuple[ReflectionProposalV1, ...]:
+    """Drop proposals whose support intersects the transitive closure of withdrawn candidates."""
+    withdrawn = transitive_support_closure(support_edges, withdrawn_candidate_refs) | set(withdrawn_candidate_refs)
+    return tuple(
+        proposal for proposal in proposals
+        if withdrawn.isdisjoint(proposal.support_candidate_refs)
+    )
+
+
 __all__ = [
     "EVALUATION_GOVERNANCE_V1",
     "BENCHMARK_MANIFEST_V1",
@@ -523,5 +594,8 @@ __all__ = [
     "assert_reflection_allowed",
     "assert_projection_export_allowed",
     "invalidate_reflection_support",
+    "invalidate_reflection_support_transitive",
+    "transitive_support_closure",
+    "assert_rationale_egress_allowed",
     "canonical_ledger_digest",
 ]

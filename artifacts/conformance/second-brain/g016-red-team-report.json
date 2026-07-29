@@ -1,0 +1,433 @@
+{
+  "goal": "G016",
+  "title": "Stage-4 evaluation governance isolation -- completion QA / red-team",
+  "surface": "api-package-algorithm",
+  "frozen_head": "post-80a17e7-isolation-hardening",
+  "frozen_head_short": "80a17e7",
+  "frozen_head_subject": "add Stage 4 evaluation governance and isolation gates",
+  "worktree": "/private/tmp/wiki-spike-second-brain-stage3",
+  "branch": "second-brain-stage3",
+  "new_test_module": "tests/second_brain/test_stage4_evaluation_red_team.py",
+  "artifact": "artifacts/conformance/second-brain/g016-red-team-report.json",
+  "src_edits": false,
+  "commit": false,
+  "baseline_suite": "1534 passed (assignment-stated)",
+  "observed_suite": "1567 passed",
+  "delta_explanation": "1567 - 1534 = 33 new collected red-team cases. No pre-existing test modified, weakened, or removed. Only tests/second_brain/test_stage4_evaluation_red_team.py and this artifact were touched.",
+  "seed": null,
+  "commands_run": [
+    {
+      "command": "PYTHONPATH=src /usr/local/bin/python3.12 -m pytest -q tests/second_brain/test_stage4_evaluation_red_team.py",
+      "observed_result": "33 passed in 0.49s",
+      "counts": {
+        "collected": 33,
+        "passed": 33,
+        "failed": 0
+      }
+    },
+    {
+      "command": "PYTHONPATH=src /usr/local/bin/python3.12 -m pytest -q",
+      "observed_result": "1567 passed in 48.09s",
+      "counts": {
+        "collected": 1567,
+        "passed": 1567,
+        "failed": 0
+      },
+      "note": "Assignment baseline 1534 + 33 new red-team cases = 1567."
+    }
+  ],
+  "attack_class_matrix": {
+    "A1_benchmark_item_as_serving_content_digest": {
+      "description": "Benchmark or holdout item digest injected as serving content_digest must refuse isolation (package assert and live service proof).",
+      "covered_by_case_ids": [
+        "a1_benchmark_item_injected_as_serving_content_digest",
+        "a1_holdout_item_injected_as_serving_content_digest",
+        "a1_service_live_proof_wraps_injected_eval_item"
+      ]
+    },
+    "A2_shared_key_or_capability": {
+      "description": "Shared key or capability between benchmark/holdout/serving must refuse (package assert and service constructor).",
+      "covered_by_case_ids": [
+        "a2_shared_benchmark_holdout_key",
+        "a2_shared_benchmark_holdout_capability",
+        "a2_evaluation_key_as_serving_key",
+        "a2_evaluation_capability_as_serving_capability",
+        "a2_service_constructor_shared_bench_holdout_identity"
+      ]
+    },
+    "A3_overlapping_item_sets": {
+      "description": "Overlapping benchmark/holdout item sets (including subset) must refuse.",
+      "covered_by_case_ids": [
+        "a3_overlapping_benchmark_holdout_item_sets",
+        "a3_holdout_exact_subset_of_benchmark"
+      ]
+    },
+    "A4_slo_below_plan_minima": {
+      "description": "SLO construction refuses shadow days 13, parity cases 199, e2e 499, safety>0, and any denominator flag false; exact plan minima construct.",
+      "covered_by_case_ids": [
+        "a4_slo_min_shadow_days_13",
+        "a4_slo_min_parity_cases_199",
+        "a4_slo_min_cohort_e2e_499",
+        "a4_slo_max_safety_violations_1",
+        "a4_slo_include_invalid_false",
+        "a4_slo_include_abstained_false",
+        "a4_slo_include_source_unavailable_false",
+        "a4_slo_exact_plan_minima_constructs"
+      ]
+    },
+    "A5_external_reflection_disabled": {
+      "description": "External reflection when route disabled refuses; local reflection always ok at package and service layers.",
+      "covered_by_case_ids": [
+        "a5_external_reflection_disabled_route_local_ok",
+        "a5_service_submit_reflection_fail_closed"
+      ]
+    },
+    "A6_export_disabled_unknown_withhold": {
+      "description": "Export to disabled/unknown destination refuses; withheld+destination construction refuses; withhold-then-export refuses.",
+      "covered_by_case_ids": [
+        "a6_export_disabled_or_unknown_destination",
+        "a6_withheld_projection_cannot_name_or_export",
+        "a6_service_publish_refuses_disabled_destination"
+      ]
+    },
+    "A7_support_withdrawal_selective": {
+      "description": "Support withdrawal removes only dependent proposals; unrelated proposals remain (package + service).",
+      "covered_by_case_ids": [
+        "a7_support_withdrawal_removes_only_dependent",
+        "a7_service_withdraw_support_preserves_unrelated"
+      ]
+    },
+    "A8_governance_digest_tamper_slo_mismatch": {
+      "description": "Governance digest tamper, body field swap without redigest, mismatched slo_digest, SLO/benchmark digest tamper, and unbound benchmark refuse.",
+      "covered_by_case_ids": [
+        "a8_governance_digest_tamper",
+        "a8_governance_body_field_swap_without_redigest",
+        "a8_mismatched_slo_digest_service",
+        "a8_slo_digest_tamper",
+        "a8_benchmark_manifest_digest_tamper",
+        "a8_governance_unbound_benchmark_manifest"
+      ]
+    },
+    "A9_live_lifecycle_isolation_proof": {
+      "description": "Live isolation proof against a real LifecycleLedgerAuthority snapshot passes when corpora are disjoint; workspace mismatch and eval key-as-serving-key refuse.",
+      "covered_by_case_ids": [
+        "a9_live_isolation_proof_disjoint_corpora",
+        "a9_live_isolation_workspace_mismatch"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "a1_benchmark_item_injected_as_serving_content_digest",
+      "test_function": "test_g016_a1_benchmark_item_injected_as_serving_content_digest_refuses",
+      "attack_class": "A1",
+      "scenario": "assert_evaluation_isolated_from_serving called with serving_candidate_content_digests containing benchmark.item_digests[0].",
+      "expected": "InvalidContractValue matching 'serving corpus'.",
+      "observed": "InvalidContractValue('evaluation items must never appear in the serving corpus').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_holdout_item_injected_as_serving_content_digest",
+      "test_function": "test_g016_a1_holdout_item_injected_as_serving_content_digest_refuses",
+      "attack_class": "A1",
+      "scenario": "Holdout item digest presented as serving content_digest.",
+      "expected": "Refuse with serving corpus match.",
+      "observed": "InvalidContractValue('evaluation items must never appear in the serving corpus').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_service_live_proof_wraps_injected_eval_item",
+      "test_function": "test_g016_a1_service_live_proof_wraps_injected_eval_item_as_governance_error",
+      "attack_class": "A1",
+      "scenario": "Materialize a serving CAS blob, approve a candidate with that content_digest, bind the same digest into the benchmark item set, then call prove_isolation_against_serving on a real LifecycleLedgerAuthority.",
+      "expected": "EvaluationGovernanceError wrapping serving-corpus isolation failure (not a silent pass).",
+      "observed": "EvaluationGovernanceError matching 'serving corpus'.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_shared_benchmark_holdout_key",
+      "test_function": "test_g016_a2_shared_benchmark_holdout_key_refuses",
+      "attack_class": "A2",
+      "scenario": "Benchmark corpus_key_ref == holdout holdout_key_ref.",
+      "expected": "Refuse keys must be distinct.",
+      "observed": "InvalidContractValue('benchmark and holdout keys must be distinct').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_shared_benchmark_holdout_capability",
+      "test_function": "test_g016_a2_shared_benchmark_holdout_capability_refuses",
+      "attack_class": "A2",
+      "scenario": "Distinct keys but identical capability_ref.",
+      "expected": "Refuse capabilities must be distinct.",
+      "observed": "InvalidContractValue('benchmark and holdout capabilities must be distinct').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_evaluation_key_as_serving_key",
+      "test_function": "test_g016_a2_evaluation_key_appearing_as_serving_key_refuses",
+      "attack_class": "A2",
+      "scenario": "serving_key_refs includes benchmark.corpus_key_ref or holdout.holdout_key_ref.",
+      "expected": "Refuse serving keys.",
+      "observed": "InvalidContractValue('evaluation keys must never be serving keys') for both.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_evaluation_capability_as_serving_capability",
+      "test_function": "test_g016_a2_evaluation_capability_appearing_as_serving_capability_refuses",
+      "attack_class": "A2",
+      "scenario": "serving_capability_refs includes benchmark or holdout capability_ref.",
+      "expected": "Refuse serving capabilities.",
+      "observed": "InvalidContractValue('evaluation capabilities must never be serving capabilities') for both.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_service_constructor_shared_bench_holdout_identity",
+      "test_function": "test_g016_a2_service_constructor_refuses_shared_bench_holdout_identity",
+      "attack_class": "A2",
+      "scenario": "SecondBrainEvaluationService constructed with shared capability between benchmark and holdout.",
+      "expected": "Constructor fail-closed via assert_evaluation_isolated_from_serving.",
+      "observed": "InvalidContractValue('benchmark and holdout capabilities must be distinct').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a3_overlapping_benchmark_holdout_item_sets",
+      "test_function": "test_g016_a3_overlapping_benchmark_holdout_item_sets_refuse",
+      "attack_class": "A3",
+      "scenario": "One shared item digest across benchmark and holdout manifests.",
+      "expected": "Refuse disjoint.",
+      "observed": "InvalidContractValue('benchmark and holdout item sets must be disjoint').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a3_holdout_exact_subset_of_benchmark",
+      "test_function": "test_g016_a3_holdout_is_exact_subset_of_benchmark_still_refuses",
+      "attack_class": "A3",
+      "scenario": "Holdout item set is a proper subset of benchmark item set.",
+      "expected": "Still refuse disjoint.",
+      "observed": "InvalidContractValue('benchmark and holdout item sets must be disjoint').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_slo_min_shadow_days_13",
+      "test_function": "test_g016_a4_slo_below_plan_minima_refuses_construction[min_shadow_days-13-out of required range]",
+      "attack_class": "A4",
+      "scenario": "min_shadow_days=13 (plan minimum 14).",
+      "expected": "InvalidContractValue out of required range.",
+      "observed": "InvalidContractValue('min_shadow_days out of required range').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_slo_min_parity_cases_199",
+      "test_function": "test_g016_a4_slo_below_plan_minima_refuses_construction[min_parity_cases_per_source-199-out of required range]",
+      "attack_class": "A4",
+      "scenario": "min_parity_cases_per_source=199 (plan minimum 200).",
+      "expected": "Refuse construction.",
+      "observed": "InvalidContractValue('min_parity_cases_per_source out of required range').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_slo_min_cohort_e2e_499",
+      "test_function": "test_g016_a4_slo_below_plan_minima_refuses_construction[min_cohort_e2e_queries-499-out of required range]",
+      "attack_class": "A4",
+      "scenario": "min_cohort_e2e_queries=499 (plan minimum 500).",
+      "expected": "Refuse construction.",
+      "observed": "InvalidContractValue('min_cohort_e2e_queries out of required range').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_slo_max_safety_violations_1",
+      "test_function": "test_g016_a4_slo_below_plan_minima_refuses_construction[max_safety_violations-1-out of required range]",
+      "attack_class": "A4",
+      "scenario": "max_safety_violations=1 (plan requires 0).",
+      "expected": "Refuse construction.",
+      "observed": "InvalidContractValue('max_safety_violations out of required range').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_slo_include_invalid_false",
+      "test_function": "test_g016_a4_slo_below_plan_minima_refuses_construction[include_invalid_in_denominator-False-must be true]",
+      "attack_class": "A4",
+      "scenario": "include_invalid_in_denominator=False.",
+      "expected": "Refuse must be true.",
+      "observed": "InvalidContractValue('include_invalid_in_denominator must be true').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_slo_include_abstained_false",
+      "test_function": "test_g016_a4_slo_below_plan_minima_refuses_construction[include_abstained_in_denominator-False-must be true]",
+      "attack_class": "A4",
+      "scenario": "include_abstained_in_denominator=False.",
+      "expected": "Refuse must be true.",
+      "observed": "InvalidContractValue('include_abstained_in_denominator must be true').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_slo_include_source_unavailable_false",
+      "test_function": "test_g016_a4_slo_below_plan_minima_refuses_construction[include_source_unavailable_in_denominator-False-must be true]",
+      "attack_class": "A4",
+      "scenario": "include_source_unavailable_in_denominator=False.",
+      "expected": "Refuse must be true.",
+      "observed": "InvalidContractValue('include_source_unavailable_in_denominator must be true').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_slo_exact_plan_minima_constructs",
+      "test_function": "test_g016_a4_slo_at_exact_plan_minima_constructs",
+      "attack_class": "A4",
+      "scenario": "Exact plan minima: shadow 14, parity 200, e2e 500, safety 0, denominators true.",
+      "expected": "Constructs and freezes the plan values.",
+      "observed": "RecallSloV1 accepted with all asserted minima.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_external_reflection_disabled_route_local_ok",
+      "test_function": "test_g016_a5_external_reflection_disabled_route_refuses_local_ok",
+      "attack_class": "A5",
+      "scenario": "Local proposal on enabled and disabled scopes; external model-a enabled ok; external model-a disabled refuse; unknown model-z refuse even when model-a enabled.",
+      "expected": "Local always ok; external fail-closed when not in enabled_external_model_routes.",
+      "observed": "assert_reflection_allowed matches expected allow/refuse matrix.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_service_submit_reflection_fail_closed",
+      "test_function": "test_g016_a5_service_submit_reflection_fail_closed_on_disabled_route",
+      "attack_class": "A5",
+      "scenario": "SecondBrainEvaluationService.submit_reflection with local/external under enabled and disabled scopes.",
+      "expected": "EvaluationGovernanceError on disabled external; local still accepted on blocked-external scope.",
+      "observed": "EvaluationGovernanceError('external reflection route is disabled by resolved scope'); local_only path remains open.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a6_export_disabled_or_unknown_destination",
+      "test_function": "test_g016_a6_export_to_disabled_or_unknown_destination_refuses",
+      "attack_class": "A6",
+      "scenario": "Internal projection ok; archive allowed when egress lists it; s3-exfil unknown refuse; archive disabled refuse.",
+      "expected": "InvalidContractValue disabled by resolved scope for unknown/disabled destinations.",
+      "observed": "assert_projection_export_allowed matrix matches.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a6_withheld_projection_cannot_name_or_export",
+      "test_function": "test_g016_a6_withheld_projection_cannot_name_or_export_destination",
+      "attack_class": "A6",
+      "scenario": "withheld+destination construction refuse; digest-rebound illegal pair refuse; publish then withhold clears destination; unknown and disabled destinations refuse after withhold flow.",
+      "expected": "Construction and service gates fail-closed; internal withheld rebuild still allowed.",
+      "observed": "InvalidContractValue withheld on construction/from_mapping; EvaluationGovernanceError on unknown/disabled export; withheld internal assert ok.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a6_service_publish_refuses_disabled_destination",
+      "test_function": "test_g016_a6_service_publish_refuses_disabled_destination",
+      "attack_class": "A6",
+      "scenario": "Service with empty egress and archive disabled; publish archive refuses; internal publish ok.",
+      "expected": "EvaluationGovernanceError for archive; internal projection accepted.",
+      "observed": "EvaluationGovernanceError('export destination is disabled by resolved scope'); internal export_destination is None.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_support_withdrawal_removes_only_dependent",
+      "test_function": "test_g016_a7_support_withdrawal_removes_only_dependent_proposals",
+      "attack_class": "A7",
+      "scenario": "Four proposals: kept(other), doomed(root), doomed-multi(dep,root,other), also-kept(dep). Withdraw root then dep.",
+      "expected": "After root: (kept, also-kept). After dep: (kept,).",
+      "observed": "invalidate_reflection_support returned exactly the expected remaining tuples.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_service_withdraw_support_preserves_unrelated",
+      "test_function": "test_g016_a7_service_withdraw_support_preserves_unrelated_proposals",
+      "attack_class": "A7",
+      "scenario": "Service holds p-alive, p-gone, p-both(alive+gone), p-unrelated. Withdraw gone.",
+      "expected": "Remaining proposal_refs = {p-alive, p-unrelated}.",
+      "observed": "withdraw_support returned only the two unrelated-to-gone proposals.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_governance_digest_tamper",
+      "test_function": "test_g016_a8_governance_digest_tamper_refuses_construction",
+      "attack_class": "A8",
+      "scenario": "Replace governance_digest with an unrelated sha256 while body unchanged.",
+      "expected": "InvalidContractValue governance_digest does not bind.",
+      "observed": "InvalidContractValue('governance_digest does not bind its body').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_governance_body_field_swap_without_redigest",
+      "test_function": "test_g016_a8_governance_body_field_swap_without_redigest_refuses",
+      "attack_class": "A8",
+      "scenario": "Swap serving_corpus_digest leaving governance_digest stale.",
+      "expected": "Refuse governance_digest does not bind.",
+      "observed": "InvalidContractValue('governance_digest does not bind its body').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_mismatched_slo_digest_service",
+      "test_function": "test_g016_a8_mismatched_slo_digest_refuses_service_construction",
+      "attack_class": "A8",
+      "scenario": "Governance binds slo_a; service constructed with slo_b (different parity_min_bps / digest).",
+      "expected": "EvaluationGovernanceError does not bind the provided SLO.",
+      "observed": "EvaluationGovernanceError('governance does not bind the provided SLO').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_slo_digest_tamper",
+      "test_function": "test_g016_a8_slo_digest_tamper_refuses_construction",
+      "attack_class": "A8",
+      "scenario": "Tamper slo_digest alone.",
+      "expected": "InvalidContractValue slo_digest does not bind.",
+      "observed": "InvalidContractValue('slo_digest does not bind its body').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_benchmark_manifest_digest_tamper",
+      "test_function": "test_g016_a8_benchmark_manifest_digest_tamper_refuses",
+      "attack_class": "A8",
+      "scenario": "Tamper benchmark manifest_digest alone.",
+      "expected": "InvalidContractValue manifest_digest does not bind.",
+      "observed": "InvalidContractValue('benchmark manifest_digest does not bind its body').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_governance_unbound_benchmark_manifest",
+      "test_function": "test_g016_a8_governance_unbound_benchmark_manifest_refuses_isolation",
+      "attack_class": "A8",
+      "scenario": "Governance binds benchmark A; isolation called with benchmark B.",
+      "expected": "Refuse governance does not bind the benchmark.",
+      "observed": "InvalidContractValue('governance does not bind the benchmark manifest').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a9_live_isolation_proof_disjoint_corpora",
+      "test_function": "test_g016_a9_live_isolation_proof_passes_when_corpora_disjoint",
+      "attack_class": "A9",
+      "scenario": "Two approved serving candidates on real LifecycleLedgerAuthority; evaluation corpora use disjoint item digests and keys. prove_isolation_against_serving; positive control with honest serving keys/caps; negative control with benchmark key as serving key.",
+      "expected": "isolated=True, serving_candidate_count=2; negative control EvaluationGovernanceError serving keys.",
+      "observed": "report.isolated True, serving_candidate_count 2, benchmark_item_count 2, holdout_item_count 1; negative control raised EvaluationGovernanceError matching 'serving keys'.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a9_live_isolation_workspace_mismatch",
+      "test_function": "test_g016_a9_live_isolation_workspace_mismatch_refuses",
+      "attack_class": "A9",
+      "scenario": "Governance workspace_ref differs from live recall request workspace_ref.",
+      "expected": "EvaluationGovernanceError workspace mismatch.",
+      "observed": "EvaluationGovernanceError('isolation proof workspace mismatch').",
+      "verdict": "passed"
+    }
+  ],
+  "summary": {
+    "collected": 33,
+    "passed": 33,
+    "failed": 0,
+    "attack_classes_covered": 9,
+    "full_suite_passed": 1567,
+    "full_suite_failed": 0
+  },
+  "blockers": [],
+  "notes": [
+    "No src/ edits. No commit. No .gjc. No nested workflows.",
+    "Assertions were not weakened; all nine attack classes fail-closed as implemented on HEAD 80a17e7.",
+    "Live proofs use LifecycleLedgerAuthority + EncryptedContentStore + LifecycleDatabase fixtures from test_stage3_ledger_persistence."
+  ],
+  "pytest_full": "see leader rerun"
+}
