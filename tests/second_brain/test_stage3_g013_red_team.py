@@ -8,14 +8,19 @@ black-box surface: ``LifecycleLedgerAuthority`` + ``SecondBrainLedgerService``.
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+import test_stage3_ledger_persistence as ledger_fixtures
+from test_stage1_capabilities import authority as security_authority
 from test_stage3_ledger_persistence import (
     KEY_ID,
     LATER,
     NOW,
     SIGNER_REF,
+    DeterministicEd25519Verifier,
+    TrackingLedgerService,
     blob,
     canonical_ledger_bytes,
     canonical_ledger_digest,
@@ -32,12 +37,18 @@ from test_stage3_ledger_persistence import (
 )
 
 from wiki_spike.applications.second_brain_ledger_service import SecondBrainLedgerService
+from wiki_spike.applications.second_brain_recall_service import SecondBrainRecallService
+from wiki_spike.composition.api_v2 import CapabilityUseV2, SecondBrainApiV2
+from wiki_spike.composition.second_brain_product import SecondBrainProductV2
+from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore
+from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase
 from wiki_spike.infrastructure.second_brain_ledger import (
     LedgerAuthority,
     LedgerAuthorityError,
     LifecycleLedgerAuthority,
 )
-from wiki_spike.memory_core.errors import InvalidContractValue
+from wiki_spike.memory_core.errors import InvalidContractValue, UnknownContractField
+from wiki_spike.memory_core.second_brain_ledger_contracts import RecallContinuationV2, mint_recall_trust_authority_v2
 
 
 def _authority(database, cas, req, *, page_size: int = 50) -> LifecycleLedgerAuthority:
@@ -50,6 +61,34 @@ def _authority(database, cas, req, *, page_size: int = 50) -> LifecycleLedgerAut
 def _acquire(database, cas, req, *, page_size: int = 50):
     authority = _authority(database, cas, req, page_size=page_size)
     return SecondBrainLedgerService(authority, authority).acquire(req).snapshot
+
+
+def _shift(instant: str, seconds: int) -> str:
+    parsed = datetime.fromisoformat(instant[:-1] + "+00:00").astimezone(timezone.utc)
+    shifted = parsed + timedelta(seconds=seconds)
+    return shifted.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _use(workspace: str, action: str, nonce: str) -> CapabilityUseV2:
+    return CapabilityUseV2(
+        ref("capability", "stage3"), "1", workspace, digest("scope"), action, nonce, ("citation", "recall"),
+    )
+
+
+def _v2_stack(database, cas, req, *, page_size: int):
+    """Build one authenticated V2 product + API instance bound to req's trust set."""
+    authority = _authority(database, cas, req, page_size=page_size)
+    product = SecondBrainProductV2(
+        authority=security_authority(),
+        ledger=SecondBrainLedgerService(authority, authority),
+        recall=SecondBrainRecallService(authority),
+    )
+    return authority, SecondBrainApiV2(product)
+
+
+_FORBIDDEN_SURFACE = (
+    "list", "dump", "Workspace", "McpServer", "raw_key", "derived_key", "artifact", "blob", "Gate8", "workspace_dump",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -516,4 +555,595 @@ def test_g013_c2_c3_deletion_between_pages_is_observed_and_reported(tmp_path: Pa
                 "victim was only served because the page is pinned to the pre-revoke cut"
             )
     assert outcome in {"fail_closed", "served", "served_without_victim"}
+    database.close()
+
+
+# ---------------------------------------------------------------------------
+# C1 / C2 -- component paging (commit 8a682ac) -- adversarial extensions
+# ---------------------------------------------------------------------------
+
+def test_g013_c1_c2_dense_component_swallows_most_candidates_at_tight_page_size(tmp_path: Path) -> None:
+    """A single SUPPORT chain spanning 7 of 9 candidates must still be served whole
+    on one page even though it dwarfs page_size=2 by more than 3x; the two isolated
+    candidates must still page normally around it, and the whole walk must remain
+    an exact partition."""
+    database, cas, service, workspace = store(tmp_path)
+    chain = [ref("candidate", f"dense-chain-{index}") for index in range(7)]
+    for index, candidate in enumerate(chain):
+        create_and_approve(service, cas, candidate, f"dense-chain-{index}", workspace=workspace)
+    for index in range(1, 7):
+        service.append(command(
+            "CORRECT", chain[index], command_name=f"dense-link-{index}", related=chain[index - 1],
+            workspace=workspace, content_digest=blob(cas, f"dense-chain-{index}-v2"),
+        ))
+    isolated = [ref("candidate", f"dense-isolated-{index}") for index in range(2)]
+    for index, candidate in enumerate(isolated):
+        create_and_approve(service, cas, candidate, f"dense-isolated-{index}", workspace=workspace)
+    expected = set(chain) | set(isolated)
+    assert len(expected) == 9
+
+    current_request = request(workspace, recorded_at=NOW)
+    cut: str | None = None
+    collected: list[str] = []
+    pages: list[set[str]] = []
+    while True:
+        snapshot = _acquire(database, cas, current_request, page_size=2)
+        if cut is None:
+            cut = snapshot.transaction_cut
+        else:
+            assert snapshot.transaction_cut == cut
+        page_refs = {item.candidate_ref for item in snapshot.candidates}
+        pages.append(page_refs)
+        collected.extend(item.candidate_ref for item in snapshot.candidates)
+        if not snapshot.has_more:
+            assert snapshot.continuation is None
+            break
+        assert snapshot.continuation is not None
+        current_request = request(
+            workspace, recorded_at=NOW, transaction_cut=cut, continuation=snapshot.continuation
+        )
+    assert len(collected) == len(set(collected)) == len(expected) == 9, "exact partition: no duplicate, no omission"
+    assert set(collected) == expected
+    chain_pages = [page for page in pages if page & set(chain)]
+    assert len(chain_pages) == 1, "the 7-member chain component must never be split across pages"
+    assert chain_pages[0] == set(chain), "the whole chain component must be served together"
+    assert len(chain_pages[0]) > 2, "the oversized component legitimately exceeds page_size on its own page"
+    for page in pages:
+        if page != chain_pages[0]:
+            assert len(page) <= 2, "non-oversized pages must still respect page_size"
+    database.close()
+
+
+@pytest.mark.parametrize("page_size", [1, 2, 3, 4, 7])
+def test_g013_c1_c2_interleaved_links_and_isolated_candidates_across_several_page_sizes(
+    tmp_path: Path, page_size: int
+) -> None:
+    database, cas, service, workspace = store(tmp_path)
+    pair_a = (ref("candidate", "inter-pair-a-left"), ref("candidate", "inter-pair-a-right"))
+    pair_b = (ref("candidate", "inter-pair-b-left"), ref("candidate", "inter-pair-b-right"))
+    isolated = [ref("candidate", f"inter-isolated-{index}") for index in range(3)]
+    for candidate, name in (
+        (pair_a[0], "inter-pair-a-left"), (pair_a[1], "inter-pair-a-right"),
+        (pair_b[0], "inter-pair-b-left"), (pair_b[1], "inter-pair-b-right"),
+        *((candidate, f"inter-isolated-{index}") for index, candidate in enumerate(isolated)),
+    ):
+        create_and_approve(service, cas, candidate, name, workspace=workspace)
+    service.append(command(
+        "CORRECT", pair_a[1], command_name="inter-support-a", related=pair_a[0],
+        workspace=workspace, content_digest=blob(cas, "inter-pair-a-right-v2"),
+    ))
+    service.append(command(
+        "DECLARE_CONTRADICTION", pair_b[0], command_name="inter-conflict-b", related=pair_b[1], workspace=workspace,
+    ))
+    expected = set(pair_a) | set(pair_b) | set(isolated)
+    assert len(expected) == 7
+
+    current_request = request(workspace, recorded_at=NOW)
+    cut: str | None = None
+    collected: list[str] = []
+    seen_conflicts: list[tuple[str, str]] = []
+    while True:
+        snapshot = _acquire(database, cas, current_request, page_size=page_size)
+        if cut is None:
+            cut = snapshot.transaction_cut
+        else:
+            assert snapshot.transaction_cut == cut
+        page_displayed = {item.candidate_ref for item in snapshot.candidates}
+        for item in snapshot.candidates:
+            assert set(item.support_refs) <= page_displayed, "support ref must never be off-page"
+        for conflict in snapshot.conflicts:
+            assert conflict.left_candidate_ref in page_displayed and conflict.right_candidate_ref in page_displayed
+            seen_conflicts.append((conflict.left_candidate_ref, conflict.right_candidate_ref))
+        collected.extend(item.candidate_ref for item in snapshot.candidates)
+        if not snapshot.has_more:
+            assert snapshot.continuation is None
+            break
+        assert snapshot.continuation is not None
+        current_request = request(
+            workspace, recorded_at=NOW, transaction_cut=cut, continuation=snapshot.continuation
+        )
+    assert len(collected) == len(set(collected)) == len(expected) == 7, "exact partition: no duplicate, no omission"
+    assert set(collected) == expected
+    assert seen_conflicts == [tuple(sorted(pair_b))], "the one declared contradiction must surface exactly once"
+    database.close()
+
+
+def test_g013_c1_c2_component_members_straddle_lexicographic_gap_between_isolated_candidates(
+    tmp_path: Path,
+) -> None:
+    """The three literal names below are chosen (offline, by brute force over the
+    same sha256 ref digest the fixtures use) so that the isolated candidate's ref
+    falls STRICTLY BETWEEN the two support-linked component members in plain
+    candidate_ref sort order. A pre-8a682ac lexicographic page walk at page_size=1
+    would have served base, then the isolated candidate, then corrected -- three
+    pages, splitting the component and leaving the correction's support ref
+    off-page. Component-based paging must instead serve the linked pair together
+    on one page (page_size=1 legitimately exceeded) and the isolated candidate
+    alone on its own page, in min-ref order."""
+    database, cas, service, workspace = store(tmp_path)
+    support_base = ref("candidate", "straddle-support-base")
+    support_corrected = ref("candidate", "straddle-support-corrected")
+    isolated = ref("candidate", "straddle-isolated-8")
+    assert sorted((support_base, isolated, support_corrected)) == [support_base, isolated, support_corrected], (
+        "fixture precondition: the isolated ref must sort strictly between the pair"
+    )
+    create_and_approve(service, cas, support_base, "straddle-support-base", workspace=workspace)
+    create_and_approve(service, cas, support_corrected, "straddle-support-corrected", workspace=workspace)
+    create_and_approve(service, cas, isolated, "straddle-isolated-8", workspace=workspace)
+    service.append(command(
+        "CORRECT", support_corrected, command_name="straddle-correct", related=support_base,
+        workspace=workspace, content_digest=blob(cas, "straddle-support-corrected-v2"),
+    ))
+    expected = {support_base, support_corrected, isolated}
+
+    current_request = request(workspace, recorded_at=NOW)
+    cut: str | None = None
+    pages: list[set[str]] = []
+    while True:
+        snapshot = _acquire(database, cas, current_request, page_size=1)
+        if cut is None:
+            cut = snapshot.transaction_cut
+        pages.append({item.candidate_ref for item in snapshot.candidates})
+        if not snapshot.has_more:
+            assert snapshot.continuation is None
+            break
+        current_request = request(
+            workspace, recorded_at=NOW, transaction_cut=cut, continuation=snapshot.continuation
+        )
+    assert len(pages) == 2, "the linked pair must be co-served, so 3 candidates take 2 pages, not 3"
+    assert pages[0] == {support_base, support_corrected}, "the component must be the first page, whole"
+    assert pages[1] == {isolated}
+    assert {ref for page in pages for ref in page} == expected
+    database.close()
+
+
+def test_g013_c1_c2_multiple_contradictions_each_surface_exactly_once_across_full_walk(tmp_path: Path) -> None:
+    database, cas, service, workspace = store(tmp_path)
+    pairs = [
+        (ref("candidate", f"multi-conflict-{index}-left"), ref("candidate", f"multi-conflict-{index}-right"))
+        for index in range(3)
+    ]
+    for index, (left, right) in enumerate(pairs):
+        create_and_approve(service, cas, left, f"multi-conflict-{index}-left", workspace=workspace)
+        create_and_approve(service, cas, right, f"multi-conflict-{index}-right", workspace=workspace)
+        service.append(command(
+            "DECLARE_CONTRADICTION", left, command_name=f"multi-declare-{index}", related=right, workspace=workspace,
+        ))
+    expected = {candidate for pair in pairs for candidate in pair}
+    assert len(expected) == 6
+    expected_conflicts = sorted(tuple(sorted(pair)) for pair in pairs)
+
+    current_request = request(workspace, recorded_at=NOW)
+    cut: str | None = None
+    collected: list[str] = []
+    seen_conflicts: list[tuple[str, str]] = []
+    while True:
+        snapshot = _acquire(database, cas, current_request, page_size=2)
+        if cut is None:
+            cut = snapshot.transaction_cut
+        else:
+            assert snapshot.transaction_cut == cut
+        page_displayed = {item.candidate_ref for item in snapshot.candidates}
+        for conflict in snapshot.conflicts:
+            assert conflict.left_candidate_ref in page_displayed and conflict.right_candidate_ref in page_displayed
+            seen_conflicts.append((conflict.left_candidate_ref, conflict.right_candidate_ref))
+        collected.extend(item.candidate_ref for item in snapshot.candidates)
+        if not snapshot.has_more:
+            assert snapshot.continuation is None
+            break
+        current_request = request(
+            workspace, recorded_at=NOW, transaction_cut=cut, continuation=snapshot.continuation
+        )
+    assert set(collected) == expected and len(collected) == len(set(collected)) == 6
+    assert sorted(seen_conflicts) == expected_conflicts, (
+        "every declared contradiction must surface exactly once across the whole walk"
+    )
+    database.close()
+
+
+# ---------------------------------------------------------------------------
+# V2 transport paging (commit 6f0dcca)
+# ---------------------------------------------------------------------------
+
+def test_g013_v2_recall_pages_to_exhaustion_and_citation_flags_off_page_candidates(tmp_path: Path) -> None:
+    """Drive SecondBrainApiV2 end to end: walk recall() to has_more=False purely
+    through the encoded continuation handle, and prove citation() tells apart
+    'served on an earlier/current page' (OK) from 'not yet resolvable because more
+    pages remain' (NOT_SERVED) for every candidate at every step."""
+    ledger_fixtures._ACTIVE_REVISIONS.clear()
+    ledger_fixtures._COMMAND_PROVENANCE.clear()
+    ledger_fixtures._CURRENT_CUT = "1"
+    database = LifecycleDatabase(tmp_path / "ledger.sqlite")
+    database.initialize()
+    cas = EncryptedContentStore(tmp_path / "cas")
+    workspace = ref("workspace", "v2-exhaust")
+    first_request = request(workspace, transaction_cut="1", recorded_at=NOW)
+    write_authority = _authority(database, cas, first_request, page_size=1)
+    write_authority.set_authority(workspace, LedgerAuthority(ref("capability", "stage3"), "1"), "2026-01-01T00:00:00Z")
+    writer = TrackingLedgerService(write_authority, write_authority)
+    refs = [ref("candidate", f"v2-exhaust-{index}") for index in range(3)]
+    for index, candidate in enumerate(refs):
+        create_and_approve(writer, cas, candidate, f"v2-exhaust-{index}", workspace=workspace)
+    expected = set(refs)
+
+    current_request = request(workspace, recorded_at=NOW)
+    collected: set[str] = set()
+    nonce = 0
+    pages = 0
+    while True:
+        _, api = _v2_stack(database, cas, current_request, page_size=1)
+        recall_result = api.recall(_use(workspace, "recall", f"n-recall-{nonce}"), current_request)
+        assert recall_result.code == "OK"
+        pages += 1
+        page_served: set[str] = set()
+        for candidate in refs:
+            if candidate in collected:
+                continue
+            citation = api.citation(_use(workspace, "citation", f"n-cite-{nonce}-{candidate}"), current_request, candidate)
+            if citation.code == "OK":
+                assert int(citation.receipt["citation_count"]) > 0
+                page_served.add(candidate)
+            elif recall_result.receipt["has_more"] == "true":
+                assert citation.code == "NOT_SERVED", "an off-page candidate must never report OK"
+                assert citation.receipt["citation_count"] == "0"
+        assert len(page_served) == int(recall_result.receipt["result_count"])
+        collected |= page_served
+        nonce += 1
+        if recall_result.receipt["has_more"] == "false":
+            assert recall_result.receipt["continuation"] == ""
+            break
+        assert recall_result.receipt["continuation"]
+        decoded = dict(pair.split("=", 1) for pair in recall_result.receipt["continuation"].split(";"))
+        continuation = RecallContinuationV2.from_mapping(decoded)
+        current_request = request(
+            workspace, recorded_at=NOW, transaction_cut=continuation.transaction_cut, continuation=continuation
+        )
+    assert pages == 3, "page_size=1 over 3 candidates must take exactly 3 pages"
+    assert collected == expected, "the full walk must be an exact partition of the servable candidate set"
+    database.close()
+
+
+def test_g013_v2_mangled_continuation_receipt_fails_closed(tmp_path: Path) -> None:
+    database, cas, service, workspace = store(tmp_path)
+    a, b = ref("candidate", "mangle-a"), ref("candidate", "mangle-b")
+    create_and_approve(service, cas, a, "mangle-a", workspace=workspace)
+    create_and_approve(service, cas, b, "mangle-b", workspace=workspace)
+    first_request = request(workspace, recorded_at=NOW)
+    _, api = _v2_stack(database, cas, first_request, page_size=1)
+    result = api.recall(_use(workspace, "recall", "n-mangle-1"), first_request)
+    assert result.receipt["has_more"] == "true"
+    encoded = result.receipt["continuation"]
+    # Flip one hex character deep inside the encoded receipt -- not a separator,
+    # not a structural character, purely a value byte -- so the string still
+    # parses field-by-field but the recomputed continuation_digest can no longer
+    # match.
+    index = encoded.index("cursor_state_digest=") + len("cursor_state_digest=")
+    flipped_char = "1" if encoded[index] != "1" else "2"
+    mangled = encoded[:index] + flipped_char + encoded[index + 1:]
+    decoded = dict(pair.split("=", 1) for pair in mangled.split(";"))
+    with pytest.raises(InvalidContractValue):
+        RecallContinuationV2.from_mapping(decoded)
+    database.close()
+
+
+def test_g013_v2_truncated_continuation_receipt_fails_closed(tmp_path: Path) -> None:
+    database, cas, service, workspace = store(tmp_path)
+    a, b = ref("candidate", "trunc-a"), ref("candidate", "trunc-b")
+    create_and_approve(service, cas, a, "trunc-a", workspace=workspace)
+    create_and_approve(service, cas, b, "trunc-b", workspace=workspace)
+    first_request = request(workspace, recorded_at=NOW)
+    _, api = _v2_stack(database, cas, first_request, page_size=1)
+    result = api.recall(_use(workspace, "recall", "n-trunc-1"), first_request)
+    encoded = result.receipt["continuation"]
+    assert encoded
+    truncated = encoded[: len(encoded) // 2]
+    with pytest.raises((ValueError, InvalidContractValue)):
+        decoded = dict(pair.split("=", 1) for pair in truncated.split(";"))
+        RecallContinuationV2.from_mapping(decoded)
+    database.close()
+
+
+def test_g013_v2_separator_injected_continuation_receipt_fails_closed(tmp_path: Path) -> None:
+    database, cas, service, workspace = store(tmp_path)
+    a, b = ref("candidate", "sep-a"), ref("candidate", "sep-b")
+    create_and_approve(service, cas, a, "sep-a", workspace=workspace)
+    create_and_approve(service, cas, b, "sep-b", workspace=workspace)
+    first_request = request(workspace, recorded_at=NOW)
+    _, api = _v2_stack(database, cas, first_request, page_size=1)
+    result = api.recall(_use(workspace, "recall", "n-sep-1"), first_request)
+    encoded = result.receipt["continuation"]
+    assert encoded
+
+    # Attack 1: smuggle an extra field by injecting a bonus ';'-delimited pair.
+    smuggled = encoded + ";forged_field=evil"
+    decoded_smuggled = dict(pair.split("=", 1) for pair in smuggled.split(";"))
+    with pytest.raises(UnknownContractField):
+        RecallContinuationV2.from_mapping(decoded_smuggled)
+
+    # Attack 2: inject a bonus '=' inside one field's own value to try to widen
+    # or corrupt its parsed boundary.
+    assert "cursor_handle_ref=" in encoded
+    injected = encoded.replace("cursor_handle_ref=", "cursor_handle_ref=X=", 1)
+    decoded_injected = dict(pair.split("=", 1) for pair in injected.split(";"))
+    with pytest.raises(InvalidContractValue):
+        RecallContinuationV2.from_mapping(decoded_injected)
+    database.close()
+
+
+def test_g013_v2_foreign_workspace_continuation_receipt_fails_closed(tmp_path: Path) -> None:
+    database, cas, service, workspace_a = store(tmp_path)
+    create_and_approve(service, cas, ref("candidate", "v2-cross-a1"), "v2-cross-a1", workspace=workspace_a)
+    create_and_approve(service, cas, ref("candidate", "v2-cross-a2"), "v2-cross-a2", workspace=workspace_a)
+    first_a = request(workspace_a, recorded_at=NOW)
+    _, api_a = _v2_stack(database, cas, first_a, page_size=1)
+    result_a = api_a.recall(_use(workspace_a, "recall", "n-cross-a"), first_a)
+    assert result_a.receipt["has_more"] == "true"
+    encoded = result_a.receipt["continuation"]
+    decoded = dict(pair.split("=", 1) for pair in encoded.split(";"))
+
+    workspace_b = ref("workspace", "v2-cross-b")
+    _authority(database, cas, request(workspace_b, transaction_cut="1")).set_authority(
+        workspace_b, LedgerAuthority(ref("capability", "stage3"), "1"), NOW
+    )
+    service.append(command(
+        "CREATE_CANDIDATE", ref("candidate", "v2-cross-b1"), command_name="v2-create-cross-b1",
+        workspace=workspace_b, content_digest=blob(cas, "v2-cross-b1"), transaction_cut="1",
+    ))
+    service.append(command(
+        "REVIEW_APPROVE", ref("candidate", "v2-cross-b1"), command_name="v2-approve-cross-b1",
+        workspace=workspace_b, transaction_cut="2",
+    ))
+    # The wire receipt is workspace-scoped structurally: replaying workspace A's
+    # decoded continuation while constructing a workspace-B request must be
+    # refused before any durable cursor lookup or trust verification runs.
+    with pytest.raises(InvalidContractValue, match="continuation is not request-bound"):
+        request(
+            workspace_b, recorded_at=NOW, transaction_cut="2",
+            continuation=RecallContinuationV2.from_mapping(decoded),
+        )
+    database.close()
+
+
+def test_g013_v2_no_receipt_value_leaks_forbidden_surface_name_across_full_walk(tmp_path: Path) -> None:
+    ledger_fixtures._ACTIVE_REVISIONS.clear()
+    ledger_fixtures._COMMAND_PROVENANCE.clear()
+    ledger_fixtures._CURRENT_CUT = "1"
+    database = LifecycleDatabase(tmp_path / "ledger.sqlite")
+    database.initialize()
+    cas = EncryptedContentStore(tmp_path / "cas")
+    workspace = ref("workspace", "v2-leak")
+    first_request = request(workspace, transaction_cut="1", recorded_at=NOW)
+    write_authority = _authority(database, cas, first_request, page_size=1)
+    write_authority.set_authority(workspace, LedgerAuthority(ref("capability", "stage3"), "1"), "2026-01-01T00:00:00Z")
+    writer = TrackingLedgerService(write_authority, write_authority)
+    refs = [ref("candidate", f"v2-leak-{index}") for index in range(3)]
+    for index, candidate in enumerate(refs):
+        create_and_approve(writer, cas, candidate, f"v2-leak-{index}", workspace=workspace)
+
+    current_request = request(workspace, recorded_at=NOW)
+    nonce = 0
+    while True:
+        _, api = _v2_stack(database, cas, current_request, page_size=1)
+        recall_result = api.recall(_use(workspace, "recall", f"n-leak-recall-{nonce}"), current_request)
+        for candidate in refs:
+            citation = api.citation(
+                _use(workspace, "citation", f"n-leak-cite-{nonce}-{candidate}"), current_request, candidate
+            )
+            for value in citation.receipt.values():
+                for forbidden in _FORBIDDEN_SURFACE:
+                    assert forbidden not in value
+        for value in recall_result.receipt.values():
+            for forbidden in _FORBIDDEN_SURFACE:
+                assert forbidden not in value
+        nonce += 1
+        if recall_result.receipt["has_more"] == "false":
+            break
+        decoded = dict(pair.split("=", 1) for pair in recall_result.receipt["continuation"].split(";"))
+        continuation = RecallContinuationV2.from_mapping(decoded)
+        current_request = request(
+            workspace, recorded_at=NOW, transaction_cut=continuation.transaction_cut, continuation=continuation
+        )
+    database.close()
+
+
+# ---------------------------------------------------------------------------
+# C3 -- cursor expiry and retention (commit 2bbfcc3)
+# ---------------------------------------------------------------------------
+
+def test_g013_c3_expired_cursor_row_refuses_resumption_after_ttl_elapses(tmp_path: Path) -> None:
+    database, cas, service, workspace = store(tmp_path)
+    a, b, c = (ref("candidate", value) for value in ("ttl-a", "ttl-b", "ttl-c"))
+    for candidate, name in ((a, "ttl-a"), (b, "ttl-b"), (c, "ttl-c")):
+        create_and_approve(service, cas, candidate, name, workspace=workspace)
+    first_request = request(workspace, recorded_at=NOW)
+    first = _acquire(database, cas, first_request, page_size=1)
+    assert first.has_more and first.continuation is not None
+    continuation = first.continuation
+
+    assert database.con is not None
+    database.con.execute("DROP TRIGGER ledger_recall_cursor_no_update")
+    database.con.execute(
+        "UPDATE ledger_recall_cursor SET expires_at=? WHERE cursor_handle_ref=?",
+        ("2020-01-01T00:00:00Z", continuation.cursor_handle_ref),
+    )
+    replay_request = request(
+        workspace, recorded_at=NOW, transaction_cut=first.transaction_cut, continuation=continuation
+    )
+    with pytest.raises(LedgerAuthorityError, match="continuation cursor has expired"):
+        _acquire(database, cas, replay_request, page_size=1)
+    database.close()
+
+
+def test_g013_c3_live_cursor_row_is_undeletable_and_unupdatable_via_direct_sql(tmp_path: Path) -> None:
+    database, cas, service, workspace = store(tmp_path)
+    a, b = ref("candidate", "immutable-a"), ref("candidate", "immutable-b")
+    create_and_approve(service, cas, a, "immutable-a", workspace=workspace)
+    create_and_approve(service, cas, b, "immutable-b", workspace=workspace)
+    first = _acquire(database, cas, request(workspace, recorded_at=NOW), page_size=1)
+    assert first.has_more and first.continuation is not None
+    handle = first.continuation.cursor_handle_ref
+    assert database.con is not None
+    con = database.con
+    with pytest.raises(Exception, match="cannot be deleted"):
+        con.execute("DELETE FROM ledger_recall_cursor WHERE cursor_handle_ref=?", (handle,))
+    with pytest.raises(Exception, match="append-only"):
+        con.execute(
+            "UPDATE ledger_recall_cursor SET after_candidate_ref=? WHERE cursor_handle_ref=?", (b, handle)
+        )
+    still_there = con.execute(
+        "SELECT COUNT(*) FROM ledger_recall_cursor WHERE cursor_handle_ref=?", (handle,)
+    ).fetchone()[0]
+    assert still_there == 1
+    database.close()
+
+
+def test_g013_c3_retention_bound_table_cannot_be_abused_to_delete_a_live_cursor(tmp_path: Path) -> None:
+    """The ledger_recall_cursor_no_delete trigger only ever permits deleting a row
+    whose own expires_at is at or before the retention_bound_at stamped in
+    ledger_recall_cursor_retention_bound, and LifecycleDatabase.purge_expired_recall_cursors'
+    docstring claims that bound "never persists as ambient authority outside the
+    retention transaction itself" -- i.e. a live row can supposedly never be
+    removed "by this or any other statement". Attack that claim directly:
+    without ever touching the no-delete/no-update triggers (no DROP TRIGGER
+    anywhere in this test -- every OTHER durable-invariant bypass in this whole
+    suite needs one first), stamp a far-future retention bound with a bare
+    INSERT into the (unguarded) retention-bound table, then issue a plain DELETE
+    against a cursor row that is still well inside its live 300s TTL."""
+    database, cas, service, workspace = store(tmp_path)
+    a, b = ref("candidate", "abuse-a"), ref("candidate", "abuse-b")
+    create_and_approve(service, cas, a, "abuse-a", workspace=workspace)
+    create_and_approve(service, cas, b, "abuse-b", workspace=workspace)
+    first = _acquire(database, cas, request(workspace, recorded_at=NOW), page_size=1)
+    assert first.has_more and first.continuation is not None
+    live_handle = first.continuation.cursor_handle_ref
+    assert database.con is not None
+    con = database.con
+
+    # No trigger is dropped or altered here -- this is a bare data-plane INSERT
+    # into a table the schema declares with no append-only/no-delete guard of
+    # its own, unlike every other durable ledger table in this schema.
+    con.execute(
+        "INSERT INTO ledger_recall_cursor_retention_bound VALUES('singleton', ?)",
+        ("2999-01-01T00:00:00Z",),
+    )
+    with pytest.raises(Exception, match="cannot be deleted"):
+        con.execute("DELETE FROM ledger_recall_cursor WHERE cursor_handle_ref=?", (live_handle,))
+    still_there = con.execute(
+        "SELECT COUNT(*) FROM ledger_recall_cursor WHERE cursor_handle_ref=?", (live_handle,)
+    ).fetchone()[0]
+    assert still_there == 1, (
+        "BLOCKER: a bare INSERT into ledger_recall_cursor_retention_bound (no DROP "
+        "TRIGGER, no schema tampering -- just ordinary SQL any code path with a "
+        "write connection can issue) lets a plain DELETE remove a cursor row still "
+        "well inside its 300s TTL. The retention-bound table has no append-only, "
+        "single-writer, or same-transaction-only guard of its own, so the 'live "
+        "row can never be removed by this or any other statement' guarantee only "
+        "holds as long as nothing else in the process ever writes that one table -- "
+        "reproduce with: INSERT INTO ledger_recall_cursor_retention_bound "
+        "VALUES('singleton','2999-01-01T00:00:00Z'); DELETE FROM ledger_recall_cursor "
+        "WHERE cursor_handle_ref=<live handle>;"
+    )
+    database.close()
+
+
+# ---------------------------------------------------------------------------
+# C4 -- clock skew (commit 2bbfcc3)
+# ---------------------------------------------------------------------------
+
+def test_g013_c4_recorded_at_forward_skew_bound_refused_on_first_page_with_exact_boundary_probe(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "within").mkdir()
+    database, cas, service, workspace = store(tmp_path / "within")
+    candidate = ref("candidate", "skew-boundary")
+    create_and_approve(service, cas, candidate, "skew-boundary", workspace=workspace)
+    at_bound = request(workspace, recorded_at=_shift(NOW, 30))
+    snapshot = _acquire(database, cas, at_bound, page_size=50)
+    assert not snapshot.has_more
+    assert [item.candidate_ref for item in snapshot.candidates] == [candidate]
+    database.close()
+
+    (tmp_path / "beyond").mkdir()
+    database, cas, service, workspace = store(tmp_path / "beyond")
+    create_and_approve(service, cas, candidate, "skew-boundary", workspace=workspace)
+    beyond_bound = request(workspace, recorded_at=_shift(NOW, 31))
+    with pytest.raises(LedgerAuthorityError, match="recall recorded_at exceeds the trusted clock skew bound"):
+        _acquire(database, cas, beyond_bound, page_size=50)
+    database.close()
+
+    (tmp_path / "gross").mkdir()
+    database, cas, service, workspace = store(tmp_path / "gross")
+    create_and_approve(service, cas, candidate, "skew-boundary", workspace=workspace)
+    # Attack the far end too: a wildly future recorded_at (a full month ahead)
+    # must be refused exactly the same way, not silently accepted just because
+    # it is far past the near boundary that already tripped once.
+    far_future = request(workspace, recorded_at=_shift(NOW, 3600 * 24 * 30))
+    with pytest.raises(LedgerAuthorityError, match="recall recorded_at exceeds the trusted clock skew bound"):
+        _acquire(database, cas, far_future, page_size=50)
+    database.close()
+
+
+def test_g013_c4_as_of_far_in_the_past_still_succeeds(tmp_path: Path) -> None:
+    database, cas, service, workspace = store(tmp_path)
+    candidate = ref("candidate", "skew-past")
+    create_and_approve(service, cas, candidate, "skew-past", workspace=workspace)
+    far_past = request(workspace, recorded_at=_shift(NOW, -3600 * 24 * 365 * 5))
+    snapshot = _acquire(database, cas, far_past, page_size=50)
+    assert snapshot.candidates == ()
+    database.close()
+
+
+def test_g013_c4_clock_skew_is_enforced_on_a_continued_page_not_only_the_first(tmp_path: Path) -> None:
+    """The forward skew guard must not be a one-shot check the first page's caller
+    alone has to satisfy. A continuation pins its own recorded_at (the request-
+    binding check refuses any wrapping request that disagrees), so the recorded_at
+    itself can never drift between pages of one chain -- but the TRUSTED CLOCK used
+    to evaluate the bound can legitimately differ per authority instance (e.g. a
+    replica or a restarted process resuming the chain with a clock that lags the
+    one that issued page 1). Simulate exactly that: mint a second trust authority
+    over the same durable registry with a clock 40s BEHIND NOW and prove the
+    resumed page is refused even though the identical recorded_at was accepted
+    when page 1 was issued moments earlier under the un-drifted clock."""
+    database, cas, service, workspace = store(tmp_path)
+    a, b = ref("candidate", "skew-page-a"), ref("candidate", "skew-page-b")
+    create_and_approve(service, cas, a, "skew-page-a", workspace=workspace)
+    create_and_approve(service, cas, b, "skew-page-b", workspace=workspace)
+    first_request = request(workspace, recorded_at=NOW)
+    first_authority = _authority(database, cas, first_request, page_size=1)
+    first = SecondBrainLedgerService(first_authority, first_authority).acquire(first_request).snapshot
+    assert first.has_more and first.continuation is not None
+
+    resumed_request = request(
+        workspace, recorded_at=NOW, transaction_cut=first.transaction_cut, continuation=first.continuation
+    )
+    lagging_trust = mint_recall_trust_authority_v2(
+        security_authority(), DeterministicEd25519Verifier(), lambda: _shift(NOW, -40),
+        trust_for_request(resumed_request)._RecallTrustAuthorityV2__provenance,
+    )
+    lagging_authority = LifecycleLedgerAuthority(
+        database, cas, lagging_trust, signed_snapshot_signer,
+        signer_ref=SIGNER_REF, key_id=KEY_ID, page_size=1,
+    )
+    with pytest.raises(LedgerAuthorityError, match="recall recorded_at exceeds the trusted clock skew bound"):
+        SecondBrainLedgerService(lagging_authority, lagging_authority).acquire(resumed_request)
     database.close()

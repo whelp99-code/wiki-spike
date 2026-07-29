@@ -1,42 +1,71 @@
 {
   "goal": "G013",
-  "title": "Stage-3 bounded batch recall + satisfiable V2 continuation chain -- completion QA / red-team",
-  "frozen_commit": "091951cfc009e1eef81807c38cd2eaf01d6ce964",
-  "frozen_commit_subject": "serve durable citations and bounded recall pages",
+  "title": "Stage-3 bounded batch recall + satisfiable V2 continuation chain -- completion QA / red-team (re-run: pass 2, blind-spot closure)",
+  "frozen_commit_range": "091951cfc009e1eef81807c38cd2eaf01d6ce964..2bbfcc34ecd8eb14e125b921be0ff3e4af64765b",
+  "frozen_head": "2bbfcc34ecd8eb14e125b921be0ff3e4af64765b",
+  "frozen_head_subject": "bound recall cursors, indexes and clock skew",
+  "commits_in_range": [
+    {"sha": "091951c", "subject": "serve durable citations and bounded recall pages", "note": "base commit the pass-1 suite (15 cases) was written against"},
+    {"sha": "7848590", "subject": "add stage3 recall red-team suite", "note": "pass-1 suite itself"},
+    {"sha": "8a682ac", "subject": "page recall by whole support and conflict components", "note": "component paging fix for the P0 this re-run was triggered by; pass-1 suite predates it and missed it (every pass-1 candidate set was edge-free)"},
+    {"sha": "6f0dcca", "subject": "let V2 callers page recall and tell citations apart", "note": "V2 transport paging + citation NOT_SERVED semantics; not covered by pass-1 at all"},
+    {"sha": "2bbfcc3", "subject": "bound recall cursors, indexes and clock skew", "note": "cursor TTL/retention + recorded_at clock-skew bound; not covered by pass-1 at all"}
+  ],
   "worktree": "/private/tmp/wiki-spike-second-brain-stage3",
   "branch": "second-brain-stage3",
   "new_test_module": "tests/second_brain/test_stage3_g013_red_team.py",
+  "why_this_rerun": "The pass-1 suite (15 cases, all passing) missed a live CRITICAL P0: bounded pages were not closed over the SUPPORT graph, so a CORRECT-linked pair at page_size=1 made every recall raise InvalidContractValue. Every pass-1 candidate set was edge-free, so the suite could not have caught it. This pass adds 20 new adversarial/boundary cases (collected count: 16 -> 36) targeting exactly the behaviour introduced in 8a682ac, 6f0dcca and 2bbfcc3, and explicitly re-attacks the retention/cursor-immortality invariant the P0 write-up flagged as still-unverified.",
   "commands_run": [
     {
       "command": "/usr/local/bin/python3.12 -m pytest -q tests/second_brain/test_stage3_g013_red_team.py",
-      "observed_result": "15 passed in 5.91s",
-      "counts": {"passed": 15, "failed": 0}
+      "observed_result": "1 failed, 35 passed in 7.63s",
+      "counts": {"collected": 36, "passed": 35, "failed": 1},
+      "note": "36 collected = 16 original (pass-1) + 20 new (16 new test functions, one of which -- the interleaved-page-size case -- is parametrized over 5 page sizes, so 16 + 4 extra parametrize expansions = 20). The 1 failure is test_g013_c3_retention_bound_table_cannot_be_abused_to_delete_a_live_cursor, kept failing on purpose -- see blockers."
     },
     {
       "command": "/usr/local/bin/python3.12 -m pytest -q",
-      "observed_result": "1479 passed in 39.41s",
-      "counts": {"passed": 1479, "failed": 0},
-      "note": "baseline reported by the assignment was 1464 passed on the frozen commit before this new module was added; 1479 = 1464 + 15 new red-team tests, all passing. No pre-existing test was modified or weakened."
+      "observed_result": "1 failed, 1509 passed in 41.35s",
+      "counts": {"collected": 1510, "passed": 1509, "failed": 1},
+      "note": "Assignment-stated baseline on this frozen change set was 1490 passed. 1510 = 1490 + 20 new red-team cases. No pre-existing test was modified, weakened, or removed; the single failure is the same new retention-bound-abuse case, kept failing deliberately per instructions rather than weakened to pass."
+    },
+    {
+      "command": "/usr/local/bin/python3.12 scripts/check_architecture_boundaries.py",
+      "observed_result": "PASS: architecture boundaries",
+      "counts": {"exit_code": 0}
+    },
+    {
+      "command": "/usr/local/bin/python3.12 scripts/scan_secrets.py",
+      "observed_result": "PASS: no tracked secrets detected",
+      "counts": {"exit_code": 0}
     }
   ],
   "contract_obligation_matrix": {
     "C1": {
-      "description": "V2 recall is bounded cited batch snapshot: no snapshot exceeds page_size; has_more true iff a further page exists",
+      "description": "V2 recall is bounded cited batch snapshot: no snapshot exceeds page_size EXCEPT a single connected component larger than page_size, which is still served whole on its own page; has_more true iff a further page exists",
       "covered_by_case_ids": [
         "c1_c2_full_page_walk",
         "c1_page_size_construction_boundaries",
-        "c1_page_size_exact_terminal"
+        "c1_page_size_exact_terminal",
+        "c1_c2_dense_component_swallows_most_candidates",
+        "c1_c2_interleaved_links_and_isolated_several_page_sizes",
+        "c1_c2_component_straddles_lexicographic_gap",
+        "v2_pages_to_exhaustion_and_citation_flags_off_page"
       ]
     },
     "C2": {
-      "description": "successful continuations retrieve the next page of the SAME transaction cut, no duplicate/skip, final page terminal",
+      "description": "successful continuations retrieve the next page of the SAME transaction cut, no duplicate/skip, final page terminal; pages partition whole SUPPORT/CONTRADICTION components, never split one",
       "covered_by_case_ids": [
         "c1_c2_full_page_walk",
-        "c2_c3_deletion_between_pages"
+        "c2_c3_deletion_between_pages",
+        "c1_c2_dense_component_swallows_most_candidates",
+        "c1_c2_interleaved_links_and_isolated_several_page_sizes",
+        "c1_c2_component_straddles_lexicographic_gap",
+        "c1_c2_multiple_contradictions_surface_exactly_once",
+        "v2_pages_to_exhaustion_and_citation_flags_off_page"
       ]
     },
     "C3": {
-      "description": "fail-closed continuations: forged, expired, replayed, cross-workspace, cut-shifted, or tampered cursors never serve results",
+      "description": "fail-closed continuations: forged, expired, replayed, cross-workspace, cut-shifted, tampered, mangled/truncated/separator-injected wire receipts, or retention-abused cursors never serve results; a live cursor row can never be deleted or updated",
       "covered_by_case_ids": [
         "c3_cross_workspace_cursor_theft",
         "c3_cross_scope_query_digest_swap",
@@ -44,14 +73,31 @@
         "c3_tampered_cursor_state_digest",
         "c3_tampered_transaction_cut",
         "c3_tampered_untethered_field_signature",
-        "c2_c3_deletion_between_pages"
+        "c2_c3_deletion_between_pages",
+        "c3_expired_cursor_row_refuses_resumption",
+        "c3_live_cursor_row_undeletable_and_unupdatable",
+        "c3_retention_bound_table_abuse",
+        "v2_mangled_continuation_receipt",
+        "v2_truncated_continuation_receipt",
+        "v2_separator_injected_continuation_receipt",
+        "v2_foreign_workspace_continuation_receipt"
       ]
     },
     "C4": {
-      "description": "durable citations: every served candidate carries exactly one committed citation bound to its revision; tampered commitment never served",
+      "description": "durable citations: every served candidate carries exactly one committed citation bound to its revision; tampered commitment never served; V2 citation() distinguishes off-page (NOT_SERVED) from genuinely uncited (OK/0) and never leaks forbidden surface names",
       "covered_by_case_ids": [
         "c4_every_candidate_has_bound_citation",
-        "c4_tampered_citation_commitment"
+        "c4_tampered_citation_commitment",
+        "v2_pages_to_exhaustion_and_citation_flags_off_page",
+        "v2_no_receipt_value_leaks_forbidden_surface"
+      ]
+    },
+    "C5_clock_skew": {
+      "description": "(F8, introduced 2bbfcc3) recall recorded_at is bounded to a small forward tolerance past the trusted clock, checked immediately (not deferred to a later page) and re-checked on every page against the current trusted clock; only the forward direction is bounded, bitemporal as-of reads may look arbitrarily far into the past",
+      "covered_by_case_ids": [
+        "c4_clock_skew_forward_bound_with_exact_boundary_probe",
+        "c4_clock_skew_as_of_far_past_still_succeeds",
+        "c4_clock_skew_enforced_on_continued_page"
       ]
     }
   },
@@ -59,107 +105,302 @@
     {
       "id": "c1_c2_full_page_walk",
       "test_function": "test_g013_c1_c2_full_page_walk_is_exact_partition_of_candidate_set",
+      "pass": 1,
       "scenario": "7 approved candidates, page_size=2. Walk the entire continuation chain to termination.",
       "expected": "Concatenation of all pages == full sorted candidate set with each candidate exactly once; every page <= page_size; every non-terminal page has has_more=true and a non-None continuation bound to the SAME transaction_cut; the last page is terminal (has_more=false, continuation=None).",
       "observed": "4 pages served (2,2,2,1). All pages bound to the same transaction_cut. Concatenated candidate_refs == sorted(expected 7 refs), no duplicates, no gaps. Terminal page had has_more=false and continuation=None.",
       "verdict": "passed"
     },
     {
+      "id": "c1_c2_component_paged_walk_mixed",
+      "test_function": "test_g013_c1_c2_component_paged_walk_partitions_linked_and_isolated_candidates",
+      "pass": 1,
+      "note": "Already present from pass 1; re-verified still passing under 8a682ac/6f0dcca/2bbfcc3.",
+      "scenario": "A SUPPORT-linked pair, a CONTRADICTION-linked pair, and two isolated candidates, page_size=2.",
+      "expected": "No support ref or conflict endpoint ever off-page; exact partition; the one declared contradiction surfaces in exactly one page.",
+      "observed": "Confirmed exactly as expected.",
+      "verdict": "passed"
+    },
+    {
       "id": "c3_cross_workspace_cursor_theft",
       "test_function": "test_g013_c3_stolen_cursor_handle_across_workspace_fails_closed",
+      "pass": 1,
       "scenario": "A page-1 continuation is legitimately issued for workspace A (page_size=1). A second workspace B is registered in the same durable database. A structurally valid, properly re-signed continuation is minted claiming workspace B's own identity/provenance fields but reusing workspace A's real cursor_handle_ref and cursor_state_digest verbatim (simulating a stolen cursor token).",
       "expected": "Admission must fail closed; the durable cursor row for that handle belongs to workspace A, so it must never resolve for a workspace B request.",
-      "observed": "LifecycleLedgerAuthority.acquire_recall_snapshot raised LedgerAuthorityError('continuation cursor is not durably resolvable') because the durable ledger_recall_cursor row's workspace_ref (A) does not match the presenting request's workspace_ref (B). No candidate data was ever computed or returned.",
+      "observed": "LifecycleLedgerAuthority.acquire_recall_snapshot raised LedgerAuthorityError('continuation cursor is not durably resolvable').",
       "verdict": "passed"
     },
     {
       "id": "c3_cross_scope_query_digest_swap",
       "test_function": "test_g013_c3_stolen_cursor_handle_with_different_scope_and_query_digest_fails_closed",
+      "pass": 1,
       "scenario": "Same workspace, but attacker attempts to declare a different query_digest/scope_digest in a new request while reusing a real cursor_handle_ref/cursor_state_digest stolen from a legitimately issued page-1 continuation.",
       "expected": "The attack must fail closed.",
-      "observed": "The attack cannot even be structurally assembled: `RecallSnapshotRequestV2.__post_init__` enforces continuation.query_digest/scope_digest == request.query_digest/scope_digest bit-for-bit ('continuation is not request-bound'). Wrapping the swapped-scope continuation in a request that also declares the different query/scope digest raises InvalidContractValue('continuation is not request-bound') at wire-contract construction time, before any durable cursor lookup or trust verification runs. This is a STRONGER guarantee than a runtime rejection: query_digest/scope_digest cross-declaration is structurally impossible, not merely refused.",
-      "note_on_underlying_structure": "Separately confirmed by code inspection: `_resume_after` (the durable cursor check) only compares (workspace_ref, transaction_cut, cursor_state_digest) -- it does not re-derive or check query_digest/scope_digest against the stored cursor row (those digests are baked into the cursor_handle_ref hash only at issue time, not stored/re-verified at resume time). If the request/continuation binding invariant above did not exist, this would be a real gap. It is closed today by that invariant, not by the cursor-resolution SQL itself. This is noted for the ADR/reviewer record even though the adversarial test observed a pass.",
+      "observed": "RecallSnapshotRequestV2.__post_init__ raises InvalidContractValue('continuation is not request-bound') at wire-contract construction time, before any durable cursor lookup or trust verification runs.",
       "verdict": "passed"
     },
     {
       "id": "c3_expired_continuation",
       "test_function": "test_g013_c3_expired_continuation_is_refused",
-      "scenario": "A real, durably-issued page-1 continuation is copied and re-signed with issued_at/expires_at both inside the 300s TTL cap but with expires_at == the trusted clock's current NOW (i.e. at-or-before admission time).",
+      "pass": 1,
+      "scenario": "A real, durably-issued page-1 continuation is re-signed with expires_at == NOW.",
       "expected": "Admission must refuse to serve a snapshot for an expired continuation.",
-      "observed": "InvalidContractValue('expired continuation cannot acquire a snapshot') raised inside ValidatedRecallSnapshotAcquisitionV2 construction; the caller never receives a snapshot.",
+      "observed": "InvalidContractValue('expired continuation cannot acquire a snapshot').",
       "verdict": "passed"
     },
     {
       "id": "c3_tampered_cursor_state_digest",
       "test_function": "test_g013_c3_tampered_cursor_state_digest_without_resign_fails_durable_binding",
-      "scenario": "A real continuation's cursor_state_digest is mutated and the continuation_digest re-derived, but the Ed25519 signature is left as the stale original (i.e. it no longer matches the mutated signing body).",
+      "pass": 1,
+      "scenario": "cursor_state_digest mutated, continuation_digest re-derived, signature left stale.",
       "expected": "Admission must refuse the forged continuation.",
-      "observed": "LedgerAuthorityError('continuation cursor is not durably resolvable') -- the durable ledger_recall_cursor row lookup by cursor_handle_ref found the ORIGINAL cursor_state_digest, which no longer matches the tampered continuation's cursor_state_digest, so resolution fails before signature verification is even reached.",
+      "observed": "LedgerAuthorityError('continuation cursor is not durably resolvable').",
       "verdict": "passed"
     },
     {
       "id": "c3_tampered_transaction_cut",
       "test_function": "test_g013_c3_tampered_transaction_cut_without_resign_fails_closed",
-      "scenario": "A real continuation's transaction_cut is bumped by 1 (cut-shift) without re-signing.",
+      "pass": 1,
+      "scenario": "transaction_cut bumped by 1 without re-signing.",
       "expected": "Admission must refuse the cut-shifted continuation.",
-      "observed": "LedgerAuthorityError raised (durable cursor resolution fails: the stored cursor row's transaction_sequence no longer matches the shifted transaction_cut presented in the continuation/request pair).",
+      "observed": "LedgerAuthorityError raised.",
       "verdict": "passed"
     },
     {
       "id": "c3_tampered_untethered_field_signature",
       "test_function": "test_g013_c3_tampered_untethered_field_without_resign_fails_signature_verification",
-      "scenario": "A real continuation's authority_checkpoint_digest -- a field that is NOT compared by the durable cursor lookup (`_resume_after` only checks workspace_ref/transaction_cut/cursor_state_digest) and NOT compared by the request-binding check -- is mutated, continuation_digest re-derived, signature left stale.",
-      "expected": "With every other structural guard bypassed by construction, cryptographic signature verification must be the backstop that refuses the forgery.",
-      "observed": "InvalidContractValue('continuation signature verification failed') raised by `_verify_continuation`'s Ed25519 verification over the mutated signing_body against the stale signature. Confirms the signature check is a genuine, load-bearing final guard and not dead code shadowed by earlier checks.",
+      "pass": 1,
+      "scenario": "authority_checkpoint_digest (checked by neither the durable cursor lookup nor the request-binding check) mutated, continuation_digest re-derived, signature stale.",
+      "expected": "Signature verification must be the backstop.",
+      "observed": "InvalidContractValue('continuation signature verification failed').",
       "verdict": "passed"
     },
     {
       "id": "c1_page_size_construction_boundaries",
       "test_function": "test_g013_c1_page_size_construction_boundaries_are_rejected[bad_page_size]",
+      "pass": 1,
       "scenario": "LifecycleLedgerAuthority constructed with page_size in {0, 501, True, \"2\"}.",
       "expected": "All four values rejected at construction.",
-      "observed": "All four raised LedgerAuthorityError('recall page size must be a bounded positive batch'): 0 and 501 fail the 1..500 bound; True fails the explicit isinstance(page_size, bool) guard (bool is otherwise a subclass of int and would silently pass isinstance(int) checks); \"2\" fails isinstance(int).",
+      "observed": "All four raised LedgerAuthorityError('recall page size must be a bounded positive batch').",
       "verdict": "passed"
     },
     {
       "id": "c1_page_size_exact_terminal",
       "test_function": "test_g013_c1_page_size_exactly_equal_to_candidate_count_is_terminal",
-      "scenario": "3 approved candidates, page_size == 3 (exactly the candidate count).",
+      "pass": 1,
+      "scenario": "3 approved candidates, page_size == 3.",
       "expected": "Single page serves all 3, has_more=false, continuation=None.",
-      "observed": "Exactly as expected: all 3 candidate_refs served in one page, has_more=false, continuation=None.",
+      "observed": "Exactly as expected.",
       "verdict": "passed"
     },
     {
       "id": "c4_every_candidate_has_bound_citation",
       "test_function": "test_g013_c4_every_served_candidate_carries_exactly_one_bound_citation",
+      "pass": 1,
       "scenario": "3 approved candidates; inspect the served snapshot's candidates and citations.",
-      "expected": "len(candidates) == len(citations); each candidate's revision_ref is matched by exactly one citation whose evidence.revision_ref equals it and whose evidence.immutable_source_ref equals 'source:' + candidate.content_digest.",
-      "observed": "Exactly 3 candidates and 3 citations; 1:1 mapping verified by candidate_ref key equality and per-item revision_ref/immutable_source_ref equality.",
+      "expected": "len(candidates) == len(citations); 1:1 revision_ref/immutable_source_ref match.",
+      "observed": "Exactly 3 candidates and 3 citations; 1:1 mapping verified.",
       "verdict": "passed"
     },
     {
       "id": "c4_tampered_citation_commitment",
       "test_function": "test_g013_c4_tampered_citation_commitment_is_never_served",
-      "scenario": "After a legitimate citation commitment is durably committed and successfully served once, the append-only guard trigger on ledger_citation_commitment is dropped out-of-band and locator_ref is forged directly in SQLite.",
-      "expected": "Recall must refuse to serve the candidate whose citation commitment no longer revalidates against its recomputed evidence.",
-      "observed": "LedgerAuthorityError('durable citation commitment failed revalidation') raised on the next acquire; also confirmed the append-only guard itself rejects UPDATE/DELETE while the trigger is intact ('append-only').",
+      "pass": 1,
+      "scenario": "Append-only guard trigger dropped out-of-band, locator_ref forged directly in SQLite.",
+      "expected": "Recall must refuse to serve the candidate whose citation commitment no longer revalidates.",
+      "observed": "LedgerAuthorityError('durable citation commitment failed revalidation').",
       "verdict": "passed"
     },
     {
       "id": "c2_c3_deletion_between_pages",
       "test_function": "test_g013_c2_c3_deletion_between_pages_is_observed_and_reported",
-      "scenario": "4 approved candidates, page_size=2. Page 1 is fetched (candidates 0,1). Before fetching page 2, candidate 2 (the first candidate that would appear on page 2) is REVOKEd. Page 2 is then fetched using the real page-1 continuation.",
-      "expected_per_assignment": "The system must either fail closed, or never disclose the deleted candidate. Observe and report which.",
-      "observed": "The system SERVES page 2, and it INCLUDES the revoked candidate with state='APPROVED'. This is not silent data leakage of a deleted record through the live/current view: the served page is pinned to the SAME transaction_cut as page 1 (verified: page1.transaction_cut == page2.transaction_cut, both '9'), i.e. Stage-3 pagination is a point-in-time (bitemporal cut-pinned) read. The REVOKE command was committed at a LATER cut ('10'), so the cut-pinned SQL predicate (`v.start_cut <= <pinned cut>` / closure `end_cut` bound the same way) correctly excludes the later revocation from a page still walking the earlier cut -- this is the same invariant already asserted by the existing regression test `test_wal_snapshot_continuation_is_bound_to_one_cut_despite_later_writer` (which instead exercises a FABRICATED cursor and is refused for a different reason: the cursor was never durably issued). Serving an in-flight page at its originally pinned cut, even after a later mutation, is the documented/intended C2 'same transaction cut' semantic, not an uncontrolled disclosure of a deleted record through the live workspace view -- a fresh page-1 request issued after the REVOKE (not exercised by continuation replay) would correctly exclude the revoked candidate.",
+      "pass": 1,
+      "scenario": "4 approved candidates, page_size=2. Page 1 fetched. Candidate 2 REVOKEd before page 2 fetched via the real page-1 continuation.",
+      "expected_per_assignment": "The system must either fail closed, or never disclose the deleted candidate at the LIVE cut.",
+      "observed": "Page 2 serves the revoked candidate but pinned to the SAME pre-revoke transaction_cut as page 1 (documented bitemporal cut-pinning invariant, not live-view leakage).",
       "verdict": "passed",
       "classification": "observed_behavior_matches_documented_point_in_time_pinning_invariant_not_a_defect"
+    },
+    {
+      "id": "c1_c2_dense_component_swallows_most_candidates",
+      "test_function": "test_g013_c1_c2_dense_component_swallows_most_candidates_at_tight_page_size",
+      "pass": 2,
+      "scenario": "A 7-candidate SUPPORT chain (one component) plus 2 isolated candidates, page_size=2 (component is >3x page_size).",
+      "expected": "The 7-member component is served whole on exactly one page, all other pages respect page_size, and the whole walk is an exact partition of all 9 candidates.",
+      "observed": "Exactly one page contained any chain member, and it contained all 7 (len==7 > page_size==2, confirmed as the legitimate oversized-component exception); every other page had len<=2; concatenated refs == all 9 expected refs with no duplicates/omissions.",
+      "verdict": "passed"
+    },
+    {
+      "id": "c1_c2_interleaved_links_and_isolated_several_page_sizes",
+      "test_function": "test_g013_c1_c2_interleaved_links_and_isolated_candidates_across_several_page_sizes[1,2,3,4,7]",
+      "pass": 2,
+      "scenario": "A SUPPORT-linked pair, a CONTRADICTION-linked pair, and 3 isolated candidates (7 total), walked at page_size in {1,2,3,4,7}.",
+      "expected": "At every page_size: no support ref off-page, every conflict endpoint on-page, exact partition, and the single declared contradiction surfaces exactly once across the whole walk.",
+      "observed": "All 5 parametrized runs passed with the exact-partition and single-surfacing invariants intact.",
+      "verdict": "passed"
+    },
+    {
+      "id": "c1_c2_component_straddles_lexicographic_gap",
+      "test_function": "test_g013_c1_c2_component_members_straddle_lexicographic_gap_between_isolated_candidates",
+      "pass": 2,
+      "scenario": "Literal candidate names chosen offline (brute-forced over the sha256 ref digest) so an isolated candidate's ref falls STRICTLY BETWEEN a SUPPORT-linked pair's refs in plain candidate_ref sort order -- exactly the shape that a pre-8a682ac lexicographic page walk at page_size=1 would have split across 3 pages, dropping the correction's support ref off-page on the middle page.",
+      "expected": "Component-based paging serves the linked pair together on one page (page_size=1 legitimately exceeded) and the isolated candidate alone on a separate page, in min-ref order; 3 candidates take 2 pages, not 3.",
+      "observed": "Exactly 2 pages: page 1 == {support_base, support_corrected} (the component, min-ref ordered first); page 2 == {isolated}. Confirms the fix's ordering is genuinely component-aware, not merely 'looks right' on refs that already happened to be adjacent.",
+      "verdict": "passed"
+    },
+    {
+      "id": "c1_c2_multiple_contradictions_surface_exactly_once",
+      "test_function": "test_g013_c1_c2_multiple_contradictions_each_surface_exactly_once_across_full_walk",
+      "pass": 2,
+      "scenario": "3 independent CONTRADICTION-linked pairs (6 candidates total), page_size=2, walked to termination.",
+      "expected": "Every declared contradiction surfaces in exactly one page across the whole walk, sum == 3 distinct pairs, no duplicate/omission.",
+      "observed": "sorted(seen_conflicts) == sorted(expected 3 pairs) exactly; exact 6-candidate partition confirmed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "v2_pages_to_exhaustion_and_citation_flags_off_page",
+      "test_function": "test_g013_v2_recall_pages_to_exhaustion_and_citation_flags_off_page_candidates",
+      "pass": 2,
+      "scenario": "3 approved candidates, page_size=1, driven purely through SecondBrainApiV2.recall()/citation() end to end -- decode the receipt's encoded continuation field, resubmit as the next request, repeat to has_more=false.",
+      "expected": "Exactly 3 pages; every page's citation()-confirmed served-candidate count == its recall() result_count; every not-yet-served candidate reports NOT_SERVED (never OK) while has_more=true; the full walk is an exact partition of the 3 candidates.",
+      "observed": "Exactly 3 pages walked via the encoded continuation handle alone; per-page served counts matched result_count; off-page citation() calls returned NOT_SERVED/0 exactly as required; collected set == expected set.",
+      "verdict": "passed"
+    },
+    {
+      "id": "v2_mangled_continuation_receipt",
+      "test_function": "test_g013_v2_mangled_continuation_receipt_fails_closed",
+      "pass": 2,
+      "scenario": "A real V2-encoded continuation receipt (`key=value;key=value...`) has one hex character of cursor_state_digest's value flipped (format-valid, digest-invalid).",
+      "expected": "Decoding the mangled receipt into RecallContinuationV2 must fail closed.",
+      "observed": "InvalidContractValue raised: the recomputed continuation_digest binding (_bound over signing_body()) no longer matches the untouched continuation_digest field, since cursor_state_digest changed underneath it.",
+      "verdict": "passed"
+    },
+    {
+      "id": "v2_truncated_continuation_receipt",
+      "test_function": "test_g013_v2_truncated_continuation_receipt_fails_closed",
+      "pass": 2,
+      "scenario": "A real V2-encoded continuation receipt truncated to half its length.",
+      "expected": "Neither the naive `key=value` split nor RecallContinuationV2.from_mapping may silently accept the truncated fragment.",
+      "observed": "Raises (ValueError from the malformed `dict()` build over a fragment with a partial/missing '=' pair, or InvalidContractValue from missing-fields validation) -- confirmed fails closed either way.",
+      "verdict": "passed"
+    },
+    {
+      "id": "v2_separator_injected_continuation_receipt",
+      "test_function": "test_g013_v2_separator_injected_continuation_receipt_fails_closed",
+      "pass": 2,
+      "scenario": "Two injections against a real receipt: (1) append `;forged_field=evil` to smuggle an extra field; (2) inject a bonus '=' inside cursor_handle_ref's own value to try to widen its parsed boundary.",
+      "expected": "Both must fail closed.",
+      "observed": "(1) UnknownContractField('unknown fields: [\\'forged_field\\']'); (2) InvalidContractValue -- the widened value fails the cursor ref regex (_REF disallows '=').",
+      "verdict": "passed"
+    },
+    {
+      "id": "v2_foreign_workspace_continuation_receipt",
+      "test_function": "test_g013_v2_foreign_workspace_continuation_receipt_fails_closed",
+      "pass": 2,
+      "scenario": "Workspace A's real V2-encoded continuation receipt is decoded back into a RecallContinuationV2 and an attempt is made to wrap it in a workspace-B RecallSnapshotRequestV2 (a second workspace registered in the same durable database, with its own approved candidate).",
+      "expected": "The wire round-trip must not create any bypass of the workspace-binding invariant already proven at the dataclass layer in pass 1.",
+      "observed": "InvalidContractValue('continuation is not request-bound') raised at request construction, before any durable cursor lookup runs -- confirms the encode/decode wire path carries the same structural guarantee, not a weaker one.",
+      "verdict": "passed"
+    },
+    {
+      "id": "v2_no_receipt_value_leaks_forbidden_surface",
+      "test_function": "test_g013_v2_no_receipt_value_leaks_forbidden_surface_name_across_full_walk",
+      "pass": 2,
+      "scenario": "3 candidates, page_size=1, full recall()+citation() walk through SecondBrainApiV2 across every page; every receipt value (including the raw encoded continuation string) scanned for forbidden surface tokens ('list','dump','Workspace','McpServer','raw_key','derived_key','artifact','blob','Gate8','workspace_dump').",
+      "expected": "No receipt value at any page ever contains a forbidden token.",
+      "observed": "Confirmed clean across every page and every field, including the opaque continuation blob.",
+      "verdict": "passed"
+    },
+    {
+      "id": "c3_expired_cursor_row_refuses_resumption",
+      "test_function": "test_g013_c3_expired_cursor_row_refuses_resumption_after_ttl_elapses",
+      "pass": 2,
+      "scenario": "A real, live durable ledger_recall_cursor row has its expires_at force-set (via DROP TRIGGER ledger_recall_cursor_no_update, matching the existing tamper-revalidation pattern) to a past instant, then a resumption attempt is made with the original, otherwise-valid continuation.",
+      "expected": "Resumption must be refused even though the row is still structurally resolvable.",
+      "observed": "LedgerAuthorityError('continuation cursor has expired and can no longer be resumed').",
+      "verdict": "passed"
+    },
+    {
+      "id": "c3_live_cursor_row_undeletable_and_unupdatable",
+      "test_function": "test_g013_c3_live_cursor_row_is_undeletable_and_unupdatable_via_direct_sql",
+      "pass": 2,
+      "scenario": "A real, live cursor row (well inside its 300s TTL) is targeted with a plain SQL DELETE and a plain SQL UPDATE, with no trigger tampering.",
+      "expected": "Both must be refused; the row must remain intact.",
+      "observed": "DELETE raised 'cannot be deleted' (ledger_recall_cursor_no_delete trigger); UPDATE raised 'append-only' (ledger_recall_cursor_no_update trigger); row count unchanged (1).",
+      "verdict": "passed"
+    },
+    {
+      "id": "c3_retention_bound_table_abuse",
+      "test_function": "test_g013_c3_retention_bound_table_cannot_be_abused_to_delete_a_live_cursor",
+      "pass": 2,
+      "scenario": "Without dropping or altering ANY trigger, issue a bare `INSERT INTO ledger_recall_cursor_retention_bound VALUES('singleton','2999-01-01T00:00:00Z')` (the table `LifecycleDatabase.purge_expired_recall_cursors` uses internally to stamp its own trusted `as_of` inside one retention transaction), then issue a plain `DELETE FROM ledger_recall_cursor` against a cursor row still well inside its live 300s TTL.",
+      "expected_per_docstring_and_schema_comment": "'a live row can never be removed by this or any other statement' / 'the bound never persists as ambient authority outside the retention transaction itself'.",
+      "observed": "THE DELETE SUCCEEDS. The live cursor row is removed with a bare INSERT into an unguarded table plus a plain DELETE -- no DROP TRIGGER, no schema tampering, nothing beyond ordinary SQL any code path holding a write connection can issue. `ledger_recall_cursor_retention_bound` has no append-only, single-writer, or same-transaction-only guard of its own (unlike literally every other durable ledger table in this schema, all of which need an explicit DROP TRIGGER to bypass). `pytest.raises(Exception, match='cannot be deleted')` fails with 'DID NOT RAISE Exception'.",
+      "verdict": "FAILED -- kept intentionally, see blockers",
+      "classification": "confirmed_defect_not_weakened"
+    },
+    {
+      "id": "c4_clock_skew_forward_bound_with_exact_boundary_probe",
+      "test_function": "test_g013_c4_recorded_at_forward_skew_bound_refused_on_first_page_with_exact_boundary_probe",
+      "pass": 2,
+      "scenario": "Three isolated stores/requests: recorded_at = NOW+30s (exact bound), NOW+31s (1s past), and NOW + 30 days (gross violation), page_size=50 (has_more never true, so any failure is unambiguously an immediate first-page rejection).",
+      "expected": "+30s succeeds and serves the candidate; +31s and +30days are both refused with the same skew error, not accepted merely for being 'even further' past the near boundary.",
+      "observed": "+30s: snapshot served the one candidate, has_more=false. +31s and +30days: both raised LedgerAuthorityError('recall recorded_at exceeds the trusted clock skew bound').",
+      "verdict": "passed"
+    },
+    {
+      "id": "c4_clock_skew_as_of_far_past_still_succeeds",
+      "test_function": "test_g013_c4_as_of_far_in_the_past_still_succeeds",
+      "pass": 2,
+      "scenario": "recorded_at = NOW minus 5 years (bitemporal as-of read far into the past).",
+      "expected": "Only the forward direction is bounded; an arbitrarily-past recorded_at must succeed (serving an empty/as-of-appropriate result, not raising).",
+      "observed": "Snapshot acquired without error; candidates == () (as expected for an as-of point before the candidate existed).",
+      "verdict": "passed"
+    },
+    {
+      "id": "c4_clock_skew_enforced_on_continued_page",
+      "test_function": "test_g013_c4_clock_skew_is_enforced_on_a_continued_page_not_only_the_first",
+      "pass": 2,
+      "scenario": "A page-1 continuation pins its own recorded_at (request-binding forbids a resumed page from declaring a different one), so the only way a resumed page can newly violate the skew bound is if the TRUSTED CLOCK used to evaluate it differs per authority instance. A second trust authority is minted over the same durable provenance registry with its clock set 40s BEHIND the clock that issued page 1, and the identical, previously-valid recorded_at is resubmitted against it.",
+      "expected": "The skew check must re-run against the CURRENT trusted clock on every page, not a cached/one-time value from page-1 issuance; the resumed page must be refused.",
+      "observed": "LedgerAuthorityError('recall recorded_at exceeds the trusted clock skew bound') raised on the resumed page despite the identical recorded_at having been accepted moments earlier under the un-drifted clock. (Also separately confirmed by design: since the bound is one-sided/forward-only, a FORWARD-drifting clock can never newly trip this check on a later page for a fixed, already-valid recorded_at -- only a lagging/regressed trusted clock can. That directional analysis is itself part of this case's evidence, not a separate case.)",
+      "verdict": "passed"
     }
   ],
   "summary": {
-    "total_new_cases": 15,
-    "passed": 15,
-    "failed": 0,
-    "real_defects_found": 0
+    "total_cases_this_report": 29,
+    "pass_1_case_ids_present_at_head_before_this_run": 13,
+    "pass_1_collected_tests_at_head_before_this_run": 16,
+    "pass_2_new_case_ids_added_this_run": 16,
+    "pass_2_new_collected_tests_added_this_run": 20,
+    "module_collected_tests": 36,
+    "module_passed": 35,
+    "module_failed": 1,
+    "full_suite_collected": 1510,
+    "full_suite_passed": 1509,
+    "full_suite_failed": 1,
+    "real_defects_found": 1
   },
-  "blockers": []
+  "blockers": [
+    {
+      "id": "BLOCKER-1",
+      "severity": "HIGH",
+      "title": "ledger_recall_cursor_retention_bound has no append-only/single-writer guard, so a bare INSERT into it defeats the 'live recall cursor can never be deleted' invariant without touching any trigger",
+      "test_function": "tests/second_brain/test_stage3_g013_red_team.py::test_g013_c3_retention_bound_table_cannot_be_abused_to_delete_a_live_cursor",
+      "status": "kept failing on purpose; not weakened",
+      "location": {
+        "schema": "src/wiki_spike/infrastructure/lifecycle_db.py (CREATE TABLE ledger_recall_cursor_retention_bound; CREATE TRIGGER ledger_recall_cursor_no_delete)",
+        "usage": "src/wiki_spike/infrastructure/lifecycle_db.py:LifecycleDatabase.purge_expired_recall_cursors"
+      },
+      "exact_reproduction": [
+        "1. Acquire a real recall page with has_more=true (page_size=1 with >=2 approved candidates) to durably issue a live ledger_recall_cursor row.",
+        "2. Without dropping or altering any trigger, execute: INSERT INTO ledger_recall_cursor_retention_bound VALUES('singleton','2999-01-01T00:00:00Z');",
+        "3. Execute: DELETE FROM ledger_recall_cursor WHERE cursor_handle_ref=<the live handle from step 1>;",
+        "4. Observe: the DELETE succeeds (0 exceptions raised) and the row is gone, even though its expires_at is ~300 seconds in the future from issuance -- i.e. it was never expired."
+      ],
+      "root_cause": "ledger_recall_cursor_no_delete's WHEN clause reads the current retention_bound_at straight from ledger_recall_cursor_retention_bound at DELETE time: `julianday(OLD.expires_at) <= COALESCE((SELECT julianday(retention_bound_at) FROM ledger_recall_cursor_retention_bound WHERE retention_bound_ref='singleton'), -1e18)`. LifecycleDatabase.purge_expired_recall_cursors is careful to stamp that table with the SAME as_of it uses in its own DELETE's WHERE clause, and to delete the stamp again before COMMIT -- but the table itself carries no append-only, no-update, or single-writer constraint of its own (every OTHER durable table in this schema -- ledger_candidate_version, ledger_edge, ledger_citation_commitment, ledger_recall_cursor itself -- needs an explicit `DROP TRIGGER` before ANY row can be forged or removed out of band; this table needs none). Consequently the 'a live row can never be removed by this or any other statement' guarantee documented in the table's own schema comment and the purge method's docstring is true only as an emergent property of the ONE call site (purge_expired_recall_cursors) always passing a genuinely-expired as_of, not as a schema-level invariant. Any other code path -- a future retention job with a bug, a manual maintenance script, a different feature that happens to hold a write connection to this same database file -- can silently defeat cursor immortality with two ordinary SQL statements and no privilege escalation beyond what it already had.",
+      "suggested_fix_direction": "Either (a) add an append-only/no-external-write guard on ledger_recall_cursor_retention_bound itself (e.g. reject any INSERT/UPDATE whose new retention_bound_at is not <= the actual MIN(expires_at) currently eligible for purge, or restrict writes to happen only inside the same statement-scoped transaction as the paired DELETE via a stricter trigger), or (b) fold the bound comparison into a single atomic statement/CTE that never persists an intermediate row at all, removing the two-statement TOCTOU window this attack exploits.",
+      "impact_if_unaddressed": "Any code path with a plain write connection to the ledger database (not merely one with DDL/trigger-tampering privilege) can force-delete any recall cursor, including live ones mid-page-walk, silently invalidating in-flight continuation chains for other callers -- undermining the durability guarantee the ADR-level 'append-only, no DROP TRIGGER needed' design explicitly claims to provide."
+    }
+  ]
 }
