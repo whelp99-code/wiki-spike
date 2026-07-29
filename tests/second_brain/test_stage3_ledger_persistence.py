@@ -241,7 +241,12 @@ def command(
     return LedgerCommandV2.from_mapping(body | {"command_digest": canonical_ledger_digest("command-v2", body)})
 
 
-def request(workspace: str, *, epoch: str = "1", transaction_cut: str | None = None, continuation=None, authorization_state: str = "PASS", recorded_at: str = LATER) -> RecallSnapshotRequestV2:
+def request(workspace: str, *, epoch: str = "1", transaction_cut: str | None = None, continuation=None, authorization_state: str = "PASS", recorded_at: str = NOW) -> RecallSnapshotRequestV2:
+    # F8: LifecycleLedgerAuthority now bounds recorded_at to a small forward skew
+    # past the trusted clock (frozen at NOW in this fixture). LATER (a full day
+    # ahead) is kept only for callers that deliberately want to exercise a
+    # request outside that bound; the default mirrors what every real recall
+    # caller must send -- a recorded_at at or before the trusted "now".
     transaction_cut = transaction_cut or _CURRENT_CUT
     body = {
         "request_version": "second-brain-recall-snapshot-request-v2",

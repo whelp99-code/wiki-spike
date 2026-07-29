@@ -416,8 +416,23 @@ CREATE TABLE IF NOT EXISTS ledger_citation_commitment (
 CREATE TABLE IF NOT EXISTS ledger_recall_cursor (
   cursor_handle_ref TEXT PRIMARY KEY, workspace_ref TEXT NOT NULL,
   transaction_sequence TEXT NOT NULL, cursor_state_digest TEXT NOT NULL,
-  after_candidate_ref TEXT NOT NULL, recorded_at TEXT NOT NULL
+  after_candidate_ref TEXT NOT NULL, recorded_at TEXT NOT NULL, expires_at TEXT NOT NULL
 );
+-- F6: a singleton bound a retention pass stamps, within its own transaction,
+-- with the trusted "as of" instant it is purging against. The
+-- ledger_recall_cursor_no_delete trigger only ever permits deleting a row
+-- whose own expires_at is at or before that stamped bound, so a live row can
+-- never be removed by this or any other statement, and the bound never
+-- persists as an ambient authority outside the retention transaction itself.
+CREATE TABLE IF NOT EXISTS ledger_recall_cursor_retention_bound (
+  retention_bound_ref TEXT PRIMARY KEY, retention_bound_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ledger_candidate_version_workspace_state_ref_idx
+  ON ledger_candidate_version(workspace_ref, candidate_state, candidate_ref);
+CREATE UNIQUE INDEX IF NOT EXISTS ledger_citation_commitment_candidate_revision_workspace_uq
+  ON ledger_citation_commitment(candidate_ref, revision_ref, workspace_ref);
+CREATE INDEX IF NOT EXISTS ledger_edge_workspace_kind_state_idx
+  ON ledger_edge(workspace_ref, edge_kind, edge_state);
 CREATE TABLE IF NOT EXISTS ledger_sequence (
   workspace_ref TEXT PRIMARY KEY, transaction_sequence TEXT NOT NULL, ledger_epoch TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -460,7 +475,14 @@ BEFORE DELETE ON ledger_citation_commitment BEGIN SELECT RAISE(ABORT, 'ledger ci
 CREATE TRIGGER IF NOT EXISTS ledger_recall_cursor_no_update
 BEFORE UPDATE ON ledger_recall_cursor BEGIN SELECT RAISE(ABORT, 'ledger recall cursor is append-only'); END;
 CREATE TRIGGER IF NOT EXISTS ledger_recall_cursor_no_delete
-BEFORE DELETE ON ledger_recall_cursor BEGIN SELECT RAISE(ABORT, 'ledger recall cursor is append-only'); END;
+BEFORE DELETE ON ledger_recall_cursor
+WHEN NOT (
+  julianday(OLD.expires_at) <= COALESCE(
+    (SELECT julianday(retention_bound_at) FROM ledger_recall_cursor_retention_bound WHERE retention_bound_ref='singleton'),
+    -1e18
+  )
+)
+BEGIN SELECT RAISE(ABORT, 'live ledger recall cursor cannot be deleted'); END;
 """
 
 CAPTURE_SCHEMA = """
@@ -583,6 +605,7 @@ TABLE_NAMES: tuple[str, ...] = (
     "ledger_provenance",
     "ledger_citation_commitment",
     "ledger_recall_cursor",
+    "ledger_recall_cursor_retention_bound",
     "ledger_sequence",
     "ledger_migration",
 )
@@ -1557,6 +1580,39 @@ class LifecycleDatabase:
         assert self.con is not None, "initialize() not called"
         self.con.row_factory = sqlite3.Row
         return list(self.con.execute("SELECT * FROM event_log ORDER BY event_id"))
+
+    def purge_expired_recall_cursors(self, as_of: str) -> int:
+        """Narrow F6 retention path: delete only ``ledger_recall_cursor`` rows
+        already expired as of the caller's trusted ``as_of`` instant. This
+        stamps ``ledger_recall_cursor_retention_bound`` with ``as_of`` inside
+        the same transaction so ``ledger_recall_cursor_no_delete`` can verify,
+        row by row, that only an already-expired row is ever removed -- a
+        live row can never be deleted through this or any other path, and no
+        retention job ever needs to DROP TRIGGER or rebuild the table. The
+        bound is cleared before commit so it never persists as ambient
+        authority outside this one retention pass. Returns the row count
+        removed."""
+        assert self.con is not None, "initialize() not called"
+        con = self.con
+        con.execute("BEGIN IMMEDIATE")
+        try:
+            con.execute(
+                "INSERT INTO ledger_recall_cursor_retention_bound VALUES('singleton',?) "
+                "ON CONFLICT(retention_bound_ref) DO UPDATE SET retention_bound_at=excluded.retention_bound_at",
+                (as_of,),
+            )
+            cursor = con.execute(
+                "DELETE FROM ledger_recall_cursor WHERE julianday(expires_at)<=julianday(?)",
+                (as_of,),
+            )
+            removed = cursor.rowcount
+            con.execute("DELETE FROM ledger_recall_cursor_retention_bound WHERE retention_bound_ref='singleton'")
+        except BaseException:
+            con.execute("ROLLBACK")
+            raise
+        else:
+            con.execute("COMMIT")
+        return removed
 
     # -- lifecycle ------------------------------------------------------------- #
 

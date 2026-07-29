@@ -22,6 +22,9 @@ from wiki_spike.memory_core.second_brain_ledger_ports import (
 
 
 _CONTINUATION_TTL_SECONDS = 300
+# Mirrors second_brain_ledger_contracts._MAX_CLOCK_SKEW_SECONDS (F8): the bound
+# tolerated between a request's declared recorded_at and the trusted clock.
+_MAX_RECALL_CLOCK_SKEW_SECONDS = 30
 
 class LedgerAuthorityError(RuntimeError):
     """A command did not have the durable authority it claimed."""
@@ -84,6 +87,13 @@ class LifecycleLedgerAuthority(LedgerCommandPort, AtomicRecallSnapshotPort):
             )
             digest = canonical_ledger_digest("ledger-migration-v2", {"workspace_ref": workspace_ref, "migration_state": "SERVING_READY", "transaction_cut": sequence})
             con.execute("INSERT INTO ledger_migration VALUES(?,?,?,?,?)", ("migration:" + sha256((workspace_ref + digest).encode()).hexdigest(), workspace_ref, "SERVING_READY", digest, recorded_at))
+
+    def purge_expired_recall_cursors(self) -> int:
+        """F6 retention convenience: purge ``ledger_recall_cursor`` rows that
+        have expired as of this authority's own trusted clock. Delegates to
+        the narrow, trigger-backstopped DB primitive -- see
+        ``LifecycleDatabase.purge_expired_recall_cursors``."""
+        return self._db.purge_expired_recall_cursors(self._trusted_timestamp())
 
     def append_ledger_command(self, command: LedgerCommandV2) -> LedgerReceiptV2:
         self._classify_legacy_workspace(command.workspace_ref)
@@ -436,8 +446,30 @@ class LifecycleLedgerAuthority(LedgerCommandPort, AtomicRecallSnapshotPort):
                 seen.add(node)
                 queue.extend(row[0] for row in con.execute("SELECT to_candidate_ref FROM ledger_edge WHERE edge_kind='SUPPORT' AND edge_state='ACTIVE' AND end_cut IS NULL AND from_candidate_ref=?", (node,)))
         return False
+    @staticmethod
+    def _instant_value(value: str) -> datetime:
+        return datetime.fromisoformat(value[:-1] + "+00:00").astimezone(timezone.utc)
+
+    @staticmethod
+    def _assert_recorded_at_within_skew(recorded_at: str, now: str) -> None:
+        """F8: ``recorded_at`` is bitemporal transaction time. A request may look
+        back arbitrarily far into recorded history -- the audit/as-of journeys
+        depend on exactly that, and un-bounding the past keeps them working --
+        but it may never claim knowledge recorded beyond a bounded tolerance
+        past the trusted clock, since no request can legitimately assert a
+        recorded_at the ledger has not reached yet. Enforced here, immediately,
+        rather than left for Core to reject once has_more finally makes the
+        drift observable on a later page."""
+        recorded = LifecycleLedgerAuthority._instant_value(recorded_at)
+        trusted = LifecycleLedgerAuthority._instant_value(now)
+        if recorded > trusted + timedelta(seconds=_MAX_RECALL_CLOCK_SKEW_SECONDS):
+            raise LedgerAuthorityError(
+                "recall recorded_at exceeds the trusted clock skew bound"
+            )
+
     def _verified_recall_provenance(self, request: RecallSnapshotRequestV2) -> object:
         now = self._trusted_timestamp()
+        self._assert_recorded_at_within_skew(request.recorded_at, now)
         try:
             provenance = self._trust_authority._provenance(
                 request.authority_provenance_ref, request.authority_provenance_digest
@@ -511,13 +543,26 @@ class LifecycleLedgerAuthority(LedgerCommandPort, AtomicRecallSnapshotPort):
             },
         )
 
+    @staticmethod
+    def _continuation_window(issued_raw: str) -> tuple[str, str]:
+        """Canonical (issued_at, expires_at) pair for the one shared 300s
+        continuation/cursor TTL. F6 wires the durable ``ledger_recall_cursor``
+        row's expiry to this exact window so a resume position never outlives
+        the signed continuation that points at it."""
+        issued = datetime.strptime(issued_raw, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+        expires = issued + timedelta(seconds=_CONTINUATION_TTL_SECONDS)
+        issued_at, expires_at = (
+            canonical_ledger_instant(moment.strftime("%Y-%m-%dT%H:%M:%S.%fZ")) for moment in (issued, expires)
+        )
+        return issued_at, expires_at
+
     def _resume_after(self, con: sqlite3.Connection, request: RecallSnapshotRequestV2, cut: str) -> str:
         """Resolve the durable resume position an incoming continuation points at."""
         continuation = request.continuation
         if continuation is None:
             return ""
         row = con.execute(
-            "SELECT workspace_ref,transaction_sequence,cursor_state_digest,after_candidate_ref "
+            "SELECT workspace_ref,transaction_sequence,cursor_state_digest,after_candidate_ref,expires_at "
             "FROM ledger_recall_cursor WHERE cursor_handle_ref=?",
             (continuation.cursor_handle_ref,),
         ).fetchone()
@@ -525,6 +570,12 @@ class LifecycleLedgerAuthority(LedgerCommandPort, AtomicRecallSnapshotPort):
             request.workspace_ref, continuation.transaction_cut, continuation.cursor_state_digest
         ):
             raise LedgerAuthorityError("continuation cursor is not durably resolvable")
+        # F6: the row is ephemeral serving state, not durable ledger evidence --
+        # once its 300s TTL has elapsed it must refuse resumption even though it
+        # remains structurally resolvable, so a stale cursor can never silently
+        # keep paging.
+        if self._instant_value(row["expires_at"]) <= self._instant_value(self._trusted_timestamp()):
+            raise LedgerAuthorityError("continuation cursor has expired and can no longer be resumed")
         after = row["after_candidate_ref"]
         if continuation.cursor_state_digest != self._cursor_state_digest(request.workspace_ref, cut, after):
             raise LedgerAuthorityError("continuation cursor does not bind its durable position")
@@ -552,9 +603,10 @@ class LifecycleLedgerAuthority(LedgerCommandPort, AtomicRecallSnapshotPort):
             (handle_ref,),
         ).fetchone()
         if existing is None:
+            issued_at, expires_at = self._continuation_window(self._trusted_timestamp())
             con.execute(
-                "INSERT INTO ledger_recall_cursor VALUES(?,?,?,?,?,?)",
-                (handle_ref, *recorded, self._trusted_timestamp()),
+                "INSERT INTO ledger_recall_cursor VALUES(?,?,?,?,?,?,?)",
+                (handle_ref, *recorded, issued_at, expires_at),
             )
         elif tuple(existing) != recorded:
             raise LedgerAuthorityError("recall cursor handle conflicts with durable evidence")
@@ -594,11 +646,7 @@ class LifecycleLedgerAuthority(LedgerCommandPort, AtomicRecallSnapshotPort):
         if cursor is None:
             return None
         handle_ref, state_digest = cursor
-        issued = datetime.strptime(self._trusted_timestamp(), "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
-        expires = issued + timedelta(seconds=_CONTINUATION_TTL_SECONDS)
-        issued_at, expires_at = (
-            canonical_ledger_instant(moment.strftime("%Y-%m-%dT%H:%M:%S.%fZ")) for moment in (issued, expires)
-        )
+        issued_at, expires_at = self._continuation_window(self._trusted_timestamp())
         return {
             "continuation_version": "second-brain-recall-continuation-v2",
             "continuation_ref": "continuation:" + canonical_ledger_digest(
