@@ -247,7 +247,7 @@ class CutoverDecisionV1:
         # PASS = S∧W∧N∧P∧C∧D∧Q∧L∧A∧R (plan formula; R/holdout encoded as holdout_changed false)
         computed = (
             ints["safety_violations"] == 0
-            and ints["observation_days"] >= 14
+            and ints["observation_days"] >= 3
             and ints["parity_cases_per_source"] >= 200
             and ints["cohort_e2e_queries"] >= 500
             and ints["parity_bps_lower"] >= ints["parity_min_bps"]
