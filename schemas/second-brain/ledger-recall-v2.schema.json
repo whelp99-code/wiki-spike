@@ -1,0 +1,1793 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/ledger-recall-v2.schema.json",
+  "title": "Second-brain ledger and recall public wires v2",
+  "description": "Structural schema only: successful validation is not cryptographic admission. Snapshot admission requires validate_recall_snapshot_acquisition with a minted RecallTrustAuthorityV2.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/command"
+    },
+    {
+      "$ref": "#/$defs/receipt"
+    },
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/snapshot"
+    },
+    {
+      "$ref": "#/$defs/continuation"
+    },
+    {
+      "$ref": "#/$defs/citation"
+    },
+    {
+      "$ref": "#/$defs/citationEvidence"
+    },
+    {
+      "$ref": "#/$defs/conflictDecision"
+    },
+    {
+      "$ref": "#/$defs/authorityProvenance"
+    }
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "positive": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*$"
+    },
+    "utc": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$"
+    },
+    "ref": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,63}:[0-9a-f]{64}$"
+    },
+    "candidateRef": {
+      "type": "string",
+      "pattern": "^candidate:[0-9a-f]{64}$"
+    },
+    "workspaceRef": {
+      "type": "string",
+      "pattern": "^workspace:[0-9a-f]{64}$"
+    },
+    "capabilityRef": {
+      "type": "string",
+      "pattern": "^capability:[0-9a-f]{64}$"
+    },
+    "continuationRef": {
+      "type": "string",
+      "pattern": "^continuation:[0-9a-f]{64}$"
+    },
+    "generationRef": {
+      "type": "string",
+      "pattern": "^generation:[0-9a-f]{64}$"
+    },
+    "checkpointRef": {
+      "type": "string",
+      "pattern": "^checkpoint:[0-9a-f]{64}$"
+    },
+    "commandRef": {
+      "type": "string",
+      "pattern": "^command:[0-9a-f]{64}$"
+    },
+    "revisionRef": {
+      "type": "string",
+      "pattern": "^revision:[0-9a-f]{64}$"
+    },
+    "interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "valid_from",
+        "valid_to",
+        "recorded_from",
+        "recorded_to"
+      ],
+      "properties": {
+        "valid_from": {
+          "$ref": "#/$defs/utc"
+        },
+        "valid_to": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/utc"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recorded_from": {
+          "$ref": "#/$defs/utc"
+        },
+        "recorded_to": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/utc"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "supportEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "edge_kind",
+        "from_candidate_ref",
+        "to_candidate_ref",
+        "workspace_ref",
+        "interval"
+      ],
+      "properties": {
+        "edge_kind": {
+          "const": "SUPPORT"
+        },
+        "from_candidate_ref": {
+          "$ref": "#/$defs/candidateRef"
+        },
+        "to_candidate_ref": {
+          "$ref": "#/$defs/candidateRef"
+        },
+        "workspace_ref": {
+          "$ref": "#/$defs/workspaceRef"
+        },
+        "interval": {
+          "$ref": "#/$defs/interval"
+        }
+      }
+    },
+    "contradictionEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "edge_kind",
+        "from_candidate_ref",
+        "to_candidate_ref",
+        "workspace_ref",
+        "interval"
+      ],
+      "properties": {
+        "edge_kind": {
+          "const": "CONTRADICTION"
+        },
+        "from_candidate_ref": {
+          "$ref": "#/$defs/candidateRef"
+        },
+        "to_candidate_ref": {
+          "$ref": "#/$defs/candidateRef"
+        },
+        "workspace_ref": {
+          "$ref": "#/$defs/workspaceRef"
+        },
+        "interval": {
+          "$ref": "#/$defs/interval"
+        }
+      }
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_ref",
+        "prior_state",
+        "resulting_state",
+        "content_digest",
+        "support_edges",
+        "contradiction_edges"
+      ],
+      "properties": {
+        "candidate_ref": {
+          "$ref": "#/$defs/candidateRef"
+        },
+        "prior_state": {
+          "enum": [
+            "ABSENT",
+            "PENDING",
+            "APPROVED",
+            "REJECTED",
+            "REVOKED",
+            "FORGOTTEN"
+          ]
+        },
+        "resulting_state": {
+          "enum": [
+            "PENDING",
+            "APPROVED",
+            "REJECTED",
+            "REVOKED",
+            "FORGOTTEN"
+          ]
+        },
+        "content_digest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "support_edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/supportEdge"
+          }
+        },
+        "contradiction_edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/contradictionEdge"
+          }
+        }
+      }
+    },
+    "commandBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command_version",
+        "command_ref",
+        "workspace_ref",
+        "capability_ref",
+        "authority_epoch",
+        "kind",
+        "target_candidate_ref",
+        "expected_active_revision_ref",
+        "related_candidate_refs",
+        "interval",
+        "payload",
+        "authority_provenance_ref",
+        "authority_provenance_digest",
+        "command_digest",
+        "subject_ref",
+        "action",
+        "scope_digest",
+        "command_payload_digest"
+      ],
+      "properties": {
+        "command_version": {
+          "const": "second-brain-ledger-command-v2"
+        },
+        "command_ref": {
+          "$ref": "#/$defs/commandRef"
+        },
+        "workspace_ref": {
+          "$ref": "#/$defs/workspaceRef"
+        },
+        "capability_ref": {
+          "$ref": "#/$defs/capabilityRef"
+        },
+        "authority_epoch": {
+          "$ref": "#/$defs/positive"
+        },
+        "kind": {
+          "enum": [
+            "CREATE_CANDIDATE",
+            "REVIEW_APPROVE",
+            "REVIEW_REJECT",
+            "CORRECT",
+            "SUPERSEDE",
+            "REVOKE",
+            "FORGET",
+            "DECLARE_CONTRADICTION"
+          ]
+        },
+        "target_candidate_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/candidateRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "related_candidate_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/candidateRef"
+          }
+        },
+        "interval": {
+          "$ref": "#/$defs/interval"
+        },
+        "payload": {
+          "$ref": "#/$defs/payload"
+        },
+        "command_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "expected_active_revision_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/revisionRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "authority_provenance_ref": {
+          "type": "string",
+          "pattern": "^provenance:[0-9a-f]{64}$"
+        },
+        "authority_provenance_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "subject_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "scope_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "command_payload_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "CREATE_CANDIDATE"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "expected_active_revision_ref": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "expected_active_revision_ref": {
+                "$ref": "#/$defs/revisionRef"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "command": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/createCommand"
+        },
+        {
+          "$ref": "#/$defs/reviewApproveCommand"
+        },
+        {
+          "$ref": "#/$defs/reviewRejectCommand"
+        },
+        {
+          "$ref": "#/$defs/correctCommand"
+        },
+        {
+          "$ref": "#/$defs/supersedeCommand"
+        },
+        {
+          "$ref": "#/$defs/revokeCommand"
+        },
+        {
+          "$ref": "#/$defs/forgetCommand"
+        },
+        {
+          "$ref": "#/$defs/declareContradictionCommand"
+        }
+      ]
+    },
+    "createCommand": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/commandBase"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "CREATE_CANDIDATE"
+            },
+            "target_candidate_ref": {
+              "type": "null"
+            },
+            "related_candidate_refs": {
+              "maxItems": 0
+            },
+            "expected_active_revision_ref": {
+              "type": "null"
+            },
+            "payload": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/payload"
+                },
+                {
+                  "properties": {
+                    "prior_state": {
+                      "const": "ABSENT"
+                    },
+                    "resulting_state": {
+                      "const": "PENDING"
+                    },
+                    "content_digest": {
+                      "$ref": "#/$defs/digest"
+                    },
+                    "support_edges": {
+                      "maxItems": 0
+                    },
+                    "contradiction_edges": {
+                      "maxItems": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "reviewApproveCommand": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/commandBase"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "REVIEW_APPROVE"
+            },
+            "target_candidate_ref": {
+              "$ref": "#/$defs/candidateRef"
+            },
+            "related_candidate_refs": {
+              "maxItems": 0
+            },
+            "payload": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/payload"
+                },
+                {
+                  "properties": {
+                    "prior_state": {
+                      "const": "PENDING"
+                    },
+                    "resulting_state": {
+                      "const": "APPROVED"
+                    },
+                    "content_digest": {
+                      "type": "null"
+                    },
+                    "support_edges": {
+                      "maxItems": 0
+                    },
+                    "contradiction_edges": {
+                      "maxItems": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "reviewRejectCommand": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/commandBase"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "REVIEW_REJECT"
+            },
+            "target_candidate_ref": {
+              "$ref": "#/$defs/candidateRef"
+            },
+            "related_candidate_refs": {
+              "maxItems": 0
+            },
+            "payload": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/payload"
+                },
+                {
+                  "properties": {
+                    "prior_state": {
+                      "const": "PENDING"
+                    },
+                    "resulting_state": {
+                      "const": "REJECTED"
+                    },
+                    "content_digest": {
+                      "type": "null"
+                    },
+                    "support_edges": {
+                      "maxItems": 0
+                    },
+                    "contradiction_edges": {
+                      "maxItems": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "correctCommand": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/commandBase"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "CORRECT"
+            },
+            "target_candidate_ref": {
+              "$ref": "#/$defs/candidateRef"
+            },
+            "related_candidate_refs": {
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "payload": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/payload"
+                },
+                {
+                  "properties": {
+                    "prior_state": {
+                      "const": "APPROVED"
+                    },
+                    "resulting_state": {
+                      "const": "APPROVED"
+                    },
+                    "content_digest": {
+                      "$ref": "#/$defs/digest"
+                    },
+                    "support_edges": {
+                      "minItems": 1,
+                      "maxItems": 1
+                    },
+                    "contradiction_edges": {
+                      "maxItems": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "supersedeCommand": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/commandBase"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "SUPERSEDE"
+            },
+            "target_candidate_ref": {
+              "$ref": "#/$defs/candidateRef"
+            },
+            "related_candidate_refs": {
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "payload": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/payload"
+                },
+                {
+                  "properties": {
+                    "prior_state": {
+                      "const": "APPROVED"
+                    },
+                    "resulting_state": {
+                      "const": "APPROVED"
+                    },
+                    "content_digest": {
+                      "$ref": "#/$defs/digest"
+                    },
+                    "support_edges": {
+                      "minItems": 1,
+                      "maxItems": 1
+                    },
+                    "contradiction_edges": {
+                      "maxItems": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "revokeCommand": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/commandBase"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "REVOKE"
+            },
+            "target_candidate_ref": {
+              "$ref": "#/$defs/candidateRef"
+            },
+            "related_candidate_refs": {
+              "maxItems": 0
+            },
+            "payload": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/payload"
+                },
+                {
+                  "properties": {
+                    "prior_state": {
+                      "const": "APPROVED"
+                    },
+                    "resulting_state": {
+                      "const": "REVOKED"
+                    },
+                    "content_digest": {
+                      "type": "null"
+                    },
+                    "support_edges": {
+                      "maxItems": 0
+                    },
+                    "contradiction_edges": {
+                      "maxItems": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "forgetCommand": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/commandBase"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "FORGET"
+            },
+            "target_candidate_ref": {
+              "$ref": "#/$defs/candidateRef"
+            },
+            "related_candidate_refs": {
+              "maxItems": 0
+            },
+            "payload": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/payload"
+                },
+                {
+                  "properties": {
+                    "prior_state": {
+                      "const": "APPROVED"
+                    },
+                    "resulting_state": {
+                      "const": "FORGOTTEN"
+                    },
+                    "content_digest": {
+                      "type": "null"
+                    },
+                    "support_edges": {
+                      "maxItems": 0
+                    },
+                    "contradiction_edges": {
+                      "maxItems": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "declareContradictionCommand": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/commandBase"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "DECLARE_CONTRADICTION"
+            },
+            "target_candidate_ref": {
+              "$ref": "#/$defs/candidateRef"
+            },
+            "related_candidate_refs": {
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "payload": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/payload"
+                },
+                {
+                  "properties": {
+                    "prior_state": {
+                      "const": "APPROVED"
+                    },
+                    "resulting_state": {
+                      "const": "APPROVED"
+                    },
+                    "content_digest": {
+                      "type": "null"
+                    },
+                    "support_edges": {
+                      "maxItems": 0
+                    },
+                    "contradiction_edges": {
+                      "minItems": 1,
+                      "maxItems": 1
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision",
+        "capability_ref",
+        "authority_epoch",
+        "query_digest",
+        "workspace_ref",
+        "scope_digest"
+      ],
+      "properties": {
+        "decision": {
+          "enum": [
+            "ALLOW",
+            "DENY",
+            "ABSTAIN"
+          ]
+        },
+        "capability_ref": {
+          "$ref": "#/$defs/capabilityRef"
+        },
+        "authority_epoch": {
+          "$ref": "#/$defs/positive"
+        },
+        "query_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "workspace_ref": {
+          "$ref": "#/$defs/workspaceRef"
+        },
+        "scope_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "epoch",
+        "digest"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "PASS",
+            "DENY",
+            "ABSTAIN"
+          ]
+        },
+        "epoch": {
+          "$ref": "#/$defs/positive"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_ref",
+        "revision_ref",
+        "state",
+        "content_digest",
+        "support_refs"
+      ],
+      "properties": {
+        "candidate_ref": {
+          "$ref": "#/$defs/candidateRef"
+        },
+        "revision_ref": {
+          "$ref": "#/$defs/revisionRef"
+        },
+        "state": {
+          "enum": [
+            "PENDING",
+            "APPROVED",
+            "REJECTED",
+            "REVOKED",
+            "FORGOTTEN"
+          ]
+        },
+        "content_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "support_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/candidateRef"
+          }
+        }
+      }
+    },
+    "conflictDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "left_candidate_ref",
+        "right_candidate_ref",
+        "state",
+        "expected_decision_revision_ref",
+        "authority_provenance_ref",
+        "authority_provenance_digest",
+        "winning_revision_citation",
+        "decision_version",
+        "decision_digest",
+        "winning_candidate_ref"
+      ],
+      "properties": {
+        "left_candidate_ref": {
+          "$ref": "#/$defs/candidateRef"
+        },
+        "right_candidate_ref": {
+          "$ref": "#/$defs/candidateRef"
+        },
+        "state": {
+          "enum": [
+            "OPEN",
+            "RESOLVED"
+          ]
+        },
+        "expected_decision_revision_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/revisionRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "authority_provenance_ref": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^provenance:[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "authority_provenance_digest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "winning_revision_citation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/citationEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decision_version": {
+          "const": "second-brain-conflict-decision-v2"
+        },
+        "decision_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "winning_candidate_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/candidateRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "OPEN"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "expected_decision_revision_ref": {
+                "type": "null"
+              },
+              "authority_provenance_ref": {
+                "type": "null"
+              },
+              "authority_provenance_digest": {
+                "type": "null"
+              },
+              "winning_revision_citation": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "expected_decision_revision_ref": {
+                "$ref": "#/$defs/revisionRef"
+              },
+              "authority_provenance_ref": {
+                "type": "string",
+                "pattern": "^provenance:[0-9a-f]{64}$"
+              },
+              "authority_provenance_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "winning_revision_citation": {
+                "$ref": "#/$defs/citationEvidence"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "conflict": {
+      "$ref": "#/$defs/conflictDecision"
+    },
+    "authorityFields": {
+      "properties": {
+        "generation_ref": {
+          "$ref": "#/$defs/generationRef"
+        },
+        "generation_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "checkpoint_ref": {
+          "$ref": "#/$defs/checkpointRef"
+        },
+        "checkpoint_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "freshness_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "authority_checkpoint_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "continuation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "continuation_version",
+        "continuation_ref",
+        "workspace_ref",
+        "capability_ref",
+        "authority_epoch",
+        "subject_ref",
+        "action",
+        "query_digest",
+        "scope_digest",
+        "valid_at",
+        "recorded_at",
+        "transaction_cut",
+        "authority_provenance_ref",
+        "authority_provenance_digest",
+        "signer_ref",
+        "key_id",
+        "signature",
+        "generation_ref",
+        "generation_digest",
+        "checkpoint_ref",
+        "checkpoint_digest",
+        "freshness_digest",
+        "authority_checkpoint_digest",
+        "authority_commitment_digest",
+        "base_snapshot_digest",
+        "issued_at",
+        "expires_at",
+        "continuation_digest",
+        "cursor_handle_ref",
+        "signer_algorithm",
+        "cursor_state_digest"
+      ],
+      "properties": {
+        "continuation_version": {
+          "const": "second-brain-recall-continuation-v2"
+        },
+        "continuation_ref": {
+          "$ref": "#/$defs/continuationRef"
+        },
+        "workspace_ref": {
+          "$ref": "#/$defs/workspaceRef"
+        },
+        "capability_ref": {
+          "$ref": "#/$defs/capabilityRef"
+        },
+        "authority_epoch": {
+          "$ref": "#/$defs/positive"
+        },
+        "subject_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "query_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "scope_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "valid_at": {
+          "$ref": "#/$defs/utc"
+        },
+        "recorded_at": {
+          "$ref": "#/$defs/utc"
+        },
+        "transaction_cut": {
+          "$ref": "#/$defs/positive"
+        },
+        "authority_provenance_ref": {
+          "type": "string",
+          "pattern": "^provenance:[0-9a-f]{64}$"
+        },
+        "authority_provenance_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "signer_ref": {
+          "type": "string",
+          "pattern": "^signer:[0-9a-f]{64}$"
+        },
+        "key_id": {
+          "type": "string",
+          "pattern": "^key:[0-9a-f]{64}$"
+        },
+        "signature": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^\\S+$"
+        },
+        "generation_ref": {
+          "$ref": "#/$defs/generationRef"
+        },
+        "generation_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "checkpoint_ref": {
+          "$ref": "#/$defs/checkpointRef"
+        },
+        "checkpoint_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "freshness_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "authority_checkpoint_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "authority_commitment_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "base_snapshot_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "issued_at": {
+          "$ref": "#/$defs/utc"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/utc"
+        },
+        "continuation_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "cursor_handle_ref": {
+          "type": "string",
+          "pattern": "^cursor:[0-9a-f]{64}$"
+        },
+        "signer_algorithm": {
+          "const": "Ed25519"
+        },
+        "cursor_state_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request_version",
+        "workspace_ref",
+        "capability_ref",
+        "authority_epoch",
+        "subject_ref",
+        "action",
+        "query_digest",
+        "valid_at",
+        "recorded_at",
+        "scope_digest",
+        "transaction_cut",
+        "authority_provenance_ref",
+        "authority_provenance_digest",
+        "continuation",
+        "request_digest"
+      ],
+      "properties": {
+        "request_version": {
+          "const": "second-brain-recall-snapshot-request-v2"
+        },
+        "workspace_ref": {
+          "$ref": "#/$defs/workspaceRef"
+        },
+        "capability_ref": {
+          "$ref": "#/$defs/capabilityRef"
+        },
+        "authority_epoch": {
+          "$ref": "#/$defs/positive"
+        },
+        "subject_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "query_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "valid_at": {
+          "$ref": "#/$defs/utc"
+        },
+        "recorded_at": {
+          "$ref": "#/$defs/utc"
+        },
+        "scope_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "transaction_cut": {
+          "$ref": "#/$defs/positive"
+        },
+        "authority_provenance_ref": {
+          "type": "string",
+          "pattern": "^provenance:[0-9a-f]{64}$"
+        },
+        "authority_provenance_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "continuation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/continuation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "citationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "locator_ref",
+        "locator_digest",
+        "immutable_source_ref",
+        "revision_ref",
+        "evidence_version",
+        "evidence_digest"
+      ],
+      "properties": {
+        "locator_ref": {
+          "type": "string",
+          "pattern": "^locator:[0-9a-f]{64}$"
+        },
+        "locator_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "immutable_source_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "revision_ref": {
+          "$ref": "#/$defs/revisionRef"
+        },
+        "evidence_version": {
+          "const": "second-brain-citation-evidence-v2"
+        },
+        "evidence_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "citation_version",
+        "candidate_ref",
+        "evidence",
+        "citation_digest"
+      ],
+      "properties": {
+        "citation_version": {
+          "const": "second-brain-recall-citation-v2"
+        },
+        "candidate_ref": {
+          "$ref": "#/$defs/candidateRef"
+        },
+        "evidence": {
+          "$ref": "#/$defs/citationEvidence"
+        },
+        "citation_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "snapshot_version",
+        "snapshot_attestation_version",
+        "snapshot_signer_ref",
+        "snapshot_signer_algorithm",
+        "snapshot_key_id",
+        "snapshot_signature",
+        "provenance_component_labels",
+        "provenance_component_states",
+        "has_more",
+        "pagination_commitment_digest",
+        "selected_candidates_digest",
+        "selected_citations_digest",
+        "selected_conflicts_digest",
+        "workspace_ref",
+        "capability_ref",
+        "authority_epoch",
+        "subject_ref",
+        "action",
+        "query_digest",
+        "transaction_cut",
+        "valid_at",
+        "recorded_at",
+        "scope_digest",
+        "authority_provenance_ref",
+        "authority_provenance_digest",
+        "generation_ref",
+        "generation_digest",
+        "checkpoint_ref",
+        "checkpoint_digest",
+        "freshness_digest",
+        "authority_checkpoint_digest",
+        "authorization",
+        "global_floor",
+        "binding",
+        "recovery",
+        "route",
+        "cohort",
+        "deletion",
+        "consent",
+        "projection_digest",
+        "contract_digest",
+        "authority_commitment_digest",
+        "base_snapshot_digest",
+        "cursor_state_digest",
+        "incoming_cursor_digest",
+        "incoming_continuation_ref",
+        "candidates",
+        "conflicts",
+        "citations",
+        "continuation",
+        "snapshot_digest"
+      ],
+      "properties": {
+        "snapshot_version": {
+          "const": "second-brain-recall-serve-snapshot-v2"
+        },
+        "snapshot_attestation_version": {
+          "const": "second-brain-recall-snapshot-attestation-v2"
+        },
+        "snapshot_signer_ref": {
+          "type": "string",
+          "pattern": "^signer:[0-9a-f]{64}$"
+        },
+        "snapshot_signer_algorithm": {
+          "const": "Ed25519"
+        },
+        "snapshot_key_id": {
+          "type": "string",
+          "pattern": "^key:[0-9a-f]{64}$"
+        },
+        "snapshot_signature": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "provenance_component_labels": {
+          "type": "array",
+          "const": ["authorization", "global_floor", "binding", "recovery", "route", "cohort", "deletion", "consent"]
+        },
+        "provenance_component_states": {
+          "type": "array",
+          "minItems": 8,
+          "maxItems": 8,
+          "items": {"$ref": "#/$defs/gate"}
+        },
+        "has_more": {"type": "boolean"},
+        "pagination_commitment_digest": {"$ref": "#/$defs/digest"},
+        "selected_candidates_digest": {"$ref": "#/$defs/digest"},
+        "selected_citations_digest": {"$ref": "#/$defs/digest"},
+        "selected_conflicts_digest": {"$ref": "#/$defs/digest"},
+        "workspace_ref": {
+          "$ref": "#/$defs/workspaceRef"
+        },
+        "capability_ref": {
+          "$ref": "#/$defs/capabilityRef"
+        },
+        "authority_epoch": {
+          "$ref": "#/$defs/positive"
+        },
+        "subject_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "query_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "transaction_cut": {
+          "$ref": "#/$defs/positive"
+        },
+        "valid_at": {
+          "$ref": "#/$defs/utc"
+        },
+        "recorded_at": {
+          "$ref": "#/$defs/utc"
+        },
+        "scope_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "authority_provenance_ref": {
+          "type": "string",
+          "pattern": "^provenance:[0-9a-f]{64}$"
+        },
+        "authority_provenance_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "generation_ref": {
+          "$ref": "#/$defs/generationRef"
+        },
+        "generation_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "checkpoint_ref": {
+          "$ref": "#/$defs/checkpointRef"
+        },
+        "checkpoint_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "freshness_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "authority_checkpoint_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "authorization": {
+          "$ref": "#/$defs/authority"
+        },
+        "global_floor": {
+          "$ref": "#/$defs/gate"
+        },
+        "binding": {
+          "$ref": "#/$defs/gate"
+        },
+        "recovery": {
+          "$ref": "#/$defs/gate"
+        },
+        "route": {
+          "$ref": "#/$defs/gate"
+        },
+        "cohort": {
+          "$ref": "#/$defs/gate"
+        },
+        "deletion": {
+          "$ref": "#/$defs/gate"
+        },
+        "consent": {
+          "$ref": "#/$defs/gate"
+        },
+        "projection_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "contract_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "authority_commitment_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "base_snapshot_digest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cursor_state_digest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "incoming_cursor_digest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "incoming_continuation_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/continuationRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/candidate"
+          }
+        },
+        "conflicts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/conflict"
+          }
+        },
+        "citations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/citation"
+          }
+        },
+        "continuation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/continuation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "snapshot_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "base_snapshot_digest": {
+                  "type": "null"
+                },
+                "incoming_cursor_digest": {
+                  "type": "null"
+                },
+                "incoming_continuation_ref": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "base_snapshot_digest": {
+                  "$ref": "#/$defs/digest"
+                },
+                "incoming_cursor_digest": {
+                  "$ref": "#/$defs/digest"
+                },
+                "incoming_continuation_ref": {
+                  "$ref": "#/$defs/continuationRef"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receipt_version",
+        "command_ref",
+        "workspace_ref",
+        "transaction_cut",
+        "ledger_epoch",
+        "receipt_digest"
+      ],
+      "properties": {
+        "receipt_version": {
+          "const": "second-brain-ledger-receipt-v2"
+        },
+        "command_ref": {
+          "$ref": "#/$defs/commandRef"
+        },
+        "workspace_ref": {
+          "$ref": "#/$defs/workspaceRef"
+        },
+        "transaction_cut": {
+          "$ref": "#/$defs/positive"
+        },
+        "ledger_epoch": {
+          "$ref": "#/$defs/positive"
+        },
+        "receipt_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "authorityProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provenance_version",
+        "provenance_ref",
+        "provenance_digest",
+        "signer_ref",
+        "signer_algorithm",
+        "key_id",
+        "signature",
+        "component_states",
+        "transaction_cut",
+        "issued_at",
+        "expires_at",
+        "workspace_ref",
+        "capability_ref",
+        "authority_epoch",
+        "subject_ref",
+        "action",
+        "query_digest",
+        "scope_digest",
+        "request_digest",
+        "command_payload_digest",
+        "component_labels"
+      ],
+      "properties": {
+        "provenance_version": {
+          "const": "second-brain-authority-provenance-v2"
+        },
+        "provenance_ref": {
+          "type": "string",
+          "pattern": "^provenance:[0-9a-f]{64}$"
+        },
+        "provenance_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "signer_ref": {
+          "type": "string",
+          "pattern": "^signer:[0-9a-f]{64}$"
+        },
+        "signer_algorithm": {
+          "const": "Ed25519"
+        },
+        "key_id": {
+          "type": "string",
+          "pattern": "^key:[0-9a-f]{64}$"
+        },
+        "signature": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^\\S+$"
+        },
+        "component_states": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/gate"
+          }
+        },
+        "transaction_cut": {
+          "$ref": "#/$defs/positive"
+        },
+        "issued_at": {
+          "$ref": "#/$defs/utc"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/utc"
+        },
+        "workspace_ref": {
+          "$ref": "#/$defs/workspaceRef"
+        },
+        "capability_ref": {
+          "$ref": "#/$defs/capabilityRef"
+        },
+        "authority_epoch": {
+          "$ref": "#/$defs/positive"
+        },
+        "subject_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "query_digest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scope_digest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_digest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "command_payload_digest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "component_labels": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "const": "authorization"
+            },
+            {
+              "const": "global_floor"
+            },
+            {
+              "const": "binding"
+            },
+            {
+              "const": "recovery"
+            },
+            {
+              "const": "route"
+            },
+            {
+              "const": "cohort"
+            },
+            {
+              "const": "deletion"
+            },
+            {
+              "const": "consent"
+            }
+          ],
+          "minItems": 8,
+          "maxItems": 8,
+          "items": false
+        }
+      },
+      "$comment": "Use validate_ledger_recall_v2_semantics only for structural canonical digests, time order, and cross-wire bindings; signed wires additionally require the authority-bearing trusted admission API."
+    }
+  },
+  "$comment": "FormatChecker plus validate_ledger_recall_v2_semantics provide structural validation only. Untrusted signed provenance, continuation, conflict, and snapshot wires require the minted-authority trusted admission API before use."
+}

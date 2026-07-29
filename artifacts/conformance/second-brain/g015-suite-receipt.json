@@ -1,0 +1,25 @@
+{
+  "schema": "wiki-g015-suite-receipt-v1",
+  "surface": "api-package-algorithm",
+  "frozen_head": "b58e66e736c21566aeb640e0800014457aa8e32e",
+  "frozen_range": "091951c..b58e66e",
+  "branch": "second-brain-stage3",
+  "worktree": "/private/tmp/wiki-spike-second-brain-stage3",
+  "pytest": "1525 passed",
+  "architecture_boundaries": "PASS",
+  "secret_scan": "PASS",
+  "architect_review": "CLEAR/APPROVE",
+  "executor_qa": "passed",
+  "red_team_blockers": [],
+  "commits": [
+    "091951c serve durable citations and bounded recall pages",
+    "7848590 add stage3 recall red-team suite",
+    "8a682ac page recall by whole support and conflict components",
+    "6f0dcca let V2 callers page recall and tell citations apart",
+    "2bbfcc3 bound recall cursors, indexes and clock skew",
+    "c656ff8 red-team component paging, V2 handles and cursor retention",
+    "cacefcc close residual paging, citation and cursor retention defects",
+    "c853676 own conflict canonical form and close cursor retention class",
+    "b58e66e migrate upgraded DBs onto unconditional cursor delete guard"
+  ]
+}

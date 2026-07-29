@@ -6,6 +6,7 @@ never admits a marked root to the legacy ``Workspace`` or creates a V2 marker.
 """
 from __future__ import annotations
 
+import json
 import os
 import stat
 from dataclasses import dataclass
@@ -188,6 +189,39 @@ def _has_symlink_ancestor(path: Path) -> bool:
             return True
     return False
 
+
+@dataclass(frozen=True)
+class V2WorkspaceRoot:
+    """Read-only admission result for the authenticated encrypted product.
+
+    A V2 marker is necessary but not sufficient authority.  Product
+    composition separately requires a currently resolved security authority.
+    This class intentionally never creates roots or child storage.
+    """
+
+    path: Path
+    marker: WorkspaceFormatMarker
+
+    @classmethod
+    def inspect(cls, root: str | Path) -> "V2WorkspaceRoot":
+        path = Path(root)
+        state = classify_workspace_root(path)
+        if state is not WorkspaceRootState.MARKED_UNSUPPORTED:
+            raise WorkspaceRootError(f"workspace root denied: {state.value}")
+        marker_path = path / WORKSPACE_FORMAT_FILENAME
+        try:
+            marker_stat = os.lstat(marker_path)
+            if stat.S_ISLNK(marker_stat.st_mode) or not stat.S_ISREG(marker_stat.st_mode):
+                raise WorkspaceRootError("workspace root denied: invalid marker")
+            with marker_path.open(encoding="utf-8") as marker_file:
+                marker = parse_marker(json.load(marker_file))
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            if isinstance(exc, WorkspaceRootError):
+                raise
+            raise WorkspaceRootError("workspace root denied: invalid marker") from exc
+        if not marker.encrypted_lifecycle_enabled:
+            raise WorkspaceRootError("workspace root denied: encrypted lifecycle disabled")
+        return cls(path=path, marker=marker)
 
 @dataclass(frozen=True)
 class LegacyWorkspaceRoot:

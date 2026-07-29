@@ -1,0 +1,10 @@
+{
+  "receipt_version": "second-brain-ops-drill-receipt-v1",
+  "drill_kind": "recovery",
+  "workspace_ref": "workspace:a92c36e66a25ee99ff862faa8e87987be6c7cd13c3ee661c400a45b0f1e3b132",
+  "scenario_digest": "4ce7ab93e01283ae6eb64bbd878903646a8f2be22f2727a3f32af4d90058ac3f",
+  "outcome": "PASS",
+  "observed_at": "2026-07-29T00:00:00Z",
+  "operator_ref": "operator:69b4bcbc6ed36c1de44a75ce1deabd1e2e2482081d8fafcd9ef3bc115d257f92",
+  "receipt_digest": "2418c92f5196acdb2acd448eac4a8bc536dee24ae39d52a828b27525e7be41eb"
+}

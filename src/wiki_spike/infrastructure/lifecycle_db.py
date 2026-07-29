@@ -107,7 +107,11 @@ COLUMN_KIND_EXACT_ALLOWLIST: tuple[str, ...] = (
     "consent_epoch",
     "retention_epoch",
     "revision_number",
+    "authority_epoch",
+    "ledger_epoch",
     "sensitivity",
+    "start_cut",
+    "end_cut",
 )
 
 
@@ -362,6 +366,116 @@ CREATE TABLE IF NOT EXISTS freshness_serve_gate (
   reason_state TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS ledger_candidate (
+  candidate_ref TEXT PRIMARY KEY, workspace_ref TEXT NOT NULL, candidate_state TEXT NOT NULL,
+  revision_ref TEXT NOT NULL, content_digest TEXT NOT NULL, authority_epoch TEXT NOT NULL,
+  valid_from_at TEXT NOT NULL, valid_to_at TEXT, recorded_from_at TEXT NOT NULL, recorded_to_at TEXT
+);
+CREATE TABLE IF NOT EXISTS ledger_candidate_version (
+  candidate_ref TEXT NOT NULL, revision_ref TEXT NOT NULL, workspace_ref TEXT NOT NULL,
+  candidate_state TEXT NOT NULL, content_digest TEXT NOT NULL, authority_epoch TEXT NOT NULL,
+  valid_from_at TEXT NOT NULL, valid_to_at TEXT, recorded_from_at TEXT NOT NULL, recorded_to_at TEXT,
+  start_cut TEXT NOT NULL, end_cut TEXT, command_ref TEXT NOT NULL, PRIMARY KEY (candidate_ref, revision_ref)
+);
+CREATE TABLE IF NOT EXISTS ledger_revision (
+  revision_ref TEXT PRIMARY KEY, candidate_ref TEXT NOT NULL, workspace_ref TEXT NOT NULL,
+  content_digest TEXT NOT NULL, revision_state TEXT NOT NULL, recorded_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ledger_transition (
+  command_ref TEXT PRIMARY KEY, candidate_ref TEXT NOT NULL, workspace_ref TEXT NOT NULL,
+  prior_state TEXT NOT NULL, resulting_state TEXT NOT NULL, authority_epoch TEXT NOT NULL,
+  command_digest TEXT NOT NULL, recorded_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ledger_edge (
+  edge_ref TEXT PRIMARY KEY, workspace_ref TEXT NOT NULL, edge_kind TEXT NOT NULL,
+  from_candidate_ref TEXT NOT NULL, to_candidate_ref TEXT NOT NULL, edge_state TEXT NOT NULL,
+  valid_from_at TEXT NOT NULL, valid_to_at TEXT, recorded_from_at TEXT NOT NULL, recorded_to_at TEXT,
+  start_cut TEXT NOT NULL, end_cut TEXT,
+  UNIQUE (workspace_ref, edge_kind, from_candidate_ref, to_candidate_ref, recorded_from_at)
+);
+CREATE TABLE IF NOT EXISTS ledger_command (
+  command_ref TEXT PRIMARY KEY, workspace_ref TEXT NOT NULL, command_digest TEXT NOT NULL,
+  receipt_digest TEXT NOT NULL, transaction_sequence TEXT NOT NULL, ledger_epoch TEXT NOT NULL,
+  command_state TEXT NOT NULL, recorded_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ledger_authority (
+  workspace_ref TEXT PRIMARY KEY, capability_ref TEXT NOT NULL, authority_epoch TEXT NOT NULL,
+  authority_state TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ledger_provenance (
+  provenance_ref TEXT PRIMARY KEY, provenance_digest TEXT NOT NULL, workspace_ref TEXT NOT NULL,
+  command_ref TEXT, request_digest TEXT, provenance_state TEXT NOT NULL, recorded_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ledger_citation_commitment (
+  candidate_ref TEXT NOT NULL, revision_ref TEXT NOT NULL, workspace_ref TEXT NOT NULL,
+  locator_ref TEXT NOT NULL, locator_digest TEXT NOT NULL, immutable_source_ref TEXT NOT NULL,
+  content_digest TEXT NOT NULL, generation_ref TEXT NOT NULL, checkpoint_ref TEXT NOT NULL,
+  provenance_digest TEXT NOT NULL, citation_digest TEXT NOT NULL, commitment_state TEXT NOT NULL,
+  recorded_at TEXT NOT NULL, PRIMARY KEY (candidate_ref, revision_ref)
+);
+CREATE TABLE IF NOT EXISTS ledger_recall_cursor (
+  cursor_handle_ref TEXT PRIMARY KEY, workspace_ref TEXT NOT NULL,
+  transaction_sequence TEXT NOT NULL, cursor_state_digest TEXT NOT NULL,
+  after_candidate_ref TEXT NOT NULL, recorded_at TEXT NOT NULL, expires_at TEXT NOT NULL
+);
+-- F6 class fix: ephemeral recall cursors use the same delete discipline as
+-- every other durable ledger table. A live (or expired) row cannot be removed
+-- by ordinary SQL; the only delete path is the controlled retention pass,
+-- which drops and restores this trigger inside one SQLite transaction so a
+-- bare DELETE never succeeds and a crashed retention pass cannot leave the
+-- guard missing (DDL is transactional in SQLite).
+CREATE INDEX IF NOT EXISTS ledger_candidate_version_workspace_state_ref_idx
+  ON ledger_candidate_version(workspace_ref, candidate_state, candidate_ref);
+CREATE UNIQUE INDEX IF NOT EXISTS ledger_citation_commitment_candidate_revision_workspace_uq
+  ON ledger_citation_commitment(candidate_ref, revision_ref, workspace_ref);
+CREATE INDEX IF NOT EXISTS ledger_edge_workspace_kind_state_idx
+  ON ledger_edge(workspace_ref, edge_kind, edge_state);
+CREATE INDEX IF NOT EXISTS ledger_edge_from_kind_state_idx
+  ON ledger_edge(from_candidate_ref, edge_kind, edge_state);
+CREATE TABLE IF NOT EXISTS ledger_sequence (
+  workspace_ref TEXT PRIMARY KEY, transaction_sequence TEXT NOT NULL, ledger_epoch TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ledger_migration (
+  migration_ref TEXT PRIMARY KEY, workspace_ref TEXT NOT NULL, migration_state TEXT NOT NULL,
+  migration_digest TEXT NOT NULL, recorded_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ledger_migration_receipt (
+  receipt_digest TEXT PRIMARY KEY, workspace_ref TEXT NOT NULL, receipt_state TEXT NOT NULL,
+  recorded_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ledger_candidate_version_closure (
+  candidate_ref TEXT NOT NULL, revision_ref TEXT NOT NULL, end_cut TEXT NOT NULL,
+  recorded_at TEXT NOT NULL, PRIMARY KEY (candidate_ref, revision_ref)
+);
+CREATE TABLE IF NOT EXISTS ledger_edge_closure (
+  edge_ref TEXT PRIMARY KEY, end_cut TEXT NOT NULL, recorded_at TEXT NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS ledger_candidate_version_no_update
+BEFORE UPDATE ON ledger_candidate_version BEGIN SELECT RAISE(ABORT, 'ledger candidate history is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS ledger_candidate_version_no_delete
+BEFORE DELETE ON ledger_candidate_version BEGIN SELECT RAISE(ABORT, 'ledger candidate history is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS ledger_edge_no_update
+BEFORE UPDATE ON ledger_edge BEGIN SELECT RAISE(ABORT, 'ledger edge history is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS ledger_edge_no_delete
+BEFORE DELETE ON ledger_edge BEGIN SELECT RAISE(ABORT, 'ledger edge history is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS ledger_candidate_version_closure_no_update
+BEFORE UPDATE ON ledger_candidate_version_closure BEGIN SELECT RAISE(ABORT, 'ledger candidate closure is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS ledger_candidate_version_closure_no_delete
+BEFORE DELETE ON ledger_candidate_version_closure BEGIN SELECT RAISE(ABORT, 'ledger candidate closure is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS ledger_edge_closure_no_update
+BEFORE UPDATE ON ledger_edge_closure BEGIN SELECT RAISE(ABORT, 'ledger edge closure is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS ledger_edge_closure_no_delete
+BEFORE DELETE ON ledger_edge_closure BEGIN SELECT RAISE(ABORT, 'ledger edge closure is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS ledger_citation_commitment_no_update
+BEFORE UPDATE ON ledger_citation_commitment BEGIN SELECT RAISE(ABORT, 'ledger citation commitment is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS ledger_citation_commitment_no_delete
+BEFORE DELETE ON ledger_citation_commitment BEGIN SELECT RAISE(ABORT, 'ledger citation commitment is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS ledger_recall_cursor_no_update
+BEFORE UPDATE ON ledger_recall_cursor BEGIN SELECT RAISE(ABORT, 'ledger recall cursor is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS ledger_recall_cursor_no_delete
+BEFORE DELETE ON ledger_recall_cursor
+BEGIN SELECT RAISE(ABORT, 'live ledger recall cursor cannot be deleted'); END;
 """
 
 CAPTURE_SCHEMA = """
@@ -474,6 +588,18 @@ TABLE_NAMES: tuple[str, ...] = (
     "capture_checkpoint",
     "migration_registration",
     "capture_cohort",
+    "ledger_candidate",
+    "ledger_revision",
+    "ledger_transition",
+    "ledger_edge",
+    "ledger_command",
+    "ledger_authority",
+    "ledger_candidate_version",
+    "ledger_provenance",
+    "ledger_citation_commitment",
+    "ledger_recall_cursor",
+    "ledger_sequence",
+    "ledger_migration",
 )
 
 EVENT_LOG_DOMAIN = "wiki-spike.lifecycle-db.event-log.v1"
@@ -1163,6 +1289,7 @@ class LifecycleDatabase:
     def __init__(self, db_path: Path, fixture_capture_mode: bool = False) -> None:
         self.db_path = db_path
         self.con: sqlite3.Connection | None = None
+        self._read_con: sqlite3.Connection | None = None
         # Retained as an ignored compatibility argument. A caller cannot grant
         # fixture capability by passing or mutating a public mode flag.
         self._fixture_capture_capability = False
@@ -1180,11 +1307,48 @@ class LifecycleDatabase:
         self.con.execute("PRAGMA foreign_keys=ON")
         self.con.execute("PRAGMA busy_timeout=5000")
         self.con.executescript(SCHEMA)
+        for table, column in (
+            ("ledger_candidate_version", "start_cut TEXT"),
+            ("ledger_candidate_version", "end_cut TEXT"),
+            ("ledger_edge", "start_cut TEXT"),
+            ("ledger_edge", "end_cut TEXT"),
+            ("ledger_provenance", "provenance_payload_hex TEXT"),
+        ):
+            columns = {row[1] for row in self.con.execute(f"PRAGMA table_info({table})")}
+            if column.split()[0] not in columns:
+                self.con.execute(f"ALTER TABLE {table} ADD COLUMN {column}")
+        # Class-fix migration for pre-c853676 files: CREATE TRIGGER IF NOT EXISTS
+        # leaves the old conditional no_delete body (WHEN retention_bound ...) in
+        # place, and the ambient retention_bound table may still exist. Replace
+        # the trigger body unconditionally and drop the bound table so upgraded
+        # databases receive the same "ordinary DELETE always refuses" guarantee
+        # as a fresh initialize, without waiting for the first purge.
+        self.con.execute("DROP TRIGGER IF EXISTS ledger_recall_cursor_no_delete")
+        self.con.execute(
+            "CREATE TRIGGER ledger_recall_cursor_no_delete "
+            "BEFORE DELETE ON ledger_recall_cursor "
+            "BEGIN SELECT RAISE(ABORT, 'live ledger recall cursor cannot be deleted'); END"
+        )
+        self.con.execute("DROP TABLE IF EXISTS ledger_recall_cursor_retention_bound")
+        self._read_con = sqlite3.connect(str(self.db_path), isolation_level=None)
+        self._read_con.execute("PRAGMA journal_mode=WAL")
+        self._read_con.execute("PRAGMA synchronous=FULL")
+        self._read_con.execute("PRAGMA foreign_keys=ON")
+        self._read_con.execute("PRAGMA busy_timeout=5000")
         if self._fixture_capture_capability:
             self.con.executescript(CAPTURE_SCHEMA)
         self.assert_contract_pragmas()
         assert_no_plaintext_columns(self.con)
-
+    def open_read_connection(self) -> sqlite3.Connection:
+        """Return a fresh WAL read connection for one independently acquired cut."""
+        if self.con is None:
+            raise LifecycleDbError("initialize() not called")
+        con = sqlite3.connect(str(self.db_path), isolation_level=None)
+        con.execute("PRAGMA journal_mode=WAL")
+        con.execute("PRAGMA synchronous=FULL")
+        con.execute("PRAGMA foreign_keys=ON")
+        con.execute("PRAGMA busy_timeout=5000")
+        return con
     def assert_contract_pragmas(self) -> None:
         """Assert the four contract PRAGMAs are active on the open connection."""
         assert self.con is not None, "initialize() not called"
@@ -1422,15 +1586,51 @@ class LifecycleDatabase:
         self.con.row_factory = sqlite3.Row
         return list(self.con.execute("SELECT * FROM event_log ORDER BY event_id"))
 
+    def purge_expired_recall_cursors(self, as_of: str) -> int:
+        """Narrow F6 retention path: delete only ``ledger_recall_cursor`` rows
+        already expired as of the caller's trusted ``as_of`` instant.
+
+        Ordinary DELETE is always refused by ``ledger_recall_cursor_no_delete``
+        (same discipline as every other durable ledger table). This controlled
+        path drops that one trigger, deletes only rows with
+        ``expires_at <= as_of``, and restores the trigger inside a single
+        SQLite transaction. DDL is transactional, so a crash or exception
+        rolls the guard back into place and a bare DELETE outside this path
+        can never succeed. Returns the row count removed.
+        """
+        assert self.con is not None, "initialize() not called"
+        con = self.con
+        con.execute("BEGIN IMMEDIATE")
+        try:
+            con.execute("DROP TRIGGER IF EXISTS ledger_recall_cursor_no_delete")
+            cursor = con.execute(
+                "DELETE FROM ledger_recall_cursor WHERE julianday(expires_at)<=julianday(?)",
+                (as_of,),
+            )
+            removed = cursor.rowcount
+            con.execute(
+                "CREATE TRIGGER ledger_recall_cursor_no_delete "
+                "BEFORE DELETE ON ledger_recall_cursor "
+                "BEGIN SELECT RAISE(ABORT, 'live ledger recall cursor cannot be deleted'); END"
+            )
+        except BaseException:
+            con.execute("ROLLBACK")
+            raise
+        else:
+            con.execute("COMMIT")
+        return removed
+
     # -- lifecycle ------------------------------------------------------------- #
 
     def close(self) -> None:
-        if self.con is not None:
-            try:
-                self.con.close()
-            except Exception:
-                pass
-            self.con = None
+        for con in (self._read_con, self.con):
+            if con is not None:
+                try:
+                    con.close()
+                except Exception:
+                    pass
+        self._read_con = None
+        self.con = None
 
     def __del__(self) -> None:  # pragma: no cover - best-effort cleanup
         self.close()

@@ -1,0 +1,35 @@
+{
+  "envelope_version": "second-brain-product-release-envelope-v1",
+  "release_id": "second-brain-v1.0.0-rc1",
+  "workspace_ref": "workspace:a92c36e66a25ee99ff862faa8e87987be6c7cd13c3ee661c400a45b0f1e3b132",
+  "resolved_scope_digest": "d0ae2c37425a65a30ed7644674a341390fffeb7ed873d3aa3882ab2482fd5cd2",
+  "contract_digest": "cc8321d6375c494d043fdd0260f21bc0ec51dacc9f6abb7f909cdcd3041b78bf",
+  "source_manifest_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "capability_manifest_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "benchmark_manifest_digest": "0e89820860c342f2c7ec694d144023b10301c2accdd078cb5167a06d0c3d5bcc",
+  "holdout_manifest_digest": "d179b28cc8927b726d766bc0a22ed40ffc879d40f62a100e7d97dabb24253669",
+  "drill_receipt_digests": [
+    "2418c92f5196acdb2acd448eac4a8bc536dee24ae39d52a828b27525e7be41eb",
+    "9a25685a7f8d37afc722de11099cffda26afa46065c173ceadcf90be169aabce",
+    "ea73d90f8a4075337f85f10cbc7069fbb95c579d24aa67a7c60cf5e5f08aa233",
+    "1ae0f481a25ac57912a371f647b8d960a959a818cc3a8cfe7366a073b0df6837",
+    "9513f2022ab907f52022f619bb03ca131452896d51a7766a7283bf5680ae52db"
+  ],
+  "foundational_receipt_refs": [
+    {
+      "receipt_kind": "encrypted-lifecycle-foundation",
+      "receipt_digest": "3e7abe9429e068b733b5bb3b68dc2e73d556dbc470c297be7797e2172038e3f6",
+      "authorized_at": "2026-07-28T00:00:00Z",
+      "authority_ref": "security-board"
+    }
+  ],
+  "artifact_paths": [
+    "artifacts/product-release/second-brain-v1/drills/recovery.json",
+    "artifacts/product-release/second-brain-v1/drills/deletion.json",
+    "artifacts/product-release/second-brain-v1/drills/credential.json",
+    "artifacts/product-release/second-brain-v1/drills/route.json",
+    "artifacts/product-release/second-brain-v1/drills/alert.json",
+    "artifacts/product-release/second-brain-v1/envelope.json"
+  ],
+  "envelope_digest": "c9ef2f485c35630bd52a3fc1498f948522d6bd51dcefe3c89720ed803dad94a0"
+}

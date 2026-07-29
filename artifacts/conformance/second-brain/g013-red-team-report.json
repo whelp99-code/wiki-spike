@@ -1,0 +1,515 @@
+{
+  "goal": "G013",
+  "title": "Stage-3 bounded batch recall + satisfiable V2 continuation chain -- completion QA / red-team (re-run: pass 4, attack classes after c853676)",
+  "frozen_commit_range": "091951cfc009e1eef81807c38cd2eaf01d6ce964..c85367665ce90f5593c41e44053fd5206c83561d",
+  "frozen_head": "c85367665ce90f5593c41e44053fd5206c83561d",
+  "frozen_head_subject": "own conflict canonical form and close cursor retention class",
+  "commits_in_range": [
+    {
+      "sha": "091951c",
+      "subject": "serve durable citations and bounded recall pages",
+      "note": "base commit the pass-1 suite was written against"
+    },
+    {
+      "sha": "7848590",
+      "subject": "add stage3 recall red-team suite",
+      "note": "pass-1 suite itself"
+    },
+    {
+      "sha": "8a682ac",
+      "subject": "page recall by whole support and conflict components",
+      "note": "component paging"
+    },
+    {
+      "sha": "6f0dcca",
+      "subject": "let V2 callers page recall and tell citations apart",
+      "note": "V2 transport paging + citation NOT_SERVED"
+    },
+    {
+      "sha": "2bbfcc3",
+      "subject": "bound recall cursors, indexes and clock skew",
+      "note": "cursor TTL/retention + recorded_at clock-skew bound"
+    },
+    {
+      "sha": "c656ff8",
+      "subject": "red-team component paging, V2 handles and cursor retention",
+      "note": "pass-2 suite extensions"
+    },
+    {
+      "sha": "cacefcc",
+      "subject": "close residual paging, citation and cursor retention defects",
+      "note": "pass-3 defect closures"
+    },
+    {
+      "sha": "c853676",
+      "subject": "own conflict canonical form and close cursor retention class",
+      "note": "pass-3 architect probes A/B/C/D fixed: conflict (min,max) ownership, reverse DECLARE fails at write, ordinary DELETE always refused, SUPERSEDED visibility index"
+    }
+  ],
+  "worktree": "/private/tmp/wiki-spike-second-brain-stage3",
+  "branch": "second-brain-stage3",
+  "new_test_module": "tests/second_brain/test_stage3_g013_red_team.py",
+  "why_this_rerun": "Pass 1 missed P0 (edge-free fixtures). Pass 2 found retention_bound but missed conflict canonical-form class. Pass 3 architect probes A/B/C/D all confirmed real defects that are now fixed in c853676. Pass 4 attacks the *classes*, not the known repros: (1) conflict canonical form under mixed stored directions + reverse-declaration write fail + multi-page union exactness; (2) cursor immortality under bare DELETE / invented authority tables / expired bare DELETE / controlled purge restore; (3) visibility agreement across CREATE/APPROVE/REJECT/CORRECT/SUPERSEDE/REVOKE/FORGET/DECLARE_CONTRADICTION at several page sizes; (4) bounded work with workspace > page_size and one oversized linked component; (5) citation never OK/0 for off-page on first/middle/terminal pages; (6) chain integrity under interleaved appends between pages (pinned cut exact partition or fail-closed).",
+  "seed": null,
+  "commands_run": [
+    {
+      "command": "/usr/local/bin/python3.12 -m pytest -q tests/second_brain/test_stage3_g013_red_team.py",
+      "observed_result": "46 passed in 13.75s",
+      "counts": {
+        "collected": 46,
+        "passed": 46,
+        "failed": 0
+      },
+      "note": "Prior module at c853676 head before pass-4 edits collected 37. Pass 4 adds 6 test functions; visibility is parametrized over 4 page sizes so 6 functions expand to 9 collected cases (6 + 3 extra param expansions). 37 + 9 = 46."
+    },
+    {
+      "command": "/usr/local/bin/python3.12 -m pytest -q",
+      "observed_result": "1524 passed in 45.05s",
+      "counts": {
+        "collected": 1524,
+        "passed": 1524,
+        "failed": 0
+      },
+      "note": "Assignment-stated baseline on frozen c853676 was 1515 passed. 1524 = 1515 + 9 new red-team collected cases. No pre-existing test modified, weakened, or removed. Only tests/second_brain/test_stage3_g013_red_team.py and this artifact were touched."
+    },
+    {
+      "command": "/usr/local/bin/python3.12 scripts/check_architecture_boundaries.py",
+      "observed_result": "PASS: architecture boundaries",
+      "counts": {
+        "exit_code": 0
+      }
+    },
+    {
+      "command": "/usr/local/bin/python3.12 scripts/scan_secrets.py",
+      "observed_result": "PASS: no tracked secrets detected",
+      "counts": {
+        "exit_code": 0
+      }
+    }
+  ],
+  "contract_obligation_matrix": {
+    "C1": {
+      "description": "V2 recall is bounded cited batch snapshot: no snapshot exceeds page_size EXCEPT a single connected component larger than page_size, which is still served whole on its own page; has_more true iff a further page exists",
+      "covered_by_case_ids": [
+        "c1_c2_full_page_walk",
+        "c1_page_size_construction_boundaries",
+        "c1_page_size_exact_terminal",
+        "c1_c2_dense_component_swallows_most_candidates",
+        "c1_c2_interleaved_links_and_isolated_several_page_sizes",
+        "c1_c2_component_straddles_lexicographic_gap",
+        "v2_pages_to_exhaustion_and_citation_flags_off_page",
+        "c1_c2_visibility_agreement_across_command_kinds",
+        "c1_bounded_work_oversized_component_and_exact_partition"
+      ]
+    },
+    "C2": {
+      "description": "successful continuations retrieve the next page of the SAME transaction cut, no duplicate/skip, final page terminal; pages partition whole SUPPORT/CONTRADICTION components, never split one; conflict pairs are sorted unique (min,max)",
+      "covered_by_case_ids": [
+        "c1_c2_full_page_walk",
+        "c2_c3_deletion_between_pages",
+        "c1_c2_dense_component_swallows_most_candidates",
+        "c1_c2_interleaved_links_and_isolated_several_page_sizes",
+        "c1_c2_component_straddles_lexicographic_gap",
+        "c1_c2_multiple_contradictions_surface_exactly_once",
+        "v2_pages_to_exhaustion_and_citation_flags_off_page",
+        "c2_conflict_canonical_form_mixed_directions_and_reverse_declaration",
+        "c1_c2_visibility_agreement_across_command_kinds",
+        "c2_c3_chain_integrity_under_interleaved_appends"
+      ]
+    },
+    "C3": {
+      "description": "fail-closed continuations: forged, expired, replayed, cross-workspace, cut-shifted, tampered, mangled/truncated/separator-injected wire receipts, or retention-abused cursors never serve results; a live or expired cursor row can never be deleted outside controlled purge; no_delete trigger remains installed after attacks",
+      "covered_by_case_ids": [
+        "c3_cross_workspace_cursor_theft",
+        "c3_cross_scope_query_digest_swap",
+        "c3_expired_continuation",
+        "c3_tampered_cursor_state_digest",
+        "c3_tampered_transaction_cut",
+        "c3_tampered_untethered_field_signature",
+        "c2_c3_deletion_between_pages",
+        "c3_expired_cursor_row_refuses_resumption",
+        "c3_live_cursor_row_undeletable_and_unupdatable",
+        "c3_retention_bound_table_abuse",
+        "c3_cursor_immortality_class_survives_delete_authority_and_purge",
+        "v2_mangled_continuation_receipt",
+        "v2_truncated_continuation_receipt",
+        "v2_separator_injected_continuation_receipt",
+        "v2_foreign_workspace_continuation_receipt",
+        "c2_c3_chain_integrity_under_interleaved_appends"
+      ]
+    },
+    "C4": {
+      "description": "durable citations: every served candidate carries exactly one committed citation bound to its revision; tampered commitment never served; V2 citation() distinguishes off-page (NOT_SERVED) from genuinely uncited (OK/0) on first/middle/terminal pages and never leaks forbidden surface names",
+      "covered_by_case_ids": [
+        "c4_every_candidate_has_bound_citation",
+        "c4_tampered_citation_commitment",
+        "v2_pages_to_exhaustion_and_citation_flags_off_page",
+        "v2_citation_not_served_earlier_page_on_terminal",
+        "v2_no_receipt_value_leaks_forbidden_surface",
+        "c4_v2_citation_never_ok_zero_off_page_first_middle_terminal"
+      ]
+    },
+    "C5_clock_skew": {
+      "description": "(F8) recall recorded_at is bounded to a small forward tolerance past the trusted clock, checked immediately and re-checked on every page against the current trusted clock; only the forward direction is bounded",
+      "covered_by_case_ids": [
+        "c4_clock_skew_forward_bound_with_exact_boundary_probe",
+        "c4_clock_skew_as_of_far_past_still_succeeds",
+        "c4_clock_skew_enforced_on_continued_page"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "c1_c2_full_page_walk",
+      "test_function": "test_g013_c1_c2_full_page_walk_is_exact_partition_of_candidate_set",
+      "pass": 1,
+      "scenario": "7 approved candidates, page_size=2. Walk the entire continuation chain to termination.",
+      "expected": "Concatenation of all pages == full sorted candidate set with each candidate exactly once; every page <= page_size; same transaction_cut; terminal page has_more=false continuation=None.",
+      "observed": "4 pages (2,2,2,1); exact sorted partition of 7; terminal clean.",
+      "verdict": "passed"
+    },
+    {
+      "id": "c1_c2_component_paged_walk_mixed",
+      "test_function": "test_g013_c1_c2_component_paged_walk_partitions_linked_and_isolated_candidates",
+      "pass": 1,
+      "scenario": "SUPPORT pair + CONTRADICTION pair + 2 isolates, page_size=2.",
+      "expected": "No support/conflict endpoint off-page; exact partition; contradiction surfaces once.",
+      "observed": "Confirmed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "c3_cross_workspace_cursor_theft",
+      "test_function": "test_g013_c3_stolen_cursor_handle_across_workspace_fails_closed",
+      "pass": 1,
+      "scenario": "Stolen workspace-A cursor_handle_ref/state_digest replayed under workspace B.",
+      "expected": "Fail closed.",
+      "observed": "LedgerAuthorityError('continuation cursor is not durably resolvable').",
+      "verdict": "passed"
+    },
+    {
+      "id": "c3_cross_scope_query_digest_swap",
+      "test_function": "test_g013_c3_stolen_cursor_handle_with_different_scope_and_query_digest_fails_closed",
+      "pass": 1,
+      "scenario": "Same workspace, different query/scope digest with stolen cursor.",
+      "expected": "Fail closed.",
+      "observed": "InvalidContractValue('continuation is not request-bound') at construction.",
+      "verdict": "passed"
+    },
+    {
+      "id": "c3_expired_continuation",
+      "test_function": "test_g013_c3_expired_continuation_is_refused",
+      "pass": 1,
+      "scenario": "Re-signed continuation with expires_at == NOW.",
+      "expected": "Refuse expired continuation.",
+      "observed": "InvalidContractValue('expired continuation cannot acquire a snapshot').",
+      "verdict": "passed"
+    },
+    {
+      "id": "c3_tampered_cursor_state_digest",
+      "test_function": "test_g013_c3_tampered_cursor_state_digest_without_resign_fails_durable_binding",
+      "pass": 1,
+      "scenario": "cursor_state_digest mutated, signature stale.",
+      "expected": "Fail closed.",
+      "observed": "LedgerAuthorityError('continuation cursor is not durably resolvable').",
+      "verdict": "passed"
+    },
+    {
+      "id": "c3_tampered_transaction_cut",
+      "test_function": "test_g013_c3_tampered_transaction_cut_without_resign_fails_closed",
+      "pass": 1,
+      "scenario": "transaction_cut bumped without re-sign.",
+      "expected": "Fail closed.",
+      "observed": "LedgerAuthorityError raised.",
+      "verdict": "passed"
+    },
+    {
+      "id": "c3_tampered_untethered_field_signature",
+      "test_function": "test_g013_c3_tampered_untethered_field_without_resign_fails_signature_verification",
+      "pass": 1,
+      "scenario": "authority_checkpoint_digest mutated, signature stale.",
+      "expected": "Signature verification refuses.",
+      "observed": "InvalidContractValue('continuation signature verification failed').",
+      "verdict": "passed"
+    },
+    {
+      "id": "c1_page_size_construction_boundaries",
+      "test_function": "test_g013_c1_page_size_construction_boundaries_are_rejected[bad_page_size]",
+      "pass": 1,
+      "scenario": "page_size in {0, 501, True, \"2\"}.",
+      "expected": "All rejected at construction.",
+      "observed": "All four raised LedgerAuthorityError('recall page size must be a bounded positive batch').",
+      "verdict": "passed"
+    },
+    {
+      "id": "c1_page_size_exact_terminal",
+      "test_function": "test_g013_c1_page_size_exactly_equal_to_candidate_count_is_terminal",
+      "pass": 1,
+      "scenario": "3 candidates, page_size=3.",
+      "expected": "Single terminal page of 3.",
+      "observed": "Confirmed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "c4_every_candidate_has_bound_citation",
+      "test_function": "test_g013_c4_every_served_candidate_carries_exactly_one_bound_citation",
+      "pass": 1,
+      "scenario": "3 candidates; inspect candidates vs citations.",
+      "expected": "1:1 bound citations.",
+      "observed": "Confirmed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "c4_tampered_citation_commitment",
+      "test_function": "test_g013_c4_tampered_citation_commitment_is_never_served",
+      "pass": 1,
+      "scenario": "locator_ref forged after dropping no_update trigger.",
+      "expected": "Refuse revalidation failure.",
+      "observed": "LedgerAuthorityError('durable citation commitment failed revalidation').",
+      "verdict": "passed"
+    },
+    {
+      "id": "c2_c3_deletion_between_pages",
+      "test_function": "test_g013_c2_c3_deletion_between_pages_is_observed_and_reported",
+      "pass": 1,
+      "scenario": "REVOKE mid-chain after page 1.",
+      "expected": "Fail closed OR pinned cut serves pre-revoke state without live leakage.",
+      "observed": "Pinned cut serves victim as APPROVED at pre-revoke cut (documented point-in-time pin).",
+      "verdict": "passed",
+      "classification": "observed_behavior_matches_documented_point_in_time_pinning_invariant_not_a_defect"
+    },
+    {
+      "id": "c1_c2_dense_component_swallows_most_candidates",
+      "test_function": "test_g013_c1_c2_dense_component_swallows_most_candidates_at_tight_page_size",
+      "pass": 2,
+      "scenario": "7-member SUPPORT chain + 2 isolates, page_size=2.",
+      "expected": "Chain served whole on one oversized page; exact partition of 9.",
+      "observed": "Confirmed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "c1_c2_interleaved_links_and_isolated_several_page_sizes",
+      "test_function": "test_g013_c1_c2_interleaved_links_and_isolated_candidates_across_several_page_sizes[1,2,3,4,7]",
+      "pass": 2,
+      "scenario": "SUPPORT pair + CONTRADICTION pair + 3 isolates at page_size in {1,2,3,4,7}.",
+      "expected": "Exact partition; single conflict surfacing; no off-page endpoints.",
+      "observed": "All 5 parametrized runs passed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "c1_c2_component_straddles_lexicographic_gap",
+      "test_function": "test_g013_c1_c2_component_members_straddle_lexicographic_gap_between_isolated_candidates",
+      "pass": 2,
+      "scenario": "Isolated ref sorts strictly between SUPPORT pair members; page_size=1.",
+      "expected": "Component co-served; 3 candidates take 2 pages not 3.",
+      "observed": "Confirmed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "c1_c2_multiple_contradictions_surface_exactly_once",
+      "test_function": "test_g013_c1_c2_multiple_contradictions_each_surface_exactly_once_across_full_walk",
+      "pass": 2,
+      "scenario": "3 independent CONTRADICTION pairs, page_size=2.",
+      "expected": "Each conflict surfaces exactly once; exact 6-candidate partition.",
+      "observed": "Confirmed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "v2_pages_to_exhaustion_and_citation_flags_off_page",
+      "test_function": "test_g013_v2_recall_pages_to_exhaustion_and_citation_flags_off_page_candidates",
+      "pass": 2,
+      "scenario": "3 candidates, page_size=1 via SecondBrainApiV2 encoded continuation.",
+      "expected": "3 pages; off-page citation NOT_SERVED; exact partition.",
+      "observed": "Confirmed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "v2_citation_not_served_earlier_page_on_terminal",
+      "test_function": "test_g013_v2_citation_reports_not_served_for_an_earlier_page_candidate_on_the_terminal_page",
+      "pass": 2,
+      "scenario": "2 candidates page_size=1; cite page-1 candidate on terminal page.",
+      "expected": "NOT_SERVED/0 for earlier-page candidate; OK for on-page.",
+      "observed": "Confirmed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "v2_mangled_continuation_receipt",
+      "test_function": "test_g013_v2_mangled_continuation_receipt_fails_closed",
+      "pass": 2,
+      "scenario": "Flip one hex char of cursor_state_digest in encoded receipt.",
+      "expected": "Fail closed.",
+      "observed": "InvalidContractValue on from_mapping.",
+      "verdict": "passed"
+    },
+    {
+      "id": "v2_truncated_continuation_receipt",
+      "test_function": "test_g013_v2_truncated_continuation_receipt_fails_closed",
+      "pass": 2,
+      "scenario": "Receipt truncated to half length.",
+      "expected": "Fail closed.",
+      "observed": "ValueError or InvalidContractValue.",
+      "verdict": "passed"
+    },
+    {
+      "id": "v2_separator_injected_continuation_receipt",
+      "test_function": "test_g013_v2_separator_injected_continuation_receipt_fails_closed",
+      "pass": 2,
+      "scenario": "Smuggle ;forged_field=evil and inject '=' into cursor_handle_ref value.",
+      "expected": "Both fail closed.",
+      "observed": "UnknownContractField / InvalidContractValue.",
+      "verdict": "passed"
+    },
+    {
+      "id": "v2_foreign_workspace_continuation_receipt",
+      "test_function": "test_g013_v2_foreign_workspace_continuation_receipt_fails_closed",
+      "pass": 2,
+      "scenario": "Workspace A receipt wrapped in workspace B request.",
+      "expected": "Fail closed at request binding.",
+      "observed": "InvalidContractValue('continuation is not request-bound').",
+      "verdict": "passed"
+    },
+    {
+      "id": "v2_no_receipt_value_leaks_forbidden_surface",
+      "test_function": "test_g013_v2_no_receipt_value_leaks_forbidden_surface_name_across_full_walk",
+      "pass": 2,
+      "scenario": "Full V2 walk; scan receipt values for forbidden surface tokens.",
+      "expected": "No leak.",
+      "observed": "Confirmed clean.",
+      "verdict": "passed"
+    },
+    {
+      "id": "c3_expired_cursor_row_refuses_resumption",
+      "test_function": "test_g013_c3_expired_cursor_row_refuses_resumption_after_ttl_elapses",
+      "pass": 2,
+      "scenario": "Force expires_at into the past on durable row; resume.",
+      "expected": "Refuse expired cursor.",
+      "observed": "LedgerAuthorityError('continuation cursor has expired').",
+      "verdict": "passed"
+    },
+    {
+      "id": "c3_live_cursor_row_undeletable_and_unupdatable",
+      "test_function": "test_g013_c3_live_cursor_row_is_undeletable_and_unupdatable_via_direct_sql",
+      "pass": 2,
+      "scenario": "Bare DELETE and UPDATE on live cursor.",
+      "expected": "Both refused; row remains.",
+      "observed": "cannot be deleted / append-only; count=1.",
+      "verdict": "passed"
+    },
+    {
+      "id": "c3_retention_bound_table_abuse",
+      "test_function": "test_g013_c3_retention_bound_table_cannot_be_abused_to_delete_a_live_cursor",
+      "pass": 2,
+      "note": "Pass-2 kept this FAILING against pre-c853676 retention_bound WHEN-clause design. c853676 closed the class: ordinary DELETE is always refused regardless of ambient tables.",
+      "scenario": "Bare DELETE; invent retention_bound table and write into it; expire row then bare DELETE; assert no_delete trigger still installed.",
+      "expected": "Every ordinary DELETE fails closed; trigger remains; row remains until controlled purge.",
+      "observed": "All three attack paths raise 'cannot be deleted'; trigger count==1; row count==1. (c853676 fix verified.)",
+      "verdict": "passed",
+      "classification": "pass2_blocker_closed_by_c853676"
+    },
+    {
+      "id": "c4_clock_skew_forward_bound_with_exact_boundary_probe",
+      "test_function": "test_g013_c4_recorded_at_forward_skew_bound_refused_on_first_page_with_exact_boundary_probe",
+      "pass": 2,
+      "scenario": "recorded_at = NOW+30s / +31s / +30days.",
+      "expected": "+30s ok; +31s and +30days refused.",
+      "observed": "Confirmed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "c4_clock_skew_as_of_far_past_still_succeeds",
+      "test_function": "test_g013_c4_as_of_far_in_the_past_still_succeeds",
+      "pass": 2,
+      "scenario": "recorded_at = NOW - 5 years.",
+      "expected": "Succeeds with empty as-of view.",
+      "observed": "candidates == ().",
+      "verdict": "passed"
+    },
+    {
+      "id": "c4_clock_skew_enforced_on_continued_page",
+      "test_function": "test_g013_c4_clock_skew_is_enforced_on_a_continued_page_not_only_the_first",
+      "pass": 2,
+      "scenario": "Resume page under trust authority whose clock lags NOW by 40s.",
+      "expected": "Skew re-checked; resume refused.",
+      "observed": "LedgerAuthorityError('recall recorded_at exceeds the trusted clock skew bound').",
+      "verdict": "passed"
+    },
+    {
+      "id": "c2_conflict_canonical_form_mixed_directions_and_reverse_declaration",
+      "test_function": "test_g013_c2_conflict_canonical_form_mixed_directions_and_reverse_declaration",
+      "pass": 4,
+      "attack_class": "conflict_canonical_form",
+      "scenario": "6 CONTRADICTION pairs with alternating stored directions (low\u2192high and high\u2192low) plus 3 isolates; reverse DECLARE_CONTRADICTION attempted after the first forward declaration; full walk at page_size=2 so conflicts land on different components/pages.",
+      "expected": "Reverse declaration raises LedgerAuthorityError('duplicate edge') at write. Every page's conflicts are sorted unique (min,max) with both endpoints on-page. Union of conflicts across pages == exactly the 6 declared pairs; exact 15-candidate partition.",
+      "observed": "Reverse raise matched 'duplicate edge'. Walk spanned >=3 pages. Per-page conflicts always left<right and sorted(set(...)). Union exact: 6 unique pairs == expected_pairs; 15 candidates exact partition.",
+      "verdict": "passed"
+    },
+    {
+      "id": "c3_cursor_immortality_class_survives_delete_authority_and_purge",
+      "test_function": "test_g013_c3_cursor_immortality_class_survives_delete_authority_and_purge_attacks",
+      "pass": 4,
+      "attack_class": "cursor_immortality",
+      "scenario": "Live cursor: (1) bare DELETE; (2) invent ledger_recall_cursor_authority_gate AND ledger_recall_cursor_retention_bound and write future stamps, then DELETE; (3) force-expire the row (fixture DROP TRIGGER no_update only) and bare DELETE; assert no_delete trigger installed after every attack. Then mint a second live cursor, plant a pure expired fixture row, call purge_expired_recall_cursors, assert only the two expired rows are removed, live remains and resumes, trigger restored, bare DELETE of live still refused.",
+      "expected": "Every ordinary DELETE fails closed; trigger remains; purge removes exactly 2; live resumes on pinned cut; trigger still installed.",
+      "observed": "All three DELETE attacks raised IntegrityError('cannot be deleted'); trigger count==1 after each. purge removed==2; remaining=={live_handle}; resumed page served candidates on same cut; post-purge bare DELETE still refused; trigger still installed.",
+      "verdict": "passed"
+    },
+    {
+      "id": "c1_c2_visibility_agreement_across_command_kinds",
+      "test_function": "test_g013_c1_c2_visibility_agreement_across_command_kinds_and_page_sizes[1,2,3,5]",
+      "pass": 4,
+      "attack_class": "visibility_agreement_across_command_kinds",
+      "scenario": "One workspace with CREATE(pending), CREATE+REVIEW_REJECT, CREATE+APPROVE, CORRECT-linked pair, SUPERSEDE pair, DECLARE_CONTRADICTION pair, REVOKE, FORGET, and 4 isolates. Full continuation walks at page_size in {1,2,3,5} (each page_size on its own store to avoid first-page provenance_ref collision).",
+      "expected": "Never raise. Exact partition of the APPROVED-visible set {approved, support_base, support_corrected, supersede_dst, conflict_left, conflict_right, *isolates}. Forbidden {pending, rejected, supersede_src, revoked, forgotten} never served. support_refs always on-page; conflict endpoints on-page and canonical (min,max); the one conflict surfaces exactly once per walk.",
+      "observed": "All 4 parametrized runs passed. collected set == expected (10); disjoint from forbidden; support_corrected.support_refs==(support_base,); seen_conflicts==[sorted pair] exactly once.",
+      "verdict": "passed"
+    },
+    {
+      "id": "c1_bounded_work_oversized_component_and_exact_partition",
+      "test_function": "test_g013_c1_bounded_work_reports_oversized_component_and_exact_partition",
+      "pass": 4,
+      "attack_class": "bounded_work",
+      "scenario": "8-member SUPPORT chain (component > page_size) plus 40 isolates (workspace > page_size), page_size=5. Observe the implementation's bound policy.",
+      "expected": "Either typed fail-closed (LedgerAuthorityError mentioning bounded fetch cap / page size) OR exactly one oversized page carrying the whole chain with every other page <= page_size and an exact partition of all 48 candidates. Never silent truncation/skip.",
+      "observed": "outcome=oversized_page_served. Exactly one page had len>5 and that page's set == chain; all other pages 1..5; collected unique count==48==expected. Policy pinned: c853676 serves the oversized component whole rather than failing closed at this scale (well under _MAX_RECALL_FETCH_ROWS=4096).",
+      "verdict": "passed",
+      "observed_policy": "oversized_page_served"
+    },
+    {
+      "id": "c4_v2_citation_never_ok_zero_off_page_first_middle_terminal",
+      "test_function": "test_g013_c4_v2_citation_never_ok_zero_for_off_page_on_first_middle_or_terminal",
+      "pass": 4,
+      "attack_class": "citation_across_pages",
+      "scenario": "5 approved candidates, page_size=1 via SecondBrainApiV2. On every page (first, middle x3, terminal) call citation() for every candidate.",
+      "expected": "On-page candidate: OK with citation_count>0. Off-page candidate (including earlier-page candidates on the terminal page): NOT_SERVED with citation_count 0. Never OK/0 for a merely off-page cited candidate.",
+      "observed": "Exactly 5 pages. Every page served exactly 1 candidate with OK/count>0; all other candidates returned NOT_SERVED/0 on that page. Full walk collected set == all 5 refs, no duplicates.",
+      "verdict": "passed"
+    },
+    {
+      "id": "c2_c3_chain_integrity_under_interleaved_appends",
+      "test_function": "test_g013_c2_c3_chain_integrity_under_interleaved_appends_between_pages",
+      "pass": 4,
+      "attack_class": "chain_integrity_under_concurrent_writes",
+      "scenario": "6 approved candidates, page_size=2. After page 1: CREATE+APPROVE 'late', REVOKE a not-yet-served candidate, CREATE+APPROVE 'extra'. Resume the page-1 continuation through termination.",
+      "expected": "Either fail_closed (typed LedgerAuthorityError) OR pinned_exact_partition: every subsequent page stays on page1.transaction_cut, never serves late/extra, no silent duplicate/skip, and the concatenated walk == the original 6 refs (point-in-time pin includes the pre-revoke victim).",
+      "observed": "outcome=pinned_exact_partition. All continued pages kept transaction_cut==pinned_cut; late/extra never appeared; collected unique set == original 6 refs including victim; no duplicates across pages.",
+      "verdict": "passed",
+      "observed_policy": "pinned_exact_partition"
+    }
+  ],
+  "summary": {
+    "total_cases_this_report": 36,
+    "pass_1_through_3_case_ids_retained": 30,
+    "pass_4_new_case_ids": 6,
+    "pass_4_new_collected_tests": 9,
+    "module_collected_tests": 46,
+    "module_passed": 46,
+    "module_failed": 0,
+    "full_suite_collected": 1524,
+    "full_suite_passed": 1524,
+    "full_suite_failed": 0,
+    "baseline_full_suite_passed_at_assignment": 1515,
+    "real_defects_found": 0,
+    "architecture": "PASS",
+    "secrets": "PASS"
+  },
+  "blockers": []
+}

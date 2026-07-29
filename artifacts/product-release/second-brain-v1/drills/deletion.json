@@ -1,0 +1,10 @@
+{
+  "receipt_version": "second-brain-ops-drill-receipt-v1",
+  "drill_kind": "deletion",
+  "workspace_ref": "workspace:a92c36e66a25ee99ff862faa8e87987be6c7cd13c3ee661c400a45b0f1e3b132",
+  "scenario_digest": "ac57b6cee12abb2ae31e4068b81f9ea9d891411b51ba09e6739c6494435a3efe",
+  "outcome": "PASS",
+  "observed_at": "2026-07-29T00:00:00Z",
+  "operator_ref": "operator:69b4bcbc6ed36c1de44a75ce1deabd1e2e2482081d8fafcd9ef3bc115d257f92",
+  "receipt_digest": "9a25685a7f8d37afc722de11099cffda26afa46065c173ceadcf90be169aabce"
+}
