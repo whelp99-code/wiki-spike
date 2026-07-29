@@ -92,6 +92,74 @@ def test_g013_c1_c2_full_page_walk_is_exact_partition_of_candidate_set(tmp_path:
     database.close()
 
 
+def test_g013_c1_c2_component_paged_walk_partitions_linked_and_isolated_candidates(tmp_path: Path) -> None:
+    """Extends the exact-partition adversarial walk to a mixed workspace: a
+    SUPPORT-linked pair, a CONTRADICTION-linked pair, and two isolated candidates.
+    Component-based paging must never split a linked pair across a page boundary --
+    no support ref or conflict endpoint may ever be off-page -- while the walk as a
+    whole must still be an exact, non-overlapping partition of the workspace, and
+    the one declared contradiction must surface in exactly one page."""
+    database, cas, service, workspace = store(tmp_path)
+    support_base, support_corrected = ref("candidate", "mix-support-base"), ref("candidate", "mix-support-corrected")
+    conflict_left, conflict_right = ref("candidate", "mix-conflict-left"), ref("candidate", "mix-conflict-right")
+    isolated_a, isolated_b = ref("candidate", "mix-isolated-a"), ref("candidate", "mix-isolated-b")
+    for candidate, name in (
+        (support_base, "mix-support-base"), (support_corrected, "mix-support-corrected"),
+        (conflict_left, "mix-conflict-left"), (conflict_right, "mix-conflict-right"),
+        (isolated_a, "mix-isolated-a"), (isolated_b, "mix-isolated-b"),
+    ):
+        create_and_approve(service, cas, candidate, name, workspace=workspace)
+    service.append(command(
+        "CORRECT", support_corrected, command_name="mix-correct", related=support_base,
+        workspace=workspace, content_digest=blob(cas, "mix-support-corrected-v2"),
+    ))
+    service.append(command(
+        "DECLARE_CONTRADICTION", conflict_left, command_name="mix-declare",
+        related=conflict_right, workspace=workspace,
+    ))
+    expected = {support_base, support_corrected, conflict_left, conflict_right, isolated_a, isolated_b}
+    assert len(expected) == 6
+
+    current_request = request(workspace, recorded_at=NOW)
+    cut: str | None = None
+    collected: list[str] = []
+    support_refs_by_ref: dict[str, tuple[str, ...]] = {}
+    seen_conflicts: list[tuple[str, str]] = []
+    pages = 0
+    while True:
+        snapshot = _acquire(database, cas, current_request, page_size=2)
+        pages += 1
+        if cut is None:
+            cut = snapshot.transaction_cut
+        else:
+            assert snapshot.transaction_cut == cut, "continuation chain must stay bound to one cut"
+        page_refs = [item.candidate_ref for item in snapshot.candidates]
+        page_displayed = set(page_refs)
+        assert 1 <= len(page_refs) <= 2, "no component in this workspace exceeds page_size"
+        for item in snapshot.candidates:
+            assert set(item.support_refs) <= page_displayed, "support ref must never be off-page"
+            support_refs_by_ref[item.candidate_ref] = item.support_refs
+        for conflict in snapshot.conflicts:
+            assert conflict.left_candidate_ref in page_displayed
+            assert conflict.right_candidate_ref in page_displayed
+            seen_conflicts.append((conflict.left_candidate_ref, conflict.right_candidate_ref))
+        collected.extend(page_refs)
+        if not snapshot.has_more:
+            assert snapshot.continuation is None, "terminal page must not carry a continuation"
+            break
+        assert snapshot.continuation is not None, "has_more page must carry a continuation"
+        current_request = request(
+            workspace, recorded_at=NOW, transaction_cut=cut, continuation=snapshot.continuation
+        )
+    assert len(collected) == len(set(collected)) == len(expected) == 6, "exact partition: no duplicate, no omission"
+    assert set(collected) == expected
+    assert support_refs_by_ref[support_corrected] == (support_base,)
+    assert seen_conflicts == [tuple(sorted((conflict_left, conflict_right)))], (
+        "the declared contradiction must appear in exactly one page"
+    )
+    database.close()
+
+
 # ---------------------------------------------------------------------------
 # C3 -- cross-workspace / cross-scope cursor theft
 # ---------------------------------------------------------------------------

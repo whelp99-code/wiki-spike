@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from test_stage3_ledger_persistence import (
-    KEY_ID, NOW, SIGNER_REF, canonical_ledger_bytes, canonical_ledger_digest,
+    KEY_ID, NOW, SIGNER_REF, blob, canonical_ledger_bytes, canonical_ledger_digest,
     command, create_and_approve, make_recall_continuation_v2, ref, request, sign,
     signed_snapshot_signer, store, trust_for_request,
 )
@@ -175,4 +175,80 @@ def test_replayed_or_tampered_resume_cursor_is_refused(tmp_path: Path) -> None:
     )
     with pytest.raises(LedgerAuthorityError, match="continuation cursor does not bind its durable position"):
         SecondBrainLedgerService(replay_authority, replay_authority).acquire(replay)
+    database.close()
+
+
+def test_component_paging_serves_a_support_linked_pair_whole_with_full_support_refs(tmp_path: Path) -> None:
+    """A page-size of 1 must never split a SUPPORT-linked pair: the P0 defect served
+    an off-page support ref, which RecallServeSnapshotV2 rejects; component-based
+    paging must instead serve both candidates whole on one terminal page."""
+    database, cas, service, workspace = store(tmp_path)
+    base, corrected = ref("candidate", "comp-base"), ref("candidate", "comp-corrected")
+    create_and_approve(service, cas, base, "comp-base", workspace=workspace)
+    create_and_approve(service, cas, corrected, "comp-corrected", workspace=workspace)
+    service.append(command(
+        "CORRECT", corrected, command_name="comp-correct", related=base,
+        workspace=workspace, content_digest=blob(cas, "comp-corrected-v2"),
+    ))
+    authority = LifecycleLedgerAuthority(
+        database, cas, trust_for_request(request(workspace)), signed_snapshot_signer,
+        signer_ref=SIGNER_REF, key_id=KEY_ID, page_size=1,
+    )
+    snapshot = SecondBrainLedgerService(authority, authority).acquire(request(workspace)).snapshot
+    assert not snapshot.has_more
+    assert snapshot.continuation is None
+    assert {item.candidate_ref for item in snapshot.candidates} == {base, corrected}
+    by_ref = {item.candidate_ref: item for item in snapshot.candidates}
+    assert by_ref[corrected].support_refs == (base,)
+    database.close()
+
+
+def test_component_paging_serves_a_contradiction_linked_pair_whole_with_conflict(tmp_path: Path) -> None:
+    """A page-size of 1 must never split a CONTRADICTION-linked pair: the P1 defect
+    silently dropped a straddling conflict; component-based paging must instead
+    co-display both candidates whole on one terminal page with the conflict intact."""
+    database, cas, service, workspace = store(tmp_path)
+    left, right = ref("candidate", "conf-left"), ref("candidate", "conf-right")
+    create_and_approve(service, cas, left, "conf-left", workspace=workspace)
+    create_and_approve(service, cas, right, "conf-right", workspace=workspace)
+    service.append(command(
+        "DECLARE_CONTRADICTION", left, command_name="conf-declare", related=right, workspace=workspace,
+    ))
+    authority = LifecycleLedgerAuthority(
+        database, cas, trust_for_request(request(workspace)), signed_snapshot_signer,
+        signer_ref=SIGNER_REF, key_id=KEY_ID, page_size=1,
+    )
+    snapshot = SecondBrainLedgerService(authority, authority).acquire(request(workspace)).snapshot
+    assert not snapshot.has_more
+    assert snapshot.continuation is None
+    assert {item.candidate_ref for item in snapshot.candidates} == {left, right}
+    assert [(c.left_candidate_ref, c.right_candidate_ref) for c in snapshot.conflicts] == [
+        tuple(sorted((left, right)))
+    ]
+    database.close()
+
+
+def test_component_paging_serves_a_component_larger_than_page_size_whole(tmp_path: Path) -> None:
+    """A three-candidate SUPPORT chain is one component; even at page_size=1 it must
+    be served whole on a single terminal page rather than split or rejected."""
+    database, cas, service, workspace = store(tmp_path)
+    root, middle, leaf = (ref("candidate", value) for value in ("chain-root", "chain-middle", "chain-leaf"))
+    for candidate, name in ((root, "chain-root"), (middle, "chain-middle"), (leaf, "chain-leaf")):
+        create_and_approve(service, cas, candidate, name, workspace=workspace)
+    service.append(command(
+        "CORRECT", middle, command_name="chain-support-root-middle", related=root,
+        workspace=workspace, content_digest=blob(cas, "chain-middle-v2"),
+    ))
+    service.append(command(
+        "CORRECT", leaf, command_name="chain-support-middle-leaf", related=middle,
+        workspace=workspace, content_digest=blob(cas, "chain-leaf-v2"),
+    ))
+    authority = LifecycleLedgerAuthority(
+        database, cas, trust_for_request(request(workspace)), signed_snapshot_signer,
+        signer_ref=SIGNER_REF, key_id=KEY_ID, page_size=1,
+    )
+    snapshot = SecondBrainLedgerService(authority, authority).acquire(request(workspace)).snapshot
+    assert not snapshot.has_more
+    assert snapshot.continuation is None
+    assert {item.candidate_ref for item in snapshot.candidates} == {root, middle, leaf}
     database.close()

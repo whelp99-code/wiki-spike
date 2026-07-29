@@ -47,6 +47,11 @@ class LifecycleLedgerAuthority(LedgerCommandPort, AtomicRecallSnapshotPort):
         signer_ref: str,
         key_id: str,
         page_size: int = 50,
+        # Recall pages a whole SUPPORT/CONTRADICTION connected component at a time so a
+        # served page can never split off-page a support ref or contradiction endpoint
+        # (see LifecycleLedgerAuthority._page_components). `page_size` therefore bounds
+        # candidates per page *except* when a single component is larger than
+        # `page_size`; that component is still served whole, on its own page.
     ) -> None:
         if not isinstance(trust_authority, RecallTrustAuthorityV2):
             raise LedgerAuthorityError("a minted RecallTrustAuthorityV2 is required")
@@ -626,6 +631,60 @@ class LifecycleLedgerAuthority(LedgerCommandPort, AtomicRecallSnapshotPort):
             "expires_at": expires_at,
         }
 
+    @staticmethod
+    def _page_components(
+        candidate_refs: Any,
+        support_edges: Any,
+        conflict_edges: Any,
+        resume_after: str,
+        page_size: int,
+    ) -> tuple[frozenset[str], bool, str | None]:
+        """Group visible candidates into whole connected components and page components,
+        never candidates. A component (candidates transitively joined by SUPPORT or
+        CONTRADICTION edges whose endpoints are both visible) is emitted whole or not at
+        all, so `page_size` bounds candidates per page except when a single component is
+        larger than `page_size` -- that component is still served whole on its own page.
+        """
+        refs = set(candidate_refs)
+        parent = {candidate_ref: candidate_ref for candidate_ref in refs}
+
+        def find(node: str) -> str:
+            while parent[node] != node:
+                parent[node] = parent[parent[node]]
+                node = parent[node]
+            return node
+
+        def union(left: str, right: str) -> None:
+            root_left, root_right = find(left), find(right)
+            if root_left != root_right:
+                parent[root_left] = root_right
+
+        for source, target in list(support_edges) + list(conflict_edges):
+            if source in refs and target in refs:
+                union(source, target)
+
+        groups: dict[str, list[str]] = {}
+        for candidate_ref in refs:
+            groups.setdefault(find(candidate_ref), []).append(candidate_ref)
+        components = sorted(
+            (sorted(members) for members in groups.values()), key=lambda members: members[0]
+        )
+        components = [component for component in components if component[0] > resume_after]
+
+        displayed: set[str] = set()
+        total = 0
+        last_component_min: str | None = None
+        emitted = 0
+        for component in components:
+            if emitted > 0 and total + len(component) > page_size:
+                break
+            displayed.update(component)
+            total += len(component)
+            last_component_min = component[0]
+            emitted += 1
+
+        has_more = emitted < len(components)
+        return frozenset(displayed), has_more, last_component_min
 
     def acquire_recall_snapshot(self, request: RecallSnapshotRequestV2) -> ValidatedRecallSnapshotAcquisitionV2:
         provenance = self._verified_recall_provenance(request)
@@ -653,7 +712,7 @@ class LifecycleLedgerAuthority(LedgerCommandPort, AtomicRecallSnapshotPort):
             cut = request.transaction_cut
             resume_after = self._resume_after(con, request, cut)
             visible = "(length({column})<length(?) OR (length({column})=length(?) AND {column}<=?))"
-            rows = con.execute(
+            all_rows = con.execute(
                 f"""SELECT v.*, c.locator_ref, c.locator_digest, c.immutable_source_ref,
                            c.content_digest AS citation_content_digest, c.citation_digest,
                            c.generation_ref, c.checkpoint_ref,
@@ -672,13 +731,9 @@ class LifecycleLedgerAuthority(LedgerCommandPort, AtomicRecallSnapshotPort):
                        AND e.edge_kind='SUPPORT' AND e.edge_state='SUPERSEDED' AND {visible.format(column='e.start_cut')})
                      AND v.valid_from_at<=? AND (v.valid_to_at IS NULL OR v.valid_to_at>?)
                      AND v.recorded_from_at<=? AND (v.recorded_to_at IS NULL OR v.recorded_to_at>?)
-                     AND v.candidate_ref > ?
-                   ORDER BY v.candidate_ref LIMIT ?""",
-                (request.workspace_ref, cut, cut, cut, cut, cut, cut, cut, cut, cut, request.valid_at, request.valid_at, request.recorded_at, request.recorded_at, resume_after, self._page_size + 1),
+                   ORDER BY v.candidate_ref""",
+                (request.workspace_ref, cut, cut, cut, cut, cut, cut, cut, cut, cut, request.valid_at, request.valid_at, request.recorded_at, request.recorded_at),
             ).fetchall() if allowed else []
-            has_more = len(rows) > self._page_size
-            rows = rows[: self._page_size]
-            outgoing_cursor = self._issue_cursor(con, request, cut, rows[-1]["candidate_ref"]) if has_more else None
             support_rows = con.execute(
                 f"""SELECT from_candidate_ref,to_candidate_ref FROM ledger_edge e WHERE e.workspace_ref=?
                    AND e.edge_kind='SUPPORT' AND e.edge_state='ACTIVE' AND {visible.format(column='e.start_cut')}
@@ -695,6 +750,15 @@ class LifecycleLedgerAuthority(LedgerCommandPort, AtomicRecallSnapshotPort):
                    ORDER BY from_candidate_ref,to_candidate_ref""",
                 (request.workspace_ref, cut, cut, cut, cut, cut, cut, request.valid_at, request.valid_at, request.recorded_at, request.recorded_at),
             ).fetchall() if allowed else []
+            displayed_refs, has_more, last_component_min = self._page_components(
+                (row["candidate_ref"] for row in all_rows),
+                ((row["from_candidate_ref"], row["to_candidate_ref"]) for row in support_rows),
+                ((row["from_candidate_ref"], row["to_candidate_ref"]) for row in conflict_rows),
+                resume_after,
+                self._page_size,
+            )
+            rows = [row for row in all_rows if row["candidate_ref"] in displayed_refs]
+            outgoing_cursor = self._issue_cursor(con, request, cut, last_component_min) if has_more else None
         except BaseException:
             con.execute("ROLLBACK")
             raise
