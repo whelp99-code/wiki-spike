@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://wiki-spike.local/schemas/second-brain/evaluation-governance-v1.schema.json",
+  "title": "SecondBrainEvaluationGovernanceV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "governance_version",
+    "workspace_ref",
+    "benchmark_manifest_digest",
+    "holdout_manifest_digest",
+    "slo_digest",
+    "consent_digest",
+    "encryption_isolation_digest",
+    "serving_corpus_digest",
+    "governance_digest"
+  ],
+  "properties": {
+    "governance_version": { "const": "second-brain-evaluation-governance-v1" },
+    "workspace_ref": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "benchmark_manifest_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "holdout_manifest_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "slo_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "consent_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "encryption_isolation_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "serving_corpus_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "governance_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}
