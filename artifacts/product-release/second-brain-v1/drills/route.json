@@ -1,0 +1,10 @@
+{
+  "receipt_version": "second-brain-ops-drill-receipt-v1",
+  "drill_kind": "route",
+  "workspace_ref": "workspace:a92c36e66a25ee99ff862faa8e87987be6c7cd13c3ee661c400a45b0f1e3b132",
+  "scenario_digest": "37b269ebb56417ff382153cd3bd9a689753717e64dc0cc6ff5c7e429b7efbda1",
+  "outcome": "PASS",
+  "observed_at": "2026-07-29T00:00:00Z",
+  "operator_ref": "operator:69b4bcbc6ed36c1de44a75ce1deabd1e2e2482081d8fafcd9ef3bc115d257f92",
+  "receipt_digest": "1ae0f481a25ac57912a371f647b8d960a959a818cc3a8cfe7366a073b0df6837"
+}
