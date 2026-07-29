@@ -1200,3 +1200,541 @@ def test_g013_c4_clock_skew_is_enforced_on_a_continued_page_not_only_the_first(t
     with pytest.raises(LedgerAuthorityError, match="recall recorded_at exceeds the trusted clock skew bound"):
         SecondBrainLedgerService(lagging_authority, lagging_authority).acquire(resumed_request)
     database.close()
+
+
+# ---------------------------------------------------------------------------
+# Pass 4 -- attack classes (frozen c853676)
+# ---------------------------------------------------------------------------
+
+def _no_delete_trigger_installed(con) -> bool:
+    return con.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' "
+        "AND name='ledger_recall_cursor_no_delete'"
+    ).fetchone()[0] == 1
+
+
+def _walk_pages(database, cas, workspace, *, page_size: int):
+    """Walk a full continuation chain; yield each snapshot."""
+    current_request = request(workspace, recorded_at=NOW)
+    cut: str | None = None
+    while True:
+        snapshot = _acquire(database, cas, current_request, page_size=page_size)
+        if cut is None:
+            cut = snapshot.transaction_cut
+        else:
+            assert snapshot.transaction_cut == cut, "continuation chain must stay bound to one cut"
+        yield snapshot
+        if not snapshot.has_more:
+            assert snapshot.continuation is None
+            return
+        assert snapshot.continuation is not None
+        current_request = request(
+            workspace, recorded_at=NOW, transaction_cut=cut, continuation=snapshot.continuation
+        )
+
+
+def test_g013_c2_conflict_canonical_form_mixed_directions_and_reverse_declaration(
+    tmp_path: Path,
+) -> None:
+    """Conflict pairs must always be owned as sorted unique (min, max) regardless of
+    the stored edge direction. Reverse DECLARE_CONTRADICTION must fail at write time.
+    Across a multi-page walk every page's conflicts are sorted-unique (min,max) with
+    both endpoints on-page, and the union of conflicts across pages is exactly the
+    declared set -- no duplicate, no omission, no direction leak."""
+    database, cas, service, workspace = store(tmp_path)
+
+    # Seed one pair, then prove the reverse declaration is refused at write.
+    first_left, first_right = ref("candidate", "canon-0-left"), ref("candidate", "canon-0-right")
+    create_and_approve(service, cas, first_left, "canon-0-left", workspace=workspace)
+    create_and_approve(service, cas, first_right, "canon-0-right", workspace=workspace)
+    service.append(command(
+        "DECLARE_CONTRADICTION", first_left, command_name="canon-0-fwd",
+        related=first_right, workspace=workspace,
+    ))
+    with pytest.raises(LedgerAuthorityError, match="duplicate edge"):
+        service.append(command(
+            "DECLARE_CONTRADICTION", first_right, command_name="canon-0-rev",
+            related=first_left, workspace=workspace,
+        ))
+
+    expected_pairs: set[tuple[str, str]] = {tuple(sorted((first_left, first_right)))}
+    # Five more pairs declared with alternating stored directions (low→high and
+    # high→low) so the walk cannot cheat by assuming SQL ORDER BY already matches
+    # the canonical form.
+    for index in range(1, 6):
+        left = ref("candidate", f"canon-{index}-left")
+        right = ref("candidate", f"canon-{index}-right")
+        create_and_approve(service, cas, left, f"canon-{index}-left", workspace=workspace)
+        create_and_approve(service, cas, right, f"canon-{index}-right", workspace=workspace)
+        ordered = tuple(sorted((left, right)))
+        if index % 2 == 0:
+            service.append(command(
+                "DECLARE_CONTRADICTION", ordered[0], command_name=f"canon-{index}",
+                related=ordered[1], workspace=workspace,
+            ))
+        else:
+            service.append(command(
+                "DECLARE_CONTRADICTION", ordered[1], command_name=f"canon-{index}",
+                related=ordered[0], workspace=workspace,
+            ))
+        expected_pairs.add(ordered)
+
+    # Isolates force the six conflict components onto different pages at page_size=2.
+    for index in range(3):
+        create_and_approve(
+            service, cas, ref("candidate", f"canon-iso-{index}"), f"canon-iso-{index}",
+            workspace=workspace,
+        )
+
+    expected_candidates = {
+        candidate for pair in expected_pairs for candidate in pair
+    } | {ref("candidate", f"canon-iso-{index}") for index in range(3)}
+    assert len(expected_pairs) == 6
+    assert len(expected_candidates) == 15
+
+    collected: list[str] = []
+    union_conflicts: list[tuple[str, str]] = []
+    pages = 0
+    for snapshot in _walk_pages(database, cas, workspace, page_size=2):
+        pages += 1
+        page_displayed = {item.candidate_ref for item in snapshot.candidates}
+        page_conflicts = [
+            (conflict.left_candidate_ref, conflict.right_candidate_ref)
+            for conflict in snapshot.conflicts
+        ]
+        for left, right in page_conflicts:
+            assert left < right, "conflict endpoints must be canonical (min, max)"
+            assert left in page_displayed and right in page_displayed, (
+                "conflict endpoint must never be off-page"
+            )
+        assert page_conflicts == sorted(set(page_conflicts)), (
+            "each page's conflicts must be sorted unique (min,max)"
+        )
+        union_conflicts.extend(page_conflicts)
+        collected.extend(item.candidate_ref for item in snapshot.candidates)
+
+    assert pages >= 3, "mixed multi-edge workspace must span several pages at page_size=2"
+    assert len(collected) == len(set(collected)) == len(expected_candidates)
+    assert set(collected) == expected_candidates
+    assert len(union_conflicts) == len(set(union_conflicts)) == len(expected_pairs)
+    assert set(union_conflicts) == expected_pairs
+    assert sorted(union_conflicts) == sorted(expected_pairs)
+    database.close()
+
+
+def test_g013_c3_cursor_immortality_class_survives_delete_authority_and_purge_attacks(
+    tmp_path: Path,
+) -> None:
+    """Cursor immortality is a class, not a single repro: bare DELETE, invented
+    intermediate authority tables, and ordinary DELETE of an already-expired row
+    must all fail closed; the no_delete trigger must remain installed after every
+    attack; controlled purge removes only expired rows and restores the trigger."""
+    database, cas, service, workspace = store(tmp_path)
+    for name in ("immortal-a", "immortal-b", "immortal-c"):
+        create_and_approve(service, cas, ref("candidate", name), name, workspace=workspace)
+
+    first = _acquire(database, cas, request(workspace, recorded_at=NOW), page_size=1)
+    assert first.has_more and first.continuation is not None
+    first_handle = first.continuation.cursor_handle_ref
+    assert database.con is not None
+    con = database.con
+
+    # 1. Bare DELETE of a live cursor is refused.
+    with pytest.raises(Exception, match="cannot be deleted"):
+        con.execute("DELETE FROM ledger_recall_cursor WHERE cursor_handle_ref=?", (first_handle,))
+    assert _no_delete_trigger_installed(con)
+
+    # 2. Invent any intermediate "authority" table and write into it; DELETE still
+    #    fails closed and the trigger is still installed.
+    con.execute(
+        "CREATE TABLE IF NOT EXISTS ledger_recall_cursor_authority_gate ("
+        "gate_ref TEXT PRIMARY KEY, gate_at TEXT NOT NULL)"
+    )
+    con.execute(
+        "INSERT INTO ledger_recall_cursor_authority_gate VALUES('singleton', ?)",
+        ("2999-01-01T00:00:00Z",),
+    )
+    con.execute(
+        "CREATE TABLE IF NOT EXISTS ledger_recall_cursor_retention_bound ("
+        "retention_bound_ref TEXT PRIMARY KEY, retention_bound_at TEXT NOT NULL)"
+    )
+    con.execute(
+        "INSERT OR REPLACE INTO ledger_recall_cursor_retention_bound VALUES('singleton', ?)",
+        ("2999-01-01T00:00:00Z",),
+    )
+    with pytest.raises(Exception, match="cannot be deleted"):
+        con.execute("DELETE FROM ledger_recall_cursor WHERE cursor_handle_ref=?", (first_handle,))
+    assert _no_delete_trigger_installed(con)
+
+    # 3. Force-expire the first handle (fixture seed only) and prove ordinary
+    #    DELETE of an already-expired row is still refused -- only controlled purge
+    #    may remove it.
+    con.execute("DROP TRIGGER ledger_recall_cursor_no_update")
+    con.execute(
+        "UPDATE ledger_recall_cursor SET expires_at=? WHERE cursor_handle_ref=?",
+        ("2020-01-01T00:00:00Z", first_handle),
+    )
+    con.execute(
+        "CREATE TRIGGER ledger_recall_cursor_no_update "
+        "BEFORE UPDATE ON ledger_recall_cursor "
+        "BEGIN SELECT RAISE(ABORT, 'ledger recall cursor is append-only'); END"
+    )
+    with pytest.raises(Exception, match="cannot be deleted"):
+        con.execute("DELETE FROM ledger_recall_cursor WHERE cursor_handle_ref=?", (first_handle,))
+    assert _no_delete_trigger_installed(con)
+    assert con.execute(
+        "SELECT COUNT(*) FROM ledger_recall_cursor WHERE cursor_handle_ref=?", (first_handle,)
+    ).fetchone()[0] == 1
+
+    # Mint a second, still-live cursor and plant a pure expired fixture row.
+    for name in ("immortal-d", "immortal-e"):
+        create_and_approve(service, cas, ref("candidate", name), name, workspace=workspace)
+    live = _acquire(database, cas, request(workspace, recorded_at=NOW), page_size=1)
+    assert live.has_more and live.continuation is not None
+    live_handle = live.continuation.cursor_handle_ref
+    assert live_handle != first_handle
+    fixture_expired = "cursor:" + digest("pass4-expired-fixture")
+    con.execute(
+        "INSERT INTO ledger_recall_cursor VALUES(?,?,?,?,?,?,?)",
+        (
+            fixture_expired, workspace, live.transaction_cut, digest("pass4-expired-state"),
+            ref("candidate", "immortal-a"), "2019-12-31T23:55:00Z", "2020-01-01T00:00:00Z",
+        ),
+    )
+    before = {
+        row[0]
+        for row in con.execute("SELECT cursor_handle_ref FROM ledger_recall_cursor").fetchall()
+    }
+    assert {first_handle, live_handle, fixture_expired} <= before
+
+    # 4. Controlled purge removes only expired rows and restores the trigger.
+    authority = _authority(database, cas, request(workspace), page_size=1)
+    removed = authority.purge_expired_recall_cursors()
+    assert removed == 2, "purge must remove exactly the two expired rows"
+    remaining = {
+        row[0]
+        for row in con.execute("SELECT cursor_handle_ref FROM ledger_recall_cursor").fetchall()
+    }
+    assert live_handle in remaining
+    assert first_handle not in remaining
+    assert fixture_expired not in remaining
+    assert _no_delete_trigger_installed(con)
+
+    # Live cursor remains resumable after purge; bare DELETE still refused.
+    with pytest.raises(Exception, match="cannot be deleted"):
+        con.execute("DELETE FROM ledger_recall_cursor WHERE cursor_handle_ref=?", (live_handle,))
+    resumed = _acquire(
+        database, cas,
+        request(
+            workspace, recorded_at=NOW, transaction_cut=live.transaction_cut,
+            continuation=live.continuation,
+        ),
+        page_size=1,
+    )
+    assert resumed.transaction_cut == live.transaction_cut
+    assert {item.candidate_ref for item in resumed.candidates}
+    assert _no_delete_trigger_installed(con)
+    database.close()
+
+
+@pytest.mark.parametrize("page_size", [1, 2, 3, 5])
+def test_g013_c1_c2_visibility_agreement_across_command_kinds_and_page_sizes(
+    tmp_path: Path, page_size: int,
+) -> None:
+    """Systematic CREATE/APPROVE/REJECT/CORRECT/SUPERSEDE/REVOKE/FORGET/
+    DECLARE_CONTRADICTION combination. Full continuation walks at several page
+    sizes must never raise, never serve off-page support_ref or conflict endpoint,
+    and must exclude every non-APPROVED / superseded-source candidate.
+
+    Each page_size runs on its own store: the first-page request provenance_ref is
+    keyed by transaction_cut alone, so replaying the same cut's first page after a
+    prior walk would collide on durable provenance evidence rather than exercise
+    visibility."""
+    database, cas, service, workspace = store(tmp_path)
+
+    pending = ref("candidate", "vis-pending")
+    service.append(command(
+        "CREATE_CANDIDATE", pending, command_name="vis-create-pending",
+        workspace=workspace, content_digest=blob(cas, "vis-pending"),
+    ))
+
+    rejected = ref("candidate", "vis-rejected")
+    service.append(command(
+        "CREATE_CANDIDATE", rejected, command_name="vis-create-rejected",
+        workspace=workspace, content_digest=blob(cas, "vis-rejected"),
+    ))
+    service.append(command(
+        "REVIEW_REJECT", rejected, command_name="vis-reject", workspace=workspace,
+    ))
+
+    approved = ref("candidate", "vis-approved")
+    create_and_approve(service, cas, approved, "vis-approved", workspace=workspace)
+
+    support_base = ref("candidate", "vis-support-base")
+    support_corrected = ref("candidate", "vis-support-corrected")
+    create_and_approve(service, cas, support_base, "vis-support-base", workspace=workspace)
+    create_and_approve(service, cas, support_corrected, "vis-support-corrected", workspace=workspace)
+    service.append(command(
+        "CORRECT", support_corrected, command_name="vis-correct", related=support_base,
+        workspace=workspace, content_digest=blob(cas, "vis-support-corrected-v2"),
+    ))
+
+    supersede_src = ref("candidate", "vis-supersede-src")
+    supersede_dst = ref("candidate", "vis-supersede-dst")
+    create_and_approve(service, cas, supersede_src, "vis-supersede-src", workspace=workspace)
+    create_and_approve(service, cas, supersede_dst, "vis-supersede-dst", workspace=workspace)
+    service.append(command(
+        "SUPERSEDE", supersede_src, command_name="vis-supersede", related=supersede_dst,
+        workspace=workspace, content_digest=blob(cas, "vis-supersede-src-v2"),
+    ))
+
+    conflict_left = ref("candidate", "vis-conflict-left")
+    conflict_right = ref("candidate", "vis-conflict-right")
+    create_and_approve(service, cas, conflict_left, "vis-conflict-left", workspace=workspace)
+    create_and_approve(service, cas, conflict_right, "vis-conflict-right", workspace=workspace)
+    service.append(command(
+        "DECLARE_CONTRADICTION", conflict_left, command_name="vis-declare",
+        related=conflict_right, workspace=workspace,
+    ))
+
+    revoked = ref("candidate", "vis-revoked")
+    create_and_approve(service, cas, revoked, "vis-revoked", workspace=workspace)
+    service.append(command("REVOKE", revoked, command_name="vis-revoke", workspace=workspace))
+
+    forgotten = ref("candidate", "vis-forgotten")
+    create_and_approve(service, cas, forgotten, "vis-forgotten", workspace=workspace)
+    service.append(command("FORGET", forgotten, command_name="vis-forget", workspace=workspace))
+
+    isolates = [ref("candidate", f"vis-iso-{index}") for index in range(4)]
+    for index, candidate in enumerate(isolates):
+        create_and_approve(service, cas, candidate, f"vis-iso-{index}", workspace=workspace)
+
+    # SUPERSEDE hides its source (SUPPORT SUPERSEDED from_candidate_ref filter);
+    # REJECT/REVOKE/FORGET/PENDING never appear as APPROVED.
+    expected = {
+        approved, support_base, support_corrected, supersede_dst,
+        conflict_left, conflict_right, *isolates,
+    }
+    forbidden = {pending, rejected, supersede_src, revoked, forgotten}
+    expected_conflict = tuple(sorted((conflict_left, conflict_right)))
+
+    collected: list[str] = []
+    support_by_ref: dict[str, tuple[str, ...]] = {}
+    seen_conflicts: list[tuple[str, str]] = []
+    for snapshot in _walk_pages(database, cas, workspace, page_size=page_size):
+        page_displayed = {item.candidate_ref for item in snapshot.candidates}
+        for item in snapshot.candidates:
+            assert set(item.support_refs) <= page_displayed, (
+                f"support ref off-page at page_size={page_size}"
+            )
+            support_by_ref[item.candidate_ref] = item.support_refs
+        for conflict in snapshot.conflicts:
+            assert conflict.left_candidate_ref in page_displayed
+            assert conflict.right_candidate_ref in page_displayed
+            assert conflict.left_candidate_ref < conflict.right_candidate_ref
+            seen_conflicts.append(
+                (conflict.left_candidate_ref, conflict.right_candidate_ref)
+            )
+        collected.extend(item.candidate_ref for item in snapshot.candidates)
+
+    assert len(collected) == len(set(collected)) == len(expected), (
+        f"exact partition failed at page_size={page_size}"
+    )
+    assert set(collected) == expected
+    assert set(collected).isdisjoint(forbidden)
+    assert support_by_ref[support_corrected] == (support_base,)
+    assert seen_conflicts == [expected_conflict], (
+        f"conflict must surface exactly once at page_size={page_size}"
+    )
+    database.close()
+
+
+def test_g013_c1_bounded_work_reports_oversized_component_and_exact_partition(
+    tmp_path: Path,
+) -> None:
+    """Workspace larger than page_size plus one linked component larger than
+    page_size. Implementation must either fail closed with a typed error or serve
+    the oversized component whole on its own page while every other page respects
+    the bound; the full walk (when it succeeds) is an exact partition."""
+    database, cas, service, workspace = store(tmp_path)
+    chain = [ref("candidate", f"bound-chain-{index}") for index in range(8)]
+    for index, candidate in enumerate(chain):
+        create_and_approve(service, cas, candidate, f"bound-chain-{index}", workspace=workspace)
+    for index in range(1, 8):
+        service.append(command(
+            "CORRECT", chain[index], command_name=f"bound-link-{index}", related=chain[index - 1],
+            workspace=workspace, content_digest=blob(cas, f"bound-chain-{index}-v2"),
+        ))
+    isolates = [ref("candidate", f"bound-iso-{index}") for index in range(40)]
+    for index, candidate in enumerate(isolates):
+        create_and_approve(service, cas, candidate, f"bound-iso-{index}", workspace=workspace)
+    expected = set(chain) | set(isolates)
+    assert len(expected) == 48
+
+    page_size = 5
+    try:
+        collected: list[str] = []
+        pages: list[list[str]] = []
+        oversized_pages = 0
+        for snapshot in _walk_pages(database, cas, workspace, page_size=page_size):
+            page_refs = [item.candidate_ref for item in snapshot.candidates]
+            pages.append(page_refs)
+            if len(page_refs) > page_size:
+                oversized_pages += 1
+                assert set(page_refs) == set(chain), (
+                    "only the oversized linked component may exceed page_size"
+                )
+            else:
+                assert 1 <= len(page_refs) <= page_size
+            page_displayed = set(page_refs)
+            for item in snapshot.candidates:
+                assert set(item.support_refs) <= page_displayed
+            collected.extend(page_refs)
+        outcome = "oversized_page_served"
+        assert oversized_pages == 1, "exactly one page may carry the oversized component"
+        assert len(collected) == len(set(collected)) == len(expected)
+        assert set(collected) == expected
+        assert sum(len(page) for page in pages) == len(expected)
+    except LedgerAuthorityError as exc:
+        # Typed fail-closed at the fetch-cap boundary is also a legitimate
+        # bounded-work outcome; never silent truncation.
+        outcome = "fail_closed"
+        assert "bounded fetch cap" in str(exc) or "page size" in str(exc).lower(), str(exc)
+    assert outcome in {"oversized_page_served", "fail_closed"}
+    # Record the observed policy so the conformance artifact can pin it.
+    assert outcome == "oversized_page_served", (
+        "c853676 serves the oversized component whole rather than failing closed "
+        f"at this scale; observed={outcome}"
+    )
+    database.close()
+
+
+def test_g013_c4_v2_citation_never_ok_zero_for_off_page_on_first_middle_or_terminal(
+    tmp_path: Path,
+) -> None:
+    """Citation across first/middle/terminal pages: a candidate that is merely
+    off-page must never report OK with citation_count 0 -- only NOT_SERVED/0 or
+    OK with a positive count when it is actually on the current page."""
+    database, cas, service, workspace = store(tmp_path)
+    refs = [ref("candidate", f"cite-page-{index}") for index in range(5)]
+    for index, candidate in enumerate(refs):
+        create_and_approve(service, cas, candidate, f"cite-page-{index}", workspace=workspace)
+
+    current_request = request(workspace, recorded_at=NOW)
+    collected: list[str] = []
+    page_index = 0
+    nonce = 0
+    while True:
+        _, api = _v2_stack(database, cas, current_request, page_size=1)
+        recall_result = api.recall(_use(workspace, "recall", f"n-cite-walk-{nonce}"), current_request)
+        assert recall_result.code == "OK"
+        page_served: list[str] = []
+        for candidate in refs:
+            citation = api.citation(
+                _use(workspace, "citation", f"n-cite-{nonce}-{candidate[-8:]}"),
+                current_request,
+                candidate,
+            )
+            if citation.code == "OK":
+                assert int(citation.receipt["citation_count"]) > 0, (
+                    f"OK/0 is forbidden for candidate {candidate!r} on page {page_index}"
+                )
+                page_served.append(candidate)
+            else:
+                assert citation.code == "NOT_SERVED", (
+                    f"off-page candidate must be NOT_SERVED, not {citation.code!r} "
+                    f"on page {page_index} (first/middle/terminal)"
+                )
+                assert citation.receipt["citation_count"] == "0"
+                # Never OK/0 for a cited candidate that is merely off-page.
+                assert not (
+                    citation.code == "OK" and citation.receipt["citation_count"] == "0"
+                )
+        assert len(page_served) == int(recall_result.receipt["result_count"]) == 1
+        collected.extend(page_served)
+        page_index += 1
+        nonce += 1
+        if recall_result.receipt["has_more"] == "false":
+            assert recall_result.receipt["continuation"] == ""
+            # Terminal page: every not-on-this-page candidate is still NOT_SERVED
+            # (earlier-page candidates must not flip to OK/0).
+            assert page_index == 5
+            break
+        assert recall_result.receipt["continuation"]
+        decoded = dict(
+            pair.split("=", 1) for pair in recall_result.receipt["continuation"].split(";")
+        )
+        continuation = RecallContinuationV2.from_mapping(decoded)
+        current_request = request(
+            workspace, recorded_at=NOW, transaction_cut=continuation.transaction_cut,
+            continuation=continuation,
+        )
+    assert page_index == 5
+    assert len(collected) == len(set(collected)) == 5
+    assert set(collected) == set(refs)
+    database.close()
+
+
+def test_g013_c2_c3_chain_integrity_under_interleaved_appends_between_pages(
+    tmp_path: Path,
+) -> None:
+    """Interleave CREATE/APPROVE and REVOKE appends between pages of an in-flight
+    walk. The continuation must either stay an exact partition of the pinned cut
+    (no silent skip/duplicate, no post-cut create leaking in) or fail closed with
+    a typed authority error -- never a mixed or silently truncated view."""
+    database, cas, service, workspace = store(tmp_path)
+    refs = [ref("candidate", f"interleave-{index}") for index in range(6)]
+    for index, candidate in enumerate(refs):
+        create_and_approve(service, cas, candidate, f"interleave-{index}", workspace=workspace)
+
+    page1 = _acquire(database, cas, request(workspace, recorded_at=NOW), page_size=2)
+    assert page1.has_more and page1.continuation is not None
+    pinned_cut = page1.transaction_cut
+    page1_refs = [item.candidate_ref for item in page1.candidates]
+    assert len(page1_refs) == 2
+
+    # Concurrent-class writes after page 1 is issued.
+    late = ref("candidate", "interleave-late")
+    create_and_approve(service, cas, late, "interleave-late", workspace=workspace)
+    not_yet_served = sorted(set(refs) - set(page1_refs))
+    victim = not_yet_served[0]
+    service.append(command("REVOKE", victim, command_name="interleave-revoke", workspace=workspace))
+    extra = ref("candidate", "interleave-extra")
+    create_and_approve(service, cas, extra, "interleave-extra", workspace=workspace)
+
+    try:
+        collected = list(page1_refs)
+        current_continuation = page1.continuation
+        pages = 1
+        while current_continuation is not None:
+            nxt = _acquire(
+                database, cas,
+                request(
+                    workspace, recorded_at=NOW, transaction_cut=pinned_cut,
+                    continuation=current_continuation,
+                ),
+                page_size=2,
+            )
+            pages += 1
+            assert nxt.transaction_cut == pinned_cut, "must stay pinned to the cut"
+            page_refs = [item.candidate_ref for item in nxt.candidates]
+            # Post-cut creates must never appear on a pinned-cut continuation.
+            assert late not in page_refs and extra not in page_refs
+            collected.extend(page_refs)
+            if not nxt.has_more:
+                assert nxt.continuation is None
+                break
+            assert nxt.continuation is not None
+            current_continuation = nxt.continuation
+        outcome = "pinned_exact_partition"
+        assert pages >= 2
+        assert len(collected) == len(set(collected)), "no silent duplicate across pages"
+        assert late not in collected and extra not in collected
+        # Point-in-time pin: the pre-revoke APPROVED set at the cut is the whole
+        # partition -- victim included, post-cut creates excluded.
+        assert set(collected) == set(refs)
+        assert victim in collected
+    except LedgerAuthorityError:
+        outcome = "fail_closed"
+    assert outcome in {"pinned_exact_partition", "fail_closed"}
+    database.close()

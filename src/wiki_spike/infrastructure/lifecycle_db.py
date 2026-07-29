@@ -1317,6 +1317,19 @@ class LifecycleDatabase:
             columns = {row[1] for row in self.con.execute(f"PRAGMA table_info({table})")}
             if column.split()[0] not in columns:
                 self.con.execute(f"ALTER TABLE {table} ADD COLUMN {column}")
+        # Class-fix migration for pre-c853676 files: CREATE TRIGGER IF NOT EXISTS
+        # leaves the old conditional no_delete body (WHEN retention_bound ...) in
+        # place, and the ambient retention_bound table may still exist. Replace
+        # the trigger body unconditionally and drop the bound table so upgraded
+        # databases receive the same "ordinary DELETE always refuses" guarantee
+        # as a fresh initialize, without waiting for the first purge.
+        self.con.execute("DROP TRIGGER IF EXISTS ledger_recall_cursor_no_delete")
+        self.con.execute(
+            "CREATE TRIGGER ledger_recall_cursor_no_delete "
+            "BEFORE DELETE ON ledger_recall_cursor "
+            "BEGIN SELECT RAISE(ABORT, 'live ledger recall cursor cannot be deleted'); END"
+        )
+        self.con.execute("DROP TABLE IF EXISTS ledger_recall_cursor_retention_bound")
         self._read_con = sqlite3.connect(str(self.db_path), isolation_level=None)
         self._read_con.execute("PRAGMA journal_mode=WAL")
         self._read_con.execute("PRAGMA synchronous=FULL")

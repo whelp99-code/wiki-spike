@@ -2,9 +2,9 @@
 Stage 3 bounded recall:
 
 - F6: ``ledger_recall_cursor`` rows now expire on the shared 300s continuation
-  TTL. An expired row refuses resumption, and a narrow retention path can
-  delete only already-expired rows -- a live row can never be deleted or
-  updated, with no DROP TRIGGER required.
+  TTL. An expired row refuses resumption. Ordinary DELETE is always refused;
+  only the controlled retention path may remove already-expired rows, by
+  dropping and restoring the no-delete trigger inside one SQLite transaction.
 - F7: the recall page query and its support/citation joins now have covering
   indexes so a page's cost stops scaling with total ledger size.
 - F8: ``recorded_at`` is bounded against the trusted clock by a small forward
@@ -228,4 +228,74 @@ def test_citation_commitment_unique_index_rejects_a_duplicate_candidate_revision
         "SELECT COUNT(*) FROM ledger_citation_commitment WHERE candidate_ref=? AND revision_ref=? AND workspace_ref=?",
         (candidate_ref, revision_ref, workspace_ref),
     ).fetchone()[0] == 1
+    database.close()
+
+
+def test_initialize_replaces_legacy_conditional_cursor_delete_trigger_on_upgraded_files(tmp_path: Path) -> None:
+    """CREATE TRIGGER IF NOT EXISTS does not replace an already-installed body.
+    A pre-c853676 database that still carries the conditional WHEN retention_bound
+    trigger (and the ambient bound table) must receive the unconditional no_delete
+    body and lose the bound table on the next initialize(), without waiting for
+    the first purge."""
+    import sqlite3
+    from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase
+
+    db_path = tmp_path / "upgraded.sqlite"
+    # Seed a legacy-shaped file: conditional no_delete + ambient bound table.
+    con = sqlite3.connect(str(db_path))
+    con.executescript(
+        """
+        CREATE TABLE ledger_recall_cursor (
+          cursor_handle_ref TEXT PRIMARY KEY, workspace_ref TEXT NOT NULL,
+          transaction_sequence TEXT NOT NULL, cursor_state_digest TEXT NOT NULL,
+          after_candidate_ref TEXT NOT NULL, recorded_at TEXT NOT NULL, expires_at TEXT NOT NULL
+        );
+        CREATE TABLE ledger_recall_cursor_retention_bound (
+          retention_bound_ref TEXT PRIMARY KEY, retention_bound_at TEXT NOT NULL
+        );
+        CREATE TRIGGER ledger_recall_cursor_no_delete
+        BEFORE DELETE ON ledger_recall_cursor
+        WHEN NOT (
+          julianday(OLD.expires_at) <= COALESCE(
+            (SELECT julianday(retention_bound_at) FROM ledger_recall_cursor_retention_bound
+             WHERE retention_bound_ref='singleton'), -1e18)
+        )
+        BEGIN SELECT RAISE(ABORT, 'live ledger recall cursor cannot be deleted'); END;
+        INSERT INTO ledger_recall_cursor VALUES(
+          'cursor:live','workspace:x','1','dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd','candidate:a',
+          '2026-01-01T00:00:00Z','2026-01-01T00:05:00Z'
+        );
+        """
+    )
+    con.commit(); con.close()
+
+    database = LifecycleDatabase(db_path)
+    database.initialize()
+    assert database.con is not None
+    # Bound table must be gone.
+    assert database.con.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+        "AND name='ledger_recall_cursor_retention_bound'"
+    ).fetchone()[0] == 0
+    # Trigger body must no longer reference the bound table.
+    sql = database.con.execute(
+        "SELECT sql FROM sqlite_master WHERE type='trigger' "
+        "AND name='ledger_recall_cursor_no_delete'"
+    ).fetchone()[0]
+    assert "retention_bound" not in sql
+    assert "WHEN" not in sql.upper().split("BEGIN")[0]
+    # Ordinary DELETE of a live row is refused.
+    with pytest.raises(Exception, match="cannot be deleted"):
+        database.con.execute("DELETE FROM ledger_recall_cursor")
+    # Inventing the old bound table and stamping a far-future bound still fails.
+    database.con.execute(
+        "CREATE TABLE ledger_recall_cursor_retention_bound ("
+        "retention_bound_ref TEXT PRIMARY KEY, retention_bound_at TEXT NOT NULL)"
+    )
+    database.con.execute(
+        "INSERT INTO ledger_recall_cursor_retention_bound VALUES('singleton','2030-01-01T00:00:00Z')"
+    )
+    with pytest.raises(Exception, match="cannot be deleted"):
+        database.con.execute("DELETE FROM ledger_recall_cursor")
+    assert database.con.execute("SELECT COUNT(*) FROM ledger_recall_cursor").fetchone()[0] == 1
     database.close()
