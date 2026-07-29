@@ -427,6 +427,22 @@ CREATE TABLE IF NOT EXISTS ledger_recall_cursor (
 CREATE TABLE IF NOT EXISTS ledger_recall_cursor_retention_bound (
   retention_bound_ref TEXT PRIMARY KEY, retention_bound_at TEXT NOT NULL
 );
+-- Guard the bound table itself: any write that would stamp a
+-- retention_bound_at implausibly far beyond the trusted database clock
+-- (more than 10 years ahead of the real wall clock) is silently a no-op
+-- (RAISE(IGNORE) undoes just that one statement without raising an error),
+-- so a bare INSERT/UPSERT of a forged far-future bound can never grant
+-- standing authority for ledger_recall_cursor_no_delete to honor -- closing
+-- the TOCTOU window a legitimate retention pass's genuine "as of" value
+-- (always within seconds of the trusted clock) never needs to cross.
+CREATE TRIGGER IF NOT EXISTS ledger_recall_cursor_retention_bound_sane_insert
+BEFORE INSERT ON ledger_recall_cursor_retention_bound
+WHEN julianday(NEW.retention_bound_at) > julianday('now', '+10 years')
+BEGIN SELECT RAISE(IGNORE); END;
+CREATE TRIGGER IF NOT EXISTS ledger_recall_cursor_retention_bound_sane_update
+BEFORE UPDATE ON ledger_recall_cursor_retention_bound
+WHEN julianday(NEW.retention_bound_at) > julianday('now', '+10 years')
+BEGIN SELECT RAISE(IGNORE); END;
 CREATE INDEX IF NOT EXISTS ledger_candidate_version_workspace_state_ref_idx
   ON ledger_candidate_version(workspace_ref, candidate_state, candidate_ref);
 CREATE UNIQUE INDEX IF NOT EXISTS ledger_citation_commitment_candidate_revision_workspace_uq

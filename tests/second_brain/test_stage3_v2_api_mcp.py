@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 from test_stage3_ledger_persistence import (
     NOW,
@@ -33,9 +34,17 @@ def test_transports_expose_only_identical_bounded_v2_operations():
     for operation in ("command", "recall", "citation", "status"):
         assert f"def {operation}(" in api
         assert f"def {operation}(" in mcp
+    # B5: match the forbidden surface as whole identifiers/words, not as a bare
+    # substring. A bare substring scan (the old form of this guard) also fires
+    # on unrelated tokens that merely contain one of these words -- e.g.
+    # ``json.dumps`` contains "dump" -- which pressures legitimate code into a
+    # hand-rolled workaround purely to dodge the scan rather than expressing
+    # its actual intent: these transports must never define a generic
+    # dump/list/bulk-export endpoint or reference internal-only types.
     for forbidden in ("list", "dump", "Workspace", "McpServer", "raw_key", "derived_key", "artifact", "blob", "Gate8"):
-        assert forbidden not in api
-        assert forbidden not in mcp
+        pattern = re.compile(rf"\b{re.escape(forbidden)}\b")
+        assert not pattern.search(api), f"{forbidden!r} appears as a whole identifier in api_v2.py"
+        assert not pattern.search(mcp), f"{forbidden!r} appears as a whole identifier in mcp_v2.py"
 
 
 def test_api_has_required_capability_scope_and_replay_checks():

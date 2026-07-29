@@ -14,6 +14,7 @@ from wiki_spike.memory_core.errors import InvalidContractValue
 from wiki_spike.memory_core.second_brain_ledger_contracts import RecallSnapshotRequestV2
 from wiki_spike.applications.second_brain_ledger_service import SecondBrainLedgerService
 from wiki_spike.applications.second_brain_recall_service import SecondBrainRecallService
+from wiki_spike.infrastructure import second_brain_ledger as second_brain_ledger_module
 from wiki_spike.infrastructure.second_brain_ledger import LedgerAuthorityError, LifecycleLedgerAuthority
 
 
@@ -251,4 +252,65 @@ def test_component_paging_serves_a_component_larger_than_page_size_whole(tmp_pat
     assert not snapshot.has_more
     assert snapshot.continuation is None
     assert {item.candidate_ref for item in snapshot.candidates} == {root, middle, leaf}
+    database.close()
+
+
+def test_support_edge_from_a_later_superseded_candidate_never_leaks_off_page(tmp_path: Path) -> None:
+    """B1 regression: CORRECT B related=A creates an ACTIVE support edge A->B; a
+    LATER, unrelated SUPERSEDE A related=C then hides A from the candidate query
+    (A is now a superseded source) while the earlier A->B support edge would
+    previously stay ACTIVE and unfiltered. The candidate query and the edge
+    queries feeding _page_components must share exactly one visibility
+    definition, or B's support_refs would permanently reference an off-page A
+    and every recall at or after the SUPERSEDE cut would raise
+    InvalidContractValue('support references must be restricted to displayed
+    candidates'). Recall must instead succeed, and since A itself is no longer a
+    valid supporter, B's support_refs must reflect exactly that: empty."""
+    database, cas, service, workspace = store(tmp_path)
+    a, b, c = (ref("candidate", value) for value in ("leak-a", "leak-b", "leak-c"))
+    for candidate, name in ((a, "leak-a"), (b, "leak-b"), (c, "leak-c")):
+        create_and_approve(service, cas, candidate, name, workspace=workspace)
+    service.append(command(
+        "CORRECT", b, command_name="leak-correct", related=a,
+        workspace=workspace, content_digest=blob(cas, "leak-b-v2"),
+    ))
+    service.append(command(
+        "SUPERSEDE", a, command_name="leak-supersede", related=c,
+        workspace=workspace, content_digest=blob(cas, "leak-a-supersession"),
+    ))
+    authority = LifecycleLedgerAuthority(
+        database, cas, trust_for_request(request(workspace)), signed_snapshot_signer,
+        signer_ref=SIGNER_REF, key_id=KEY_ID,
+    )
+    snapshot = SecondBrainLedgerService(authority, authority).acquire(request(workspace)).snapshot
+    displayed = {item.candidate_ref for item in snapshot.candidates}
+    assert displayed == {b, c}, "a is superseded and must drop out; b and c remain"
+    by_ref = {item.candidate_ref: item for item in snapshot.candidates}
+    assert by_ref[b].support_refs == (), "a is no longer a valid supporter once superseded"
+    for item in snapshot.candidates:
+        assert set(item.support_refs) <= displayed, "support ref must never be off-page"
+    database.close()
+
+
+def test_recall_fails_closed_above_the_bounded_fetch_cap_instead_of_unbounded_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B2 regression: acquire_recall_snapshot's candidate/support/contradiction
+    fetches are bounded by a real LIMIT (`_MAX_RECALL_FETCH_ROWS`); a workspace
+    whose currently-visible candidate set exceeds that cap must fail closed with
+    a typed LedgerAuthorityError instead of silently materializing the entire
+    workspace inside BEGIN IMMEDIATE (which is what let per-page cost scale with
+    total workspace size and let SQLite lock contention surface as a raw,
+    untyped sqlite3.OperationalError)."""
+    monkeypatch.setattr(second_brain_ledger_module, "_MAX_RECALL_FETCH_ROWS", 2)
+    database, cas, service, workspace = store(tmp_path)
+    for index in range(3):
+        candidate = ref("candidate", f"cap-{index}")
+        create_and_approve(service, cas, candidate, f"cap-{index}", workspace=workspace)
+    authority = LifecycleLedgerAuthority(
+        database, cas, trust_for_request(request(workspace)), signed_snapshot_signer,
+        signer_ref=SIGNER_REF, key_id=KEY_ID,
+    )
+    with pytest.raises(LedgerAuthorityError, match="bounded fetch cap"):
+        SecondBrainLedgerService(authority, authority).acquire(request(workspace))
     database.close()

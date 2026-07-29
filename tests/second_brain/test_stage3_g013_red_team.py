@@ -823,6 +823,45 @@ def test_g013_v2_recall_pages_to_exhaustion_and_citation_flags_off_page_candidat
     database.close()
 
 
+def test_g013_v2_citation_reports_not_served_for_an_earlier_page_candidate_on_the_terminal_page(
+    tmp_path: Path,
+) -> None:
+    """B3 regression: citation() must tell apart 'served on an earlier page' from
+    'genuinely uncited' even on the LAST page of a walk. Gating solely on
+    `answer.has_more` misreports a candidate served on an earlier page as OK with
+    citation_count 0 once the walk reaches its terminal (has_more=False) page,
+    because that page's own results no longer include the earlier candidate.
+    Gating on `answer.has_more or request.continuation is not None` catches this:
+    a terminal page reached via a continuation is still only a partial view of
+    the walk from the caller's perspective for candidates outside it."""
+    database, cas, service, workspace = store(tmp_path)
+    a, b = ref("candidate", "term-a"), ref("candidate", "term-b")
+    create_and_approve(service, cas, a, "term-a", workspace=workspace)
+    create_and_approve(service, cas, b, "term-b", workspace=workspace)
+
+    first_request = request(workspace, recorded_at=NOW)
+    _, api = _v2_stack(database, cas, first_request, page_size=1)
+    page1 = api.recall(_use(workspace, "recall", "n-term-recall-1"), first_request)
+    assert page1.code == "OK" and page1.receipt["has_more"] == "true"
+    page1_citation_a = api.citation(_use(workspace, "citation", "n-term-cite-page1-a"), first_request, a)
+    served_first = a if page1_citation_a.code == "OK" else b
+    served_second = b if served_first == a else a
+    decoded = dict(pair.split("=", 1) for pair in page1.receipt["continuation"].split(";"))
+    continuation = RecallContinuationV2.from_mapping(decoded)
+    second_request = request(
+        workspace, recorded_at=NOW, transaction_cut=continuation.transaction_cut, continuation=continuation
+    )
+    _, api2 = _v2_stack(database, cas, second_request, page_size=1)
+    page2 = api2.citation(_use(workspace, "citation", "n-term-cite-page2"), second_request, served_first)
+    page2_recall = api2.recall(_use(workspace, "recall", "n-term-recall-2"), second_request)
+    assert page2_recall.receipt["has_more"] == "false", "the second page must be the terminal page"
+    assert page2.code == "NOT_SERVED", "served_first lies outside this terminal page's own results"
+    assert page2.receipt["citation_count"] == "0"
+    on_page = api2.citation(_use(workspace, "citation", "n-term-cite-b"), second_request, served_second)
+    assert on_page.code == "OK" and int(on_page.receipt["citation_count"]) > 0
+    database.close()
+
+
 def test_g013_v2_mangled_continuation_receipt_fails_closed(tmp_path: Path) -> None:
     database, cas, service, workspace = store(tmp_path)
     a, b = ref("candidate", "mangle-a"), ref("candidate", "mangle-b")

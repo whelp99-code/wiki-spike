@@ -22,6 +22,13 @@ from wiki_spike.memory_core.second_brain_ledger_ports import (
 
 
 _CONTINUATION_TTL_SECONDS = 300
+# B2: a single recall page must never require an unbounded, O(total workspace)
+# scan while holding the exclusive BEGIN IMMEDIATE writer lock (that turns lock
+# contention into a raw sqlite3.OperationalError instead of a typed authority
+# error). Every candidate/support/contradiction fetch is capped at this many
+# rows; a workspace whose currently-visible graph is larger fails closed with a
+# typed LedgerAuthorityError rather than materializing the whole workspace.
+_MAX_RECALL_FETCH_ROWS = 4096
 # Mirrors second_brain_ledger_contracts._MAX_CLOCK_SKEW_SECONDS (F8): the bound
 # tolerated between a request's declared recorded_at and the trusted clock.
 _MAX_RECALL_CLOCK_SKEW_SECONDS = 30
@@ -760,8 +767,39 @@ class LifecycleLedgerAuthority(LedgerCommandPort, AtomicRecallSnapshotPort):
             cut = request.transaction_cut
             resume_after = self._resume_after(con, request, cut)
             visible = "(length({column})<length(?) OR (length({column})=length(?) AND {column}<=?))"
+            # B1: the candidate query and the edge queries feeding _page_components
+            # must share exactly one definition of "visible candidate" -- a
+            # candidate whose source SUPPORT edge has itself been SUPERSEDED drops
+            # out of `all_rows`, and an ACTIVE support/contradiction edge naming a
+            # now-invisible endpoint must drop out the same way, or a still-visible
+            # candidate can end up with a support_refs entry that can never be
+            # co-displayed (RecallServeSnapshotV2 then rejects the page forever).
+            visible_candidates_cte = f"""
+                WITH visible_candidates AS (
+                    SELECT v.candidate_ref
+                    FROM ledger_candidate_version AS v
+                    JOIN ledger_citation_commitment AS c
+                      ON c.candidate_ref=v.candidate_ref AND c.revision_ref=v.revision_ref
+                     AND c.workspace_ref=v.workspace_ref AND c.commitment_state='COMMITTED'
+                    WHERE v.workspace_ref=? AND v.candidate_state='APPROVED'
+                      AND c.content_digest=v.content_digest
+                      AND {visible.format(column='v.start_cut')}
+                      AND NOT EXISTS (SELECT 1 FROM ledger_candidate_version_closure vc
+                        WHERE vc.candidate_ref=v.candidate_ref AND vc.revision_ref=v.revision_ref
+                          AND {visible.format(column='vc.end_cut')})
+                      AND NOT EXISTS (SELECT 1 FROM ledger_edge e WHERE e.from_candidate_ref=v.candidate_ref
+                        AND e.edge_kind='SUPPORT' AND e.edge_state='SUPERSEDED' AND {visible.format(column='e.start_cut')})
+                      AND v.valid_from_at<=? AND (v.valid_to_at IS NULL OR v.valid_to_at>?)
+                      AND v.recorded_from_at<=? AND (v.recorded_to_at IS NULL OR v.recorded_to_at>?)
+                )
+            """
+            visible_candidates_params = (
+                request.workspace_ref, cut, cut, cut, cut, cut, cut, cut, cut, cut,
+                request.valid_at, request.valid_at, request.recorded_at, request.recorded_at,
+            )
             all_rows = con.execute(
-                f"""SELECT v.*, c.locator_ref, c.locator_digest, c.immutable_source_ref,
+                visible_candidates_cte
+                + f"""SELECT v.*, c.locator_ref, c.locator_digest, c.immutable_source_ref,
                            c.content_digest AS citation_content_digest, c.citation_digest,
                            c.generation_ref, c.checkpoint_ref,
                            c.provenance_digest AS citation_provenance_digest
@@ -779,25 +817,42 @@ class LifecycleLedgerAuthority(LedgerCommandPort, AtomicRecallSnapshotPort):
                        AND e.edge_kind='SUPPORT' AND e.edge_state='SUPERSEDED' AND {visible.format(column='e.start_cut')})
                      AND v.valid_from_at<=? AND (v.valid_to_at IS NULL OR v.valid_to_at>?)
                      AND v.recorded_from_at<=? AND (v.recorded_to_at IS NULL OR v.recorded_to_at>?)
-                   ORDER BY v.candidate_ref""",
-                (request.workspace_ref, cut, cut, cut, cut, cut, cut, cut, cut, cut, request.valid_at, request.valid_at, request.recorded_at, request.recorded_at),
+                     AND v.candidate_ref IN (SELECT candidate_ref FROM visible_candidates)
+                   ORDER BY v.candidate_ref LIMIT ?""",
+                visible_candidates_params
+                + (request.workspace_ref, cut, cut, cut, cut, cut, cut, cut, cut, cut, request.valid_at, request.valid_at, request.recorded_at, request.recorded_at, _MAX_RECALL_FETCH_ROWS + 1),
             ).fetchall() if allowed else []
+            if len(all_rows) > _MAX_RECALL_FETCH_ROWS:
+                raise LedgerAuthorityError("recall workspace exceeds bounded fetch cap")
             support_rows = con.execute(
-                f"""SELECT from_candidate_ref,to_candidate_ref FROM ledger_edge e WHERE e.workspace_ref=?
+                visible_candidates_cte
+                + f"""SELECT from_candidate_ref,to_candidate_ref FROM ledger_edge e WHERE e.workspace_ref=?
                    AND e.edge_kind='SUPPORT' AND e.edge_state='ACTIVE' AND {visible.format(column='e.start_cut')}
                    AND NOT EXISTS (SELECT 1 FROM ledger_edge_closure ec WHERE ec.edge_ref=e.edge_ref AND {visible.format(column='ec.end_cut')})
                    AND e.valid_from_at<=? AND (e.valid_to_at IS NULL OR e.valid_to_at>?)
-                   AND e.recorded_from_at<=? AND (e.recorded_to_at IS NULL OR e.recorded_to_at>?)""",
-                (request.workspace_ref, cut, cut, cut, cut, cut, cut, request.valid_at, request.valid_at, request.recorded_at, request.recorded_at),
+                   AND e.recorded_from_at<=? AND (e.recorded_to_at IS NULL OR e.recorded_to_at>?)
+                   AND e.from_candidate_ref IN (SELECT candidate_ref FROM visible_candidates)
+                   AND e.to_candidate_ref IN (SELECT candidate_ref FROM visible_candidates)
+                   LIMIT ?""",
+                visible_candidates_params
+                + (request.workspace_ref, cut, cut, cut, cut, cut, cut, request.valid_at, request.valid_at, request.recorded_at, request.recorded_at, _MAX_RECALL_FETCH_ROWS + 1),
             ).fetchall() if allowed else []
+            if len(support_rows) > _MAX_RECALL_FETCH_ROWS:
+                raise LedgerAuthorityError("recall workspace exceeds bounded fetch cap")
             conflict_rows = con.execute(
-                f"""SELECT from_candidate_ref,to_candidate_ref FROM ledger_edge e WHERE e.workspace_ref=? AND e.edge_kind='CONTRADICTION' AND e.edge_state='ACTIVE'
+                visible_candidates_cte
+                + f"""SELECT from_candidate_ref,to_candidate_ref FROM ledger_edge e WHERE e.workspace_ref=? AND e.edge_kind='CONTRADICTION' AND e.edge_state='ACTIVE'
                    AND {visible.format(column='e.start_cut')}
                    AND NOT EXISTS (SELECT 1 FROM ledger_edge_closure ec WHERE ec.edge_ref=e.edge_ref AND {visible.format(column='ec.end_cut')})
                    AND e.valid_from_at<=? AND (e.valid_to_at IS NULL OR e.valid_to_at>?) AND e.recorded_from_at<=? AND (e.recorded_to_at IS NULL OR e.recorded_to_at>?)
-                   ORDER BY from_candidate_ref,to_candidate_ref""",
-                (request.workspace_ref, cut, cut, cut, cut, cut, cut, request.valid_at, request.valid_at, request.recorded_at, request.recorded_at),
+                   AND e.from_candidate_ref IN (SELECT candidate_ref FROM visible_candidates)
+                   AND e.to_candidate_ref IN (SELECT candidate_ref FROM visible_candidates)
+                   ORDER BY from_candidate_ref,to_candidate_ref LIMIT ?""",
+                visible_candidates_params
+                + (request.workspace_ref, cut, cut, cut, cut, cut, cut, request.valid_at, request.valid_at, request.recorded_at, request.recorded_at, _MAX_RECALL_FETCH_ROWS + 1),
             ).fetchall() if allowed else []
+            if len(conflict_rows) > _MAX_RECALL_FETCH_ROWS:
+                raise LedgerAuthorityError("recall workspace exceeds bounded fetch cap")
             displayed_refs, has_more, last_component_min = self._page_components(
                 (row["candidate_ref"] for row in all_rows),
                 ((row["from_candidate_ref"], row["to_candidate_ref"]) for row in support_rows),

@@ -42,11 +42,16 @@ class V2Result:
 def encode_opaque_receipt_field(values: dict[str, str]) -> str:
     """Flatten a small string-only mapping into one bounded receipt field.
 
-    Every ``RecallContinuationV2`` field is a plain opaque ref/digest/instant
-    string containing neither ``;`` nor ``=``, so this reversible encoding
-    needs no general-purpose serializer dependency at this closed boundary.
-    The separators are enforced rather than assumed: an unexpected value fails
-    closed instead of emitting a silently unparseable handle.
+    Every ``RecallContinuationV2`` field is a flat, non-recursive opaque
+    ref/digest/instant string containing neither ``;`` nor ``=``, so a
+    general-purpose serializer buys nothing here: there is no nesting, no
+    type coercion, and no schema drift to handle, only a fixed, known set of
+    plain string keys. This hand-rolled, sorted-key ``key=value;key=value``
+    format is deterministic (byte-for-byte reproducible across runs, which
+    the test suite's continuation round-trips rely on) and trivial to audit
+    end to end in one place. The separators are enforced rather than
+    assumed: an unexpected value fails closed instead of emitting a silently
+    unparseable handle.
     """
     if any(mark in text for pair in values.items() for text in pair for mark in ";="):
         raise ValueError("receipt field values must not contain a separator")
@@ -104,11 +109,16 @@ class SecondBrainApiV2:
             return V2Result("ABSTAINED", {"candidate_ref": candidate_ref, "citation_count": "0"})
         # An off-page candidate and a genuinely uncited one both show zero
         # citations in this page's ranked results, and reporting "OK" for
-        # either is indistinguishable from the caller's perspective. When more
-        # pages remain we cannot yet rule out "merely off-page", so we return
-        # a distinct, explicit code instead of ever claiming OK/zero for a
-        # candidate we have not fully resolved across every page.
-        if not citations and answer.has_more:
+        # either is indistinguishable from the caller's perspective. On the
+        # terminal page of a multi-page walk, a candidate served on an
+        # EARLIER page is off THIS page but was already fully resolved --
+        # gating on `answer.has_more` alone misreports it as OK/0 instead of
+        # NOT_SERVED. Gate on either remaining pages ahead OR pages already
+        # walked behind (`request.continuation is not None`), so any partial
+        # walk -- not just a non-terminal one -- returns the explicit code
+        # instead of ever claiming OK/zero for a candidate we have not fully
+        # resolved across every page of the walk.
+        if not citations and (answer.has_more or request.continuation is not None):
             return V2Result("NOT_SERVED", {"candidate_ref": candidate_ref, "citation_count": "0"})
         return V2Result("OK", {"candidate_ref": candidate_ref, "citation_count": str(len(citations))})
 
