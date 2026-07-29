@@ -422,8 +422,31 @@ class LifecycleLedgerAuthority(LedgerCommandPort, AtomicRecallSnapshotPort):
             for ref in (edge.from_candidate_ref, edge.to_candidate_ref):
                 row = con.execute("SELECT workspace_ref FROM ledger_candidate WHERE candidate_ref=?", (ref,)).fetchone()
                 if ref != command.payload.candidate_ref and (row is None or row[0] != command.workspace_ref): raise LedgerAuthorityError("edge crosses workspace or references an absent candidate")
-            if con.execute("SELECT 1 FROM ledger_edge WHERE workspace_ref=? AND edge_kind=? AND from_candidate_ref=? AND to_candidate_ref=? AND edge_state='ACTIVE' AND end_cut IS NULL", (edge.workspace_ref, edge.edge_kind, edge.from_candidate_ref, edge.to_candidate_ref)).fetchone(): raise LedgerAuthorityError("duplicate edge")
-            if edge.edge_kind == "SUPPORT" and self._reachable(con, edge.to_candidate_ref, edge.from_candidate_ref): raise LedgerAuthorityError("support graph cycle")
+            # Contradiction is undirected: A→B and B→A are the same conflict pair.
+            # Matching only the stored direction lets a reverse declaration leave two
+            # ACTIVE edges that both normalize to one (min,max) pair and make Core
+            # reject the snapshot as a non-unique conflict set forever.
+            if edge.edge_kind == "CONTRADICTION":
+                if con.execute(
+                    "SELECT 1 FROM ledger_edge WHERE workspace_ref=? AND edge_kind='CONTRADICTION' "
+                    "AND edge_state='ACTIVE' AND end_cut IS NULL "
+                    "AND ((from_candidate_ref=? AND to_candidate_ref=?) "
+                    "  OR (from_candidate_ref=? AND to_candidate_ref=?))",
+                    (
+                        edge.workspace_ref,
+                        edge.from_candidate_ref, edge.to_candidate_ref,
+                        edge.to_candidate_ref, edge.from_candidate_ref,
+                    ),
+                ).fetchone():
+                    raise LedgerAuthorityError("duplicate edge")
+            elif con.execute(
+                "SELECT 1 FROM ledger_edge WHERE workspace_ref=? AND edge_kind=? "
+                "AND from_candidate_ref=? AND to_candidate_ref=? AND edge_state='ACTIVE' AND end_cut IS NULL",
+                (edge.workspace_ref, edge.edge_kind, edge.from_candidate_ref, edge.to_candidate_ref),
+            ).fetchone():
+                raise LedgerAuthorityError("duplicate edge")
+            if edge.edge_kind == "SUPPORT" and self._reachable(con, edge.to_candidate_ref, edge.from_candidate_ref):
+                raise LedgerAuthorityError("support graph cycle")
 
     @staticmethod
     def _invalidate_supported_candidates(con: sqlite3.Connection, root: str, recorded_at: str, authority_epoch: str, cut: str) -> None:
@@ -881,19 +904,29 @@ class LifecycleLedgerAuthority(LedgerCommandPort, AtomicRecallSnapshotPort):
             self._served_citation(request.workspace_ref, row) for row in rows
         )
         displayed = {row["candidate_ref"] for row in rows}
+        # Own the canonical form in one place: normalize each undirected pair to
+        # (min, max), drop duplicates, then sort. SQL ORDER BY on the stored
+        # direction and per-row *sorted() disagreed whenever an edge was stored
+        # high→low, and a reverse declaration produced two rows that collapsed
+        # to one pair — both made Core reject the snapshot forever.
+        conflict_pairs = sorted({
+            tuple(sorted((row[0], row[1])))
+            for row in conflict_rows
+            if row[0] in displayed and row[1] in displayed
+        })
         conflicts = tuple(
             ConflictOutcomeV2(
-                "second-brain-conflict-decision-v2", *sorted((row[0], row[1])), "OPEN",
+                "second-brain-conflict-decision-v2", left, right, "OPEN",
                 None, None, None, None, None,
                 canonical_ledger_digest("conflict-decision-v2", {
                     "decision_version": "second-brain-conflict-decision-v2",
-                    "left_candidate_ref": min(row[0], row[1]), "right_candidate_ref": max(row[0], row[1]),
+                    "left_candidate_ref": left, "right_candidate_ref": right,
                     "state": "OPEN", "winning_candidate_ref": None,
                     "expected_decision_revision_ref": None, "authority_provenance_ref": None,
                     "authority_provenance_digest": None, "winning_revision_citation": None,
                 }),
             )
-            for row in conflict_rows if row[0] in displayed and row[1] in displayed
+            for left, right in conflict_pairs
         )
         chain = self._incoming_chain(request.continuation)
         outgoing = self._outgoing_continuation(request, cut, digest, outgoing_cursor)

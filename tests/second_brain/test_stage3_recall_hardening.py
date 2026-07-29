@@ -123,8 +123,9 @@ def test_retention_path_deletes_only_expired_cursor_rows_live_rows_stay_immutabl
     assert before_count == 2
 
     # Attempting to delete the still-live row directly must fail closed --
-    # the narrow retention path never needs DROP TRIGGER because it can only
-    # ever touch already-expired rows in the first place.
+    # ordinary DELETE is always refused; only the controlled retention path
+    # (which drops and restores the no-delete trigger inside one transaction)
+    # may remove an already-expired row.
     with pytest.raises(sqlite3.IntegrityError, match="cannot be deleted"):
         con.execute("DELETE FROM ledger_recall_cursor WHERE cursor_handle_ref=?", (live_handle,))
     with pytest.raises(sqlite3.IntegrityError, match="append-only"):

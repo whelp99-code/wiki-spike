@@ -314,3 +314,57 @@ def test_recall_fails_closed_above_the_bounded_fetch_cap_instead_of_unbounded_sc
     with pytest.raises(LedgerAuthorityError, match="bounded fetch cap"):
         SecondBrainLedgerService(authority, authority).acquire(request(workspace))
     database.close()
+
+
+def test_conflict_pairs_are_normalized_sorted_and_unique_on_the_page(tmp_path: Path) -> None:
+    """SQL ORDER BY on the stored edge direction and per-row *sorted() disagreed
+    whenever an edge was stored high→low, and a reverse declaration produced two
+    ACTIVE edges that collapsed to one pair. Either form made Core reject the
+    snapshot with 'conflicts must be unique and canonically ordered' forever.
+    Own the canonical form in one place: normalize, dedupe, then sort."""
+    database, cas, service, workspace = store(tmp_path)
+    # Four candidates whose refs sort w < x < y < z by construction of the names'
+    # digests is not guaranteed, so pick by actual sorted order after creation.
+    names = ("w", "x", "y", "z")
+    refs = {name: ref("candidate", name) for name in names}
+    for name in names:
+        create_and_approve(service, cas, refs[name], name, workspace=workspace)
+    ordered = sorted(refs.values())
+    w, x, y, z = ordered
+    # Store one edge low→high and one high→low so SQL order and canonical order diverge.
+    service.append(command("DECLARE_CONTRADICTION", x, command_name="c-xy", related=y, workspace=workspace))
+    service.append(command("DECLARE_CONTRADICTION", z, command_name="c-zw", related=w, workspace=workspace))
+    first_request = request(workspace, recorded_at=NOW)
+    authority = LifecycleLedgerAuthority(
+        database, cas, trust_for_request(first_request), signed_snapshot_signer,
+        signer_ref=SIGNER_REF, key_id=KEY_ID, page_size=50,
+    )
+    snapshot = SecondBrainLedgerService(authority, authority).acquire(first_request).snapshot
+    pairs = [(c.left_candidate_ref, c.right_candidate_ref) for c in snapshot.conflicts]
+    assert pairs == sorted(pairs)
+    assert pairs == sorted([(min(x, y), max(x, y)), (min(w, z), max(w, z))])
+    assert len(pairs) == len(set(pairs)) == 2
+    database.close()
+
+
+def test_reverse_contradiction_declaration_is_rejected_as_duplicate_edge(tmp_path: Path) -> None:
+    """Contradiction is undirected. A→B then B→A must fail at write time rather
+    than leave two ACTIVE edges that both normalize to one pair and brick recall."""
+    database, cas, service, workspace = store(tmp_path)
+    a, b = ref("candidate", "rev-a"), ref("candidate", "rev-b")
+    create_and_approve(service, cas, a, "rev-a", workspace=workspace)
+    create_and_approve(service, cas, b, "rev-b", workspace=workspace)
+    service.append(command("DECLARE_CONTRADICTION", a, command_name="ab", related=b, workspace=workspace))
+    with pytest.raises(LedgerAuthorityError, match="duplicate edge"):
+        service.append(command("DECLARE_CONTRADICTION", b, command_name="ba", related=a, workspace=workspace))
+    # The forward declaration alone still serves cleanly.
+    first_request = request(workspace, recorded_at=NOW)
+    authority = LifecycleLedgerAuthority(
+        database, cas, trust_for_request(first_request), signed_snapshot_signer,
+        signer_ref=SIGNER_REF, key_id=KEY_ID, page_size=50,
+    )
+    snapshot = SecondBrainLedgerService(authority, authority).acquire(first_request).snapshot
+    assert len(snapshot.conflicts) == 1
+    left, right = snapshot.conflicts[0].left_candidate_ref, snapshot.conflicts[0].right_candidate_ref
+    assert (left, right) == tuple(sorted((a, b)))
+    database.close()

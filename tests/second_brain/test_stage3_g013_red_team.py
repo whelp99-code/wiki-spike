@@ -1057,17 +1057,13 @@ def test_g013_c3_live_cursor_row_is_undeletable_and_unupdatable_via_direct_sql(t
 
 
 def test_g013_c3_retention_bound_table_cannot_be_abused_to_delete_a_live_cursor(tmp_path: Path) -> None:
-    """The ledger_recall_cursor_no_delete trigger only ever permits deleting a row
-    whose own expires_at is at or before the retention_bound_at stamped in
-    ledger_recall_cursor_retention_bound, and LifecycleDatabase.purge_expired_recall_cursors'
-    docstring claims that bound "never persists as ambient authority outside the
-    retention transaction itself" -- i.e. a live row can supposedly never be
-    removed "by this or any other statement". Attack that claim directly:
-    without ever touching the no-delete/no-update triggers (no DROP TRIGGER
-    anywhere in this test -- every OTHER durable-invariant bypass in this whole
-    suite needs one first), stamp a far-future retention bound with a bare
-    INSERT into the (unguarded) retention-bound table, then issue a plain DELETE
-    against a cursor row that is still well inside its live 300s TTL."""
+    """Live (and expired) recall cursors use the same delete discipline as every
+    other durable ledger table: ordinary DELETE is always refused. The only
+    remove path is the controlled retention pass, which drops and restores the
+    no-delete trigger inside one transactional unit. Attack the class directly:
+    no DROP TRIGGER in this test, try every ordinary write path that previously
+    defeated a bound-table design, and assert the live cursor is still present
+    and the no-delete trigger is still installed afterwards."""
     database, cas, service, workspace = store(tmp_path)
     a, b = ref("candidate", "abuse-a"), ref("candidate", "abuse-b")
     create_and_approve(service, cas, a, "abuse-a", workspace=workspace)
@@ -1078,30 +1074,48 @@ def test_g013_c3_retention_bound_table_cannot_be_abused_to_delete_a_live_cursor(
     assert database.con is not None
     con = database.con
 
-    # No trigger is dropped or altered here -- this is a bare data-plane INSERT
-    # into a table the schema declares with no append-only/no-delete guard of
-    # its own, unlike every other durable ledger table in this schema.
+    # 1. Bare DELETE of a live cursor is refused.
+    with pytest.raises(Exception, match="cannot be deleted"):
+        con.execute("DELETE FROM ledger_recall_cursor WHERE cursor_handle_ref=?", (live_handle,))
+
+    # 2. Inventing the old intermediate bound table (or any ambient authority
+    #    table) and writing into it must not change the delete outcome.
+    con.execute(
+        "CREATE TABLE IF NOT EXISTS ledger_recall_cursor_retention_bound ("
+        "retention_bound_ref TEXT PRIMARY KEY, retention_bound_at TEXT NOT NULL)"
+    )
     con.execute(
         "INSERT INTO ledger_recall_cursor_retention_bound VALUES('singleton', ?)",
         ("2999-01-01T00:00:00Z",),
     )
     with pytest.raises(Exception, match="cannot be deleted"):
         con.execute("DELETE FROM ledger_recall_cursor WHERE cursor_handle_ref=?", (live_handle,))
+
+    # 3. Even a row whose expires_at is already in the past cannot be removed
+    #    by ordinary DELETE; only the controlled retention path may remove it.
+    con.execute("DROP TRIGGER ledger_recall_cursor_no_update")
+    con.execute(
+        "UPDATE ledger_recall_cursor SET expires_at=? WHERE cursor_handle_ref=?",
+        ("2020-01-01T00:00:00Z", live_handle),
+    )
+    # Restore the no-update guard the way the suite seeds other fixtures.
+    con.execute(
+        "CREATE TRIGGER ledger_recall_cursor_no_update "
+        "BEFORE UPDATE ON ledger_recall_cursor "
+        "BEGIN SELECT RAISE(ABORT, 'ledger recall cursor is append-only'); END"
+    )
+    with pytest.raises(Exception, match="cannot be deleted"):
+        con.execute("DELETE FROM ledger_recall_cursor WHERE cursor_handle_ref=?", (live_handle,))
+
     still_there = con.execute(
         "SELECT COUNT(*) FROM ledger_recall_cursor WHERE cursor_handle_ref=?", (live_handle,)
     ).fetchone()[0]
-    assert still_there == 1, (
-        "BLOCKER: a bare INSERT into ledger_recall_cursor_retention_bound (no DROP "
-        "TRIGGER, no schema tampering -- just ordinary SQL any code path with a "
-        "write connection can issue) lets a plain DELETE remove a cursor row still "
-        "well inside its 300s TTL. The retention-bound table has no append-only, "
-        "single-writer, or same-transaction-only guard of its own, so the 'live "
-        "row can never be removed by this or any other statement' guarantee only "
-        "holds as long as nothing else in the process ever writes that one table -- "
-        "reproduce with: INSERT INTO ledger_recall_cursor_retention_bound "
-        "VALUES('singleton','2999-01-01T00:00:00Z'); DELETE FROM ledger_recall_cursor "
-        "WHERE cursor_handle_ref=<live handle>;"
-    )
+    assert still_there == 1
+    # The no-delete trigger must still be installed after every attack above.
+    assert con.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' "
+        "AND name='ledger_recall_cursor_no_delete'"
+    ).fetchone()[0] == 1
     database.close()
 
 
