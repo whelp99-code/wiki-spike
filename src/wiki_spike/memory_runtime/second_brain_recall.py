@@ -80,6 +80,7 @@ class RuntimePinnedRecallSnapshotV2:
     candidates: tuple[RuntimeCandidateV2, ...]
     conflicts: tuple[RuntimeConflictV2, ...]
     citations: tuple[RuntimeCitationV2, ...]
+    has_more: bool = False
     base_snapshot_digest: str | None = None
     incoming_cursor_digest: str | None = None
     incoming_continuation_ref: str | None = None
@@ -123,6 +124,8 @@ class RuntimeRecallAnswerV2:
     results: tuple[RuntimeRecallResultV2, ...]
     abstained: bool
     reason: str | None
+    has_more: bool = False
+    continuation: RuntimeContinuationV2 | None = None
 
 
 def _blocked(snapshot: RuntimePinnedRecallSnapshotV2) -> str | None:
@@ -170,11 +173,12 @@ class SecondBrainRecallRuntime:
                 return RuntimeRecallAnswerV2((), True, "continuation_drift")
         elif request.cursor is not None:
             return RuntimeRecallAnswerV2((), True, "cursor_without_continuation")
+        page_state = (snapshot.has_more, snapshot.continuation if snapshot.has_more else None)
         candidates = {item.candidate_ref: item for item in snapshot.candidates if item.state == "APPROVED"}
         citations = {ref: tuple(sorted((citation for citation in snapshot.citations if citation.candidate_ref == ref), key=lambda item: (item.source_ref, item.citation_digest))) for ref in candidates}
         eligible = {ref: item for ref, item in candidates.items() if citations[ref]}
         if not eligible:
-            return RuntimeRecallAnswerV2((), True, "citation_verification")
+            return RuntimeRecallAnswerV2((), True, "citation_verification", *page_state)
         open_pairs = [pair for pair in snapshot.conflicts if pair.state == "OPEN" and pair.left_candidate_ref in eligible and pair.right_candidate_ref in eligible]
         excluded: set[str] = set()
         contrary: dict[str, tuple[RuntimeCitationV2, ...]] = {}
@@ -189,7 +193,7 @@ class SecondBrainRecallRuntime:
                 excluded.add(loser.candidate_ref)
         ranked = sorted((item for ref, item in eligible.items() if ref not in excluded), key=lambda item: (-len(item.support_refs), item.candidate_ref, item.revision_ref))
         results = tuple(RuntimeRecallResultV2(item.candidate_ref, item.revision_ref, item.content_digest, citations[item.candidate_ref], contrary.get(item.candidate_ref, ()), len(item.support_refs)) for item in ranked)
-        return RuntimeRecallAnswerV2(results, not results, "conflict" if not results else None)
+        return RuntimeRecallAnswerV2(results, not results, "conflict" if not results else None, *page_state)
 
 
 __all__ = [name for name in globals() if name.startswith("Runtime") or name == "SecondBrainRecallRuntime"]

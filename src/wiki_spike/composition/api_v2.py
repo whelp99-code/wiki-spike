@@ -39,6 +39,18 @@ class V2Result:
     code: str
     receipt: dict[str, str]
 
+def encode_opaque_receipt_field(values: dict[str, str]) -> str:
+    """Flatten a small string-only mapping into one bounded receipt field.
+
+    Every ``RecallContinuationV2`` field is a plain opaque ref/digest/instant
+    string containing neither ``;`` nor ``=``, so this reversible encoding
+    needs no general-purpose serializer dependency at this closed boundary.
+    The separators are enforced rather than assumed: an unexpected value fails
+    closed instead of emitting a silently unparseable handle.
+    """
+    if any(mark in text for pair in values.items() for text in pair for mark in ";="):
+        raise ValueError("receipt field values must not contain a separator")
+    return ";".join(f"{key}={values[key]}" for key in sorted(values))
 
 class SecondBrainApiV2:
     """Only bounded V2 command, recall, citation, and status operations."""
@@ -74,7 +86,13 @@ class SecondBrainApiV2:
     def recall(self, use: CapabilityUseV2, request: RecallSnapshotRequestV2) -> V2Result:
         self._bound(use, request); self._authorize(use, "recall")
         answer = self._product.recall.recall(request)
-        return V2Result("ABSTAINED" if answer.abstained else "OK", {"result_count": str(len(answer.results)), "reason": answer.reason or ""})
+        receipt = {
+            "result_count": str(len(answer.results)),
+            "reason": answer.reason or "",
+            "has_more": "true" if answer.has_more else "false",
+            "continuation": "" if answer.continuation is None else encode_opaque_receipt_field(answer.continuation.to_mapping()),
+        }
+        return V2Result("ABSTAINED" if answer.abstained else "OK", receipt)
 
     def citation(self, use: CapabilityUseV2, request: RecallSnapshotRequestV2, candidate_ref: str) -> V2Result:
         if not isinstance(candidate_ref, str) or not candidate_ref or len(candidate_ref) > 128:
@@ -82,7 +100,17 @@ class SecondBrainApiV2:
         self._bound(use, request); self._authorize(use, "citation")
         answer = self._product.recall.recall(request)
         citations = tuple(c for result in answer.results if result.candidate_ref == candidate_ref for c in result.citations)
-        return V2Result("ABSTAINED" if answer.abstained else "OK", {"candidate_ref": candidate_ref, "citation_count": str(len(citations))})
+        if answer.abstained:
+            return V2Result("ABSTAINED", {"candidate_ref": candidate_ref, "citation_count": "0"})
+        # An off-page candidate and a genuinely uncited one both show zero
+        # citations in this page's ranked results, and reporting "OK" for
+        # either is indistinguishable from the caller's perspective. When more
+        # pages remain we cannot yet rule out "merely off-page", so we return
+        # a distinct, explicit code instead of ever claiming OK/zero for a
+        # candidate we have not fully resolved across every page.
+        if not citations and answer.has_more:
+            return V2Result("NOT_SERVED", {"candidate_ref": candidate_ref, "citation_count": "0"})
+        return V2Result("OK", {"candidate_ref": candidate_ref, "citation_count": str(len(citations))})
 
     def status(self, use: CapabilityUseV2) -> V2Result:
         self._authorize(use, "status")
