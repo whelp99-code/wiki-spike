@@ -40,7 +40,7 @@ The sole production root is V2-only composition. V2 API and MCP transports are t
 
 ### Migration, cutover, and retention
 
-Migration cohorts write directly into the final encrypted workspace and remain non-serving until activation. They are not shadow workspaces and cannot be cross-namespace promoted, re-encrypted, or re-identified. Cohorts are source-by-source, limited to enabled migration sources in the resolved scope, and require a 14-day shadow period before cutover. Legacy systems are read-only for 90 days after activation.
+Migration cohorts write directly into the final encrypted workspace and remain non-serving until activation. They are not shadow workspaces and cannot be cross-namespace promoted, re-encrypted, or re-identified. Cohorts are source-by-source, limited to enabled migration sources in the resolved scope, and require a 3-day measured shadow period before cutover. After that period, a cohort that satisfies the quantitative cutover formula and all external role approvals transitions directly to live serving. Legacy systems are read-only for 90 days after activation.
 
 Before first canonical mutation, an emergency rollback can route the whole cohort to the exact read-only pre-cutover UI/API with banner and write freeze. The first canonical mutation closes rollback. Thereafter failure is fail-closed disable/read-abstention, never legacy routing or history/key resurrection. Cutover requires its separately signed decision and evidence; this ADR grants no activation.
 

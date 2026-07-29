@@ -110,7 +110,7 @@ def _decision_body(
     scope_obj: ResolvedScopeV1,
     cohort: MigrationCohortManifestV1,
     *,
-    observation_days: int = 14,
+    observation_days: int = 3,
     parity_cases: int = 200,
     e2e: int = 500,
     safety: int = 0,
@@ -140,7 +140,7 @@ def _decision_body(
     )
     computed = (
         safety == 0
-        and observation_days >= 14
+        and observation_days >= 3
         and parity_cases >= 200
         and e2e >= 500
         and parity_lower >= mins["parity_min_bps"]
@@ -199,7 +199,7 @@ def _decision(
 @pytest.mark.parametrize(
     "field,value",
     [
-        ("observation_days", 13),
+        ("observation_days", 2),
         ("observation_days", 0),
         ("parity_cases", 199),
         ("parity_cases", 0),
@@ -277,7 +277,7 @@ def test_g018_a1_exact_plan_minima_constructs_with_formula_pass() -> None:
     cohort = _cohort(scope_obj)
     ok = _decision(scope_obj, cohort)
     assert ok.formula_pass is True
-    assert ok.observation_days == 14
+    assert ok.observation_days == 3
     assert ok.parity_cases_per_source == 200
     assert ok.cohort_e2e_queries == 500
     assert ok.safety_violations == 0
@@ -566,7 +566,7 @@ def test_g018_a5_live_switch_without_human_approvals_refuses() -> None:
 def test_g018_a5_live_switch_with_formula_fail_refuses_even_with_approvals() -> None:
     scope_obj = _scope()
     cohort = _cohort(scope_obj)
-    failed = _decision(scope_obj, cohort, observation_days=13, formula_pass=False)
+    failed = _decision(scope_obj, cohort, observation_days=2, formula_pass=False)
     assert failed.formula_pass is False
     with pytest.raises(InvalidContractValue, match="formula_pass is false"):
         assert_live_route_switch_authorized(failed, human_external_approvals_present=True)

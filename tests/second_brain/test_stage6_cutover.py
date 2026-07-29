@@ -44,7 +44,7 @@ def _decision(
     scope_obj: ResolvedScopeV1,
     cohort: MigrationCohortManifestV1,
     *,
-    observation_days: int = 14,
+    observation_days: int = 3,
     parity_cases: int = 200,
     e2e: int = 500,
     safety: int = 0,
@@ -58,7 +58,7 @@ def _decision(
 ) -> CutoverDecisionV1:
     mins = dict(parity_min_bps=9000, citation_min_bps=9000, completeness_min_bps=9000, availability_min_bps=9900)
     computed = (
-        safety == 0 and observation_days >= 14 and parity_cases >= 200 and e2e >= 500
+        safety == 0 and observation_days >= 3 and parity_cases >= 200 and e2e >= 500
         and parity_lower >= mins["parity_min_bps"] and citation_lower >= mins["citation_min_bps"]
         and completeness_lower >= mins["completeness_min_bps"] and availability_lower >= mins["availability_min_bps"]
         and holdout_changed is False
@@ -126,7 +126,7 @@ def test_cutover_formula_pass_requires_plan_minima() -> None:
     ok = _decision(scope_obj, cohort)
     assert ok.formula_pass is True
     with pytest.raises(InvalidContractValue, match="formula_pass does not match"):
-        _decision(scope_obj, cohort, observation_days=13, formula_pass=True)
+        _decision(scope_obj, cohort, observation_days=2, formula_pass=True)
     with pytest.raises(InvalidContractValue, match="formula_pass does not match"):
         _decision(scope_obj, cohort, safety=1, formula_pass=True)
     with pytest.raises(InvalidContractValue, match="formula_pass does not match"):

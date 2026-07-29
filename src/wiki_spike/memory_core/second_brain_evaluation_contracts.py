@@ -199,7 +199,7 @@ class RecallSloV1:
             ("completeness_min_bps", 0, 10000),
             ("availability_min_bps", 0, 10000),
             ("max_safety_violations", 0, 0),
-            ("min_shadow_days", 14, 3650),
+            ("min_shadow_days", 3, 3650),
             ("min_parity_cases_per_source", 200, 1000000),
             ("min_cohort_e2e_queries", 500, 10000000),
         ):

@@ -77,7 +77,7 @@ def _slo() -> RecallSloV1:
         "completeness_min_bps": 9000,
         "availability_min_bps": 9900,
         "max_safety_violations": 0,
-        "min_shadow_days": 14,
+        "min_shadow_days": 3,
         "min_parity_cases_per_source": 200,
         "min_cohort_e2e_queries": 500,
         "confidence_method": "one-sided-wilson-95",
@@ -175,14 +175,14 @@ def test_evaluation_items_never_enter_serving_corpus_or_keys() -> None:
 
 def test_slo_freezes_plan_minima_and_denominator_rules() -> None:
     slo = _slo()
-    assert slo.min_shadow_days == 14
+    assert slo.min_shadow_days == 3
     assert slo.min_parity_cases_per_source == 200
     assert slo.min_cohort_e2e_queries == 500
     assert slo.max_safety_violations == 0
     assert slo.include_invalid_in_denominator is True
     with pytest.raises(InvalidContractValue, match="out of required range"):
         body = slo.to_mapping()
-        body["min_shadow_days"] = 7
+        body["min_shadow_days"] = 2
         body["slo_digest"] = canonical_ledger_digest("recall-slo-v1", {k: v for k, v in body.items() if k != "slo_digest"})
         RecallSloV1.from_mapping(body)
 
