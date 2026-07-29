@@ -1,0 +1,808 @@
+{
+  "goal": "G017",
+  "title": "Stage-5 product-release evidence DAG -- completion QA / red-team",
+  "surface": "api-package-algorithm",
+  "frozen_head": "6153147018b268f8402f41c03ab6b5962cc85db1",
+  "frozen_head_short": "6153147",
+  "frozen_head_subject": "add Stage 5 product-release DAG sample receipts",
+  "worktree": "/private/tmp/wiki-spike-second-brain-stage3",
+  "branch": "second-brain-stage3",
+  "new_test_module": "tests/second_brain/test_stage5_product_release_red_team.py",
+  "artifact": "artifacts/conformance/second-brain/g017-red-team-report.json",
+  "src_edits": false,
+  "commit": false,
+  "baseline_suite": "1577 passed (collect-only before red-team module)",
+  "observed_suite": "1648 passed",
+  "delta_explanation": "1648 - 1577 = 71 new collected red-team cases. No pre-existing test modified, weakened, or removed. Only tests/second_brain/test_stage5_product_release_red_team.py and this artifact were touched.",
+  "seed": null,
+  "commands_run": [
+    {
+      "command": "PYTHONPATH=src /usr/local/bin/python3.12 -m pytest -q tests/second_brain/test_stage5_product_release_red_team.py",
+      "observed_result": "71 passed in 0.16s",
+      "counts": {
+        "collected": 71,
+        "passed": 71,
+        "failed": 0
+      }
+    },
+    {
+      "command": "PYTHONPATH=src /usr/local/bin/python3.12 -m pytest -q",
+      "observed_result": "1648 passed in 46.77s",
+      "counts": {
+        "collected": 1648,
+        "passed": 1648,
+        "failed": 0
+      },
+      "note": "Baseline 1577 + 71 new red-team cases = 1648."
+    }
+  ],
+  "attack_class_matrix": {
+    "A1_gate8_path_import_variants": {
+      "description": "Gate 8 path import variants (conformance/encrypted-lifecycle markers, GATE8_ docs, gate8-runbook, backslash, nested-under-namespace, envelope artifact_paths) must refuse; honest product-release paths accept. Dotdot escape that breaks the literal marker is pinned as an observed gap (no .. collapse).",
+      "covered_by_case_ids": [
+        "a1_gate8_path_conformance_g012",
+        "a1_gate8_path_conformance_redteam",
+        "a1_gate8_path_encrypted_lifecycle_join",
+        "a1_gate8_path_GATE8_completion_doc",
+        "a1_gate8_path_gate8_runbook",
+        "a1_gate8_path_relative_dot_slash_with_marker",
+        "a1_gate8_path_backslash_windows",
+        "a1_gate8_path_prefixed_marker",
+        "a1_gate8_path_GATE8_notes",
+        "a1_gate8_path_nested_under_namespace_conformance",
+        "a1_gate8_path_nested_under_namespace_vendor",
+        "a1_gate8_path_inside_envelope_artifact_paths",
+        "a1_honest_product_release_path_accepted",
+        "a1_dotdot_escape_omitting_literal_marker_observed_gap"
+      ]
+    },
+    "A2_gate8_kind_relabel": {
+      "description": "Foundational receipt kinds that start with gate8 / encrypted-lifecycle-gate8 or contain gate-8 must refuse relabel; honest foundation kinds accept as exact-digest refs.",
+      "covered_by_case_ids": [
+        "a2_kind_gate8-product-release",
+        "a2_kind_gate8",
+        "a2_kind_gate8-close-receipt",
+        "a2_kind_encrypted-lifecycle-gate8",
+        "a2_kind_encrypted-lifecycle-gate8-join",
+        "a2_kind_product-gate-8-evidence",
+        "a2_kind_my-gate-8-relabel",
+        "a2_kind_relabel_inside_envelope",
+        "a2_honest_foundational_kind_accepted"
+      ]
+    },
+    "A3_stale_unknown_foundational_digests": {
+      "description": "Stale and unknown foundational digests fail closed; fresh known digests accept; mixed refs fail when any entry is stale or unknown.",
+      "covered_by_case_ids": [
+        "a3_stale_foundational_digest",
+        "a3_unknown_foundational_digest",
+        "a3_fresh_known_foundational_accepted",
+        "a3_mixed_refs_any_stale_or_unknown"
+      ]
+    },
+    "A4_scope_contract_manifest_mismatches": {
+      "description": "contract/resolved_scope/source/capability/benchmark/holdout digest mismatches refuse; envelope digests that diverge from ResolvedScopeV1 refuse even when field-level caller matches the foreign digest; honest binding accepts.",
+      "covered_by_case_ids": [
+        "a4_contract_digest_mismatch",
+        "a4_resolved_scope_digest_mismatch",
+        "a4_source_manifest_digest_mismatch",
+        "a4_capability_manifest_digest_mismatch",
+        "a4_benchmark_manifest_digest_mismatch",
+        "a4_holdout_manifest_digest_mismatch",
+        "a4_envelope_source_diverges_from_scope",
+        "a4_envelope_capability_diverges_from_scope",
+        "a4_honest_scope_contract_manifest_binding"
+      ]
+    },
+    "A5_missing_failing_required_drills": {
+      "description": "Each missing required kind, each FAIL, BLOCKED route, empty set, and optional-only set refuse; required PASS plus optional extras accept.",
+      "covered_by_case_ids": [
+        "a5_missing_recovery",
+        "a5_missing_deletion",
+        "a5_missing_credential",
+        "a5_missing_route",
+        "a5_missing_alert",
+        "a5_failing_recovery",
+        "a5_failing_deletion",
+        "a5_failing_credential",
+        "a5_failing_route",
+        "a5_failing_alert",
+        "a5_blocked_route",
+        "a5_empty_drill_set",
+        "a5_optional_kinds_alone",
+        "a5_required_plus_optional_accepted"
+      ]
+    },
+    "A6_duplicate_drill_kinds": {
+      "description": "Duplicate required or optional drill kinds refuse at assert_required_drills_present; duplicate drill_receipt_digests refuse at envelope construction.",
+      "covered_by_case_ids": [
+        "a6_duplicate_required_kind",
+        "a6_duplicate_optional_kind",
+        "a6_duplicate_drill_receipt_digests_envelope"
+      ]
+    },
+    "A7_path_outside_product_release_namespace": {
+      "description": "Paths outside artifacts/product-release/second-brain-v1 refuse (including adjacent suffix and v2); outside path inside envelope refuses; duplicate artifact_paths refuse.",
+      "covered_by_case_ids": [
+        "a7_outside_g016_suite_receipt",
+        "a7_outside_other_product",
+        "a7_outside_second_brain_stage5",
+        "a7_outside_docs_product",
+        "a7_outside_tmp",
+        "a7_outside_adjacent_suffix",
+        "a7_outside_v2_namespace",
+        "a7_outside_inside_envelope",
+        "a7_duplicate_artifact_paths"
+      ]
+    },
+    "A8_envelope_digest_tamper": {
+      "description": "Envelope digest tamper, body/path swap without redigest, drill receipt digest tamper, outcome swap without redigest, non-sha256 foundation digest, empty artifact_paths/drill_receipt_digests refuse; honest round-trip binds.",
+      "covered_by_case_ids": [
+        "a8_envelope_digest_tamper",
+        "a8_envelope_body_field_swap_without_redigest",
+        "a8_envelope_path_swap_without_redigest",
+        "a8_drill_receipt_digest_tamper",
+        "a8_drill_outcome_swap_without_redigest",
+        "a8_foundational_digest_not_sha256",
+        "a8_empty_artifact_paths",
+        "a8_empty_drill_receipt_digests",
+        "a8_round_trip_honest_envelope_binds"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "a1_gate8_path_conformance_g012",
+      "test_function": "test_g017_a1_gate8_path_import_variant_refuses[artifacts_conformance_encrypted-lifecycle_gate8_g012-local-close-report.json]",
+      "attack_class": "A1",
+      "scenario": "assert_product_release_path on artifacts/conformance/encrypted-lifecycle/gate8/g012-local-close-report.json.",
+      "expected": "InvalidContractValue matching 'Gate 8'.",
+      "observed": "InvalidContractValue('product-release path must not import or relabel Gate 8 evidence').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_gate8_path_conformance_redteam",
+      "test_function": "test_g017_a1_gate8_path_import_variant_refuses[artifacts_conformance_encrypted-lifecycle_gate8_redteam_red-team-report.json]",
+      "attack_class": "A1",
+      "scenario": "assert_product_release_path on gate8 redteam report path.",
+      "expected": "Refuse Gate 8 import.",
+      "observed": "InvalidContractValue Gate 8 evidence.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_gate8_path_encrypted_lifecycle_join",
+      "test_function": "test_g017_a1_gate8_path_import_variant_refuses[artifacts_encrypted-lifecycle_gate8_join_manifest.json]",
+      "attack_class": "A1",
+      "scenario": "assert_product_release_path on artifacts/encrypted-lifecycle/gate8/join/manifest.json.",
+      "expected": "Refuse Gate 8 import.",
+      "observed": "InvalidContractValue Gate 8 evidence.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_gate8_path_GATE8_completion_doc",
+      "test_function": "test_g017_a1_gate8_path_import_variant_refuses[docs_GATE8_COMPLETION_KR.md]",
+      "attack_class": "A1",
+      "scenario": "assert_product_release_path on docs/GATE8_COMPLETION_KR.md (GATE8_ marker).",
+      "expected": "Refuse Gate 8 import.",
+      "observed": "InvalidContractValue Gate 8 evidence.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_gate8_path_gate8_runbook",
+      "test_function": "test_g017_a1_gate8_path_import_variant_refuses[runbooks_gate8-runbook.md]",
+      "attack_class": "A1",
+      "scenario": "assert_product_release_path on runbooks/gate8-runbook.md.",
+      "expected": "Refuse Gate 8 import.",
+      "observed": "InvalidContractValue Gate 8 evidence.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_gate8_path_relative_dot_slash_with_marker",
+      "test_function": "test_g017_a1_gate8_path_import_variant_refuses[._artifacts_product-release_second-brain-v1_drills_.._.._.._artifacts_conformanc]",
+      "attack_class": "A1",
+      "scenario": "./PRODUCT_RELEASE_NAMESPACE/.../artifacts/conformance/encrypted-lifecycle/gate8/x.json retains literal marker after ./ strip.",
+      "expected": "Refuse Gate 8 import.",
+      "observed": "InvalidContractValue Gate 8 evidence.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_gate8_path_backslash_windows",
+      "test_function": "test_g017_a1_gate8_path_import_variant_refuses[artifacts\\\\conformance\\\\encrypted-lifecycle\\\\gate8\\\\x.json]",
+      "attack_class": "A1",
+      "scenario": "Windows backslash Gate 8 path normalized then refused.",
+      "expected": "Refuse Gate 8 import.",
+      "observed": "InvalidContractValue Gate 8 evidence.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_gate8_path_prefixed_marker",
+      "test_function": "test_g017_a1_gate8_path_import_variant_refuses[prefix_artifacts_conformance_encrypted-lifecycle_gate8_nested.json]",
+      "attack_class": "A1",
+      "scenario": "Marker appears as substring after an unrelated prefix.",
+      "expected": "Refuse Gate 8 import.",
+      "observed": "InvalidContractValue Gate 8 evidence.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_gate8_path_GATE8_notes",
+      "test_function": "test_g017_a1_gate8_path_import_variant_refuses[docs_ops_GATE8_notes.md]",
+      "attack_class": "A1",
+      "scenario": "docs/ops/GATE8_notes.md carries GATE8_ marker.",
+      "expected": "Refuse Gate 8 import.",
+      "observed": "InvalidContractValue Gate 8 evidence.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_gate8_path_nested_under_namespace_conformance",
+      "test_function": "test_g017_a1_gate8_path_import_variant_refuses[artifacts_product-release_second-brain-v1_nested_artifacts_conformance_encrypted]",
+      "attack_class": "A1",
+      "scenario": "Marker nested under product-release namespace path.",
+      "expected": "Refuse Gate 8 import.",
+      "observed": "InvalidContractValue Gate 8 evidence.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_gate8_path_nested_under_namespace_vendor",
+      "test_function": "test_g017_a1_gate8_path_import_variant_refuses[artifacts_product-release_second-brain-v1_vendor_artifacts_encrypted-lifecycle_g]",
+      "attack_class": "A1",
+      "scenario": "artifacts/encrypted-lifecycle/gate8 marker nested under vendor/.",
+      "expected": "Refuse Gate 8 import.",
+      "observed": "InvalidContractValue Gate 8 evidence.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_gate8_path_inside_envelope_artifact_paths",
+      "test_function": "test_g017_a1_gate8_path_inside_envelope_artifact_paths_refuses",
+      "attack_class": "A1",
+      "scenario": "ProductReleaseEnvelopeV1.from_mapping with mixed honest + Gate 8 artifact_paths (4 variants).",
+      "expected": "Each construction raises InvalidContractValue Gate 8.",
+      "observed": "All four variants raised InvalidContractValue matching 'Gate 8'.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_honest_product_release_path_accepted",
+      "test_function": "test_g017_a1_honest_product_release_path_still_accepted",
+      "attack_class": "A1",
+      "scenario": "Honest namespace path, bare namespace, and ./stripped path accepted.",
+      "expected": "Returns normalized product-release paths.",
+      "observed": "All three accepted with expected normalization.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a1_dotdot_escape_omitting_literal_marker_observed_gap",
+      "test_function": "test_g017_a1_dotdot_escape_omitting_literal_marker_is_observed_gap",
+      "attack_class": "A1",
+      "scenario": "Path traversal that breaks the literal Gate 8 marker substring via ../ while still prefixing PRODUCT_RELEASE_NAMESPACE/.",
+      "expected": "Documented observed gap: currently accepted (no .. collapse). Pin so a future fix intentionally flips.",
+      "observed": "Both sneaky paths accepted as-is; gap pinned, not weakened.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_kind_gate8-product-release",
+      "test_function": "test_g017_a2_gate8_kind_relabel_refuses[gate8-product-release]",
+      "attack_class": "A2",
+      "scenario": "FoundationalReceiptRefV1 receipt_kind=gate8-product-release.",
+      "expected": "Refuse relabel Gate 8.",
+      "observed": "InvalidContractValue('foundational receipt kind must not relabel Gate 8 as product evidence').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_kind_gate8",
+      "test_function": "test_g017_a2_gate8_kind_relabel_refuses[gate8]",
+      "attack_class": "A2",
+      "scenario": "receipt_kind=gate8.",
+      "expected": "Refuse relabel.",
+      "observed": "InvalidContractValue relabel Gate 8.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_kind_gate8-close-receipt",
+      "test_function": "test_g017_a2_gate8_kind_relabel_refuses[gate8-close-receipt]",
+      "attack_class": "A2",
+      "scenario": "receipt_kind=gate8-close-receipt.",
+      "expected": "Refuse relabel.",
+      "observed": "InvalidContractValue relabel Gate 8.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_kind_encrypted-lifecycle-gate8",
+      "test_function": "test_g017_a2_gate8_kind_relabel_refuses[encrypted-lifecycle-gate8]",
+      "attack_class": "A2",
+      "scenario": "receipt_kind=encrypted-lifecycle-gate8.",
+      "expected": "Refuse relabel.",
+      "observed": "InvalidContractValue relabel Gate 8.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_kind_encrypted-lifecycle-gate8-join",
+      "test_function": "test_g017_a2_gate8_kind_relabel_refuses[encrypted-lifecycle-gate8-join]",
+      "attack_class": "A2",
+      "scenario": "receipt_kind=encrypted-lifecycle-gate8-join.",
+      "expected": "Refuse relabel.",
+      "observed": "InvalidContractValue relabel Gate 8.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_kind_product-gate-8-evidence",
+      "test_function": "test_g017_a2_gate8_kind_relabel_refuses[product-gate-8-evidence]",
+      "attack_class": "A2",
+      "scenario": "receipt_kind contains gate-8 substring.",
+      "expected": "Refuse relabel.",
+      "observed": "InvalidContractValue relabel Gate 8.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_kind_my-gate-8-relabel",
+      "test_function": "test_g017_a2_gate8_kind_relabel_refuses[my-gate-8-relabel]",
+      "attack_class": "A2",
+      "scenario": "receipt_kind=my-gate-8-relabel.",
+      "expected": "Refuse relabel.",
+      "observed": "InvalidContractValue relabel Gate 8.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_kind_relabel_inside_envelope",
+      "test_function": "test_g017_a2_gate8_kind_relabel_inside_envelope_refuses",
+      "attack_class": "A2",
+      "scenario": "Envelope foundational_receipt_refs carries gate8-product-proof kind.",
+      "expected": "Refuse at from_mapping.",
+      "observed": "InvalidContractValue relabel Gate 8.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a2_honest_foundational_kind_accepted",
+      "test_function": "test_g017_a2_honest_foundational_kind_still_accepted",
+      "attack_class": "A2",
+      "scenario": "encrypted-lifecycle-foundation and -v2 kinds accepted as exact-digest refs.",
+      "expected": "Constructs cleanly.",
+      "observed": "Both kinds accepted.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a3_stale_foundational_digest",
+      "test_function": "test_g017_a3_stale_foundational_digest_refuses",
+      "attack_class": "A3",
+      "scenario": "known+stale both list the same foundational digest.",
+      "expected": "Refuse stale foundational.",
+      "observed": "InvalidContractValue('stale foundational receipt cannot join product-release evidence').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a3_unknown_foundational_digest",
+      "test_function": "test_g017_a3_unknown_foundational_digest_refuses",
+      "attack_class": "A3",
+      "scenario": "known_foundational_digests allowlist excludes envelope ref.",
+      "expected": "Refuse unknown foundational.",
+      "observed": "InvalidContractValue('unknown foundational receipt digest').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a3_fresh_known_foundational_accepted",
+      "test_function": "test_g017_a3_fresh_known_foundational_digest_accepted",
+      "attack_class": "A3",
+      "scenario": "fresh digest on allowlist; unrelated stale set.",
+      "expected": "Accept.",
+      "observed": "assert_envelope_matches_scope_and_contract returned None.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a3_mixed_refs_any_stale_or_unknown",
+      "test_function": "test_g017_a3_mixed_refs_fail_when_any_is_stale_or_unknown",
+      "attack_class": "A3",
+      "scenario": "Two refs: good+stale then good+unknown.",
+      "expected": "Each path refuses on the bad ref.",
+      "observed": "stale then unknown InvalidContractValue as expected.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_contract_digest_mismatch",
+      "test_function": "test_g017_a4_contract_digest_mismatch_refuses",
+      "attack_class": "A4",
+      "scenario": "Envelope binds contract-a; assert with contract-b.",
+      "expected": "Refuse contract_digest mismatch.",
+      "observed": "InvalidContractValue('product-release envelope contract_digest mismatch').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_resolved_scope_digest_mismatch",
+      "test_function": "test_g017_a4_resolved_scope_digest_mismatch_refuses",
+      "attack_class": "A4",
+      "scenario": "Envelope bound to scope A; assert against scope with different mandatory_release_constraints.",
+      "expected": "Refuse resolved_scope_digest mismatch.",
+      "observed": "InvalidContractValue('product-release envelope resolved_scope_digest mismatch').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_source_manifest_digest_mismatch",
+      "test_function": "test_g017_a4_source_manifest_digest_mismatch_refuses",
+      "attack_class": "A4",
+      "scenario": "Caller supplies different source_manifest_digest than envelope.",
+      "expected": "Refuse source_manifest_digest mismatch.",
+      "observed": "InvalidContractValue('source_manifest_digest mismatch').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_capability_manifest_digest_mismatch",
+      "test_function": "test_g017_a4_capability_manifest_digest_mismatch_refuses",
+      "attack_class": "A4",
+      "scenario": "Caller supplies different capability_manifest_digest than envelope.",
+      "expected": "Refuse capability_manifest_digest mismatch.",
+      "observed": "InvalidContractValue('capability_manifest_digest mismatch').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_benchmark_manifest_digest_mismatch",
+      "test_function": "test_g017_a4_benchmark_manifest_digest_mismatch_refuses",
+      "attack_class": "A4",
+      "scenario": "Envelope bench-a vs caller bench-b.",
+      "expected": "Refuse benchmark_manifest_digest mismatch.",
+      "observed": "InvalidContractValue('benchmark_manifest_digest mismatch').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_holdout_manifest_digest_mismatch",
+      "test_function": "test_g017_a4_holdout_manifest_digest_mismatch_refuses",
+      "attack_class": "A4",
+      "scenario": "Envelope hold-a vs caller hold-b.",
+      "expected": "Refuse holdout_manifest_digest mismatch.",
+      "observed": "InvalidContractValue('holdout_manifest_digest mismatch').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_envelope_source_diverges_from_scope",
+      "test_function": "test_g017_a4_envelope_source_manifest_diverges_from_scope_refuses",
+      "attack_class": "A4",
+      "scenario": "Envelope source_manifest_digest != scope.source_manifest_digest; field-level match still passes foreign digest.",
+      "expected": "Refuse source manifest does not match resolved scope.",
+      "observed": "InvalidContractValue('envelope source manifest does not match resolved scope').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_envelope_capability_diverges_from_scope",
+      "test_function": "test_g017_a4_envelope_capability_manifest_diverges_from_scope_refuses",
+      "attack_class": "A4",
+      "scenario": "Envelope capability_manifest_digest != scope.capability_manifest_digest.",
+      "expected": "Refuse capability manifest does not match resolved scope.",
+      "observed": "InvalidContractValue('envelope capability manifest does not match resolved scope').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a4_honest_scope_contract_manifest_binding",
+      "test_function": "test_g017_a4_honest_scope_contract_manifest_binding_accepted",
+      "attack_class": "A4",
+      "scenario": "Honest envelope + matching scope/contract/manifests.",
+      "expected": "Accept.",
+      "observed": "assert_envelope_matches_scope_and_contract returned None.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_missing_recovery",
+      "test_function": "test_g017_a5_missing_required_drill_kind_refuses[recovery]",
+      "attack_class": "A5",
+      "scenario": "Required set without recovery.",
+      "expected": "Refuse missing required drill.",
+      "observed": "InvalidContractValue missing required drill kinds.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_missing_deletion",
+      "test_function": "test_g017_a5_missing_required_drill_kind_refuses[deletion]",
+      "attack_class": "A5",
+      "scenario": "Required set without deletion.",
+      "expected": "Refuse missing.",
+      "observed": "InvalidContractValue missing required drill kinds.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_missing_credential",
+      "test_function": "test_g017_a5_missing_required_drill_kind_refuses[credential]",
+      "attack_class": "A5",
+      "scenario": "Required set without credential.",
+      "expected": "Refuse missing.",
+      "observed": "InvalidContractValue missing required drill kinds.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_missing_route",
+      "test_function": "test_g017_a5_missing_required_drill_kind_refuses[route]",
+      "attack_class": "A5",
+      "scenario": "Required set without route.",
+      "expected": "Refuse missing.",
+      "observed": "InvalidContractValue missing required drill kinds.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_missing_alert",
+      "test_function": "test_g017_a5_missing_required_drill_kind_refuses[alert]",
+      "attack_class": "A5",
+      "scenario": "Required set without alert.",
+      "expected": "Refuse missing.",
+      "observed": "InvalidContractValue missing required drill kinds.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_failing_recovery",
+      "test_function": "test_g017_a5_failing_required_drill_refuses[recovery]",
+      "attack_class": "A5",
+      "scenario": "recovery outcome=FAIL.",
+      "expected": "Refuse did not PASS.",
+      "observed": "InvalidContractValue('required drill recovery did not PASS').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_failing_deletion",
+      "test_function": "test_g017_a5_failing_required_drill_refuses[deletion]",
+      "attack_class": "A5",
+      "scenario": "deletion outcome=FAIL.",
+      "expected": "Refuse did not PASS.",
+      "observed": "InvalidContractValue('required drill deletion did not PASS').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_failing_credential",
+      "test_function": "test_g017_a5_failing_required_drill_refuses[credential]",
+      "attack_class": "A5",
+      "scenario": "credential outcome=FAIL.",
+      "expected": "Refuse did not PASS.",
+      "observed": "InvalidContractValue('required drill credential did not PASS').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_failing_route",
+      "test_function": "test_g017_a5_failing_required_drill_refuses[route]",
+      "attack_class": "A5",
+      "scenario": "route outcome=FAIL.",
+      "expected": "Refuse did not PASS.",
+      "observed": "InvalidContractValue('required drill route did not PASS').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_failing_alert",
+      "test_function": "test_g017_a5_failing_required_drill_refuses[alert]",
+      "attack_class": "A5",
+      "scenario": "alert outcome=FAIL.",
+      "expected": "Refuse did not PASS.",
+      "observed": "InvalidContractValue('required drill alert did not PASS').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_blocked_route",
+      "test_function": "test_g017_a5_blocked_required_drill_refuses",
+      "attack_class": "A5",
+      "scenario": "route outcome=BLOCKED.",
+      "expected": "Refuse did not PASS.",
+      "observed": "InvalidContractValue('required drill route did not PASS').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_empty_drill_set",
+      "test_function": "test_g017_a5_empty_drill_set_refuses",
+      "attack_class": "A5",
+      "scenario": "assert_required_drills_present([]).",
+      "expected": "Refuse missing.",
+      "observed": "InvalidContractValue missing required drill kinds.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_optional_kinds_alone",
+      "test_function": "test_g017_a5_optional_kinds_alone_do_not_satisfy_required_set",
+      "attack_class": "A5",
+      "scenario": "Only backup/outage/floor present.",
+      "expected": "Refuse missing required.",
+      "observed": "InvalidContractValue missing required drill kinds.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a5_required_plus_optional_accepted",
+      "test_function": "test_g017_a5_all_required_pass_with_optional_extras_accepted",
+      "attack_class": "A5",
+      "scenario": "All five required PASS plus backup/outage/floor.",
+      "expected": "Accept.",
+      "observed": "assert_required_drills_present returned None.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a6_duplicate_required_kind",
+      "test_function": "test_g017_a6_duplicate_required_drill_kind_refuses",
+      "attack_class": "A6",
+      "scenario": "Two alert drills with distinct scenario digests.",
+      "expected": "Refuse duplicate drill kind: alert.",
+      "observed": "InvalidContractValue('duplicate drill kind: alert').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a6_duplicate_optional_kind",
+      "test_function": "test_g017_a6_duplicate_optional_drill_kind_refuses",
+      "attack_class": "A6",
+      "scenario": "Two backup drills alongside required set.",
+      "expected": "Refuse duplicate drill kind: backup.",
+      "observed": "InvalidContractValue('duplicate drill kind: backup').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a6_duplicate_drill_receipt_digests_envelope",
+      "test_function": "test_g017_a6_duplicate_drill_receipt_digests_in_envelope_refuse",
+      "attack_class": "A6",
+      "scenario": "Envelope drill_receipt_digests list repeats first digest.",
+      "expected": "Refuse must be unique.",
+      "observed": "InvalidContractValue('drill_receipt_digests must be unique').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_outside_g016_suite_receipt",
+      "test_function": "test_g017_a7_path_outside_product_release_namespace_refuses[artifacts_conformance_second-brain_g016-suite-receipt.json]",
+      "attack_class": "A7",
+      "scenario": "artifacts/conformance/second-brain path.",
+      "expected": "Refuse must live under product-release namespace.",
+      "observed": "InvalidContractValue product-release artifacts must live under.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_outside_other_product",
+      "test_function": "test_g017_a7_path_outside_product_release_namespace_refuses[artifacts_product-release_other-product_envelope.json]",
+      "attack_class": "A7",
+      "scenario": "Sibling product under product-release/.",
+      "expected": "Refuse namespace.",
+      "observed": "InvalidContractValue product-release artifacts must live under.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_outside_second_brain_stage5",
+      "test_function": "test_g017_a7_path_outside_product_release_namespace_refuses[artifacts_second-brain_stage5.json]",
+      "attack_class": "A7",
+      "scenario": "artifacts/second-brain path.",
+      "expected": "Refuse namespace.",
+      "observed": "InvalidContractValue product-release artifacts must live under.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_outside_docs_product",
+      "test_function": "test_g017_a7_path_outside_product_release_namespace_refuses[docs_product_decisions_DB-05-benchmark-governance.md]",
+      "attack_class": "A7",
+      "scenario": "docs/product decision path.",
+      "expected": "Refuse namespace.",
+      "observed": "InvalidContractValue product-release artifacts must live under.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_outside_tmp",
+      "test_function": "test_g017_a7_path_outside_product_release_namespace_refuses[tmp_product-release.json]",
+      "attack_class": "A7",
+      "scenario": "tmp/ path.",
+      "expected": "Refuse namespace.",
+      "observed": "InvalidContractValue product-release artifacts must live under.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_outside_adjacent_suffix",
+      "test_function": "test_g017_a7_path_outside_product_release_namespace_refuses[artifacts_product-release_second-brain-v1-adjacent_envelope.json]",
+      "attack_class": "A7",
+      "scenario": "Namespace-adjacent suffix path.",
+      "expected": "Refuse namespace.",
+      "observed": "InvalidContractValue product-release artifacts must live under.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_outside_v2_namespace",
+      "test_function": "test_g017_a7_path_outside_product_release_namespace_refuses[artifacts_product-release_second-brain-v2_envelope.json]",
+      "attack_class": "A7",
+      "scenario": "second-brain-v2 namespace.",
+      "expected": "Refuse namespace.",
+      "observed": "InvalidContractValue product-release artifacts must live under.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_outside_inside_envelope",
+      "test_function": "test_g017_a7_outside_namespace_path_inside_envelope_refuses",
+      "attack_class": "A7",
+      "scenario": "Envelope artifact_paths mixes honest path with g016 suite receipt.",
+      "expected": "Refuse at from_mapping.",
+      "observed": "InvalidContractValue product-release artifacts must live under.",
+      "verdict": "passed"
+    },
+    {
+      "id": "a7_duplicate_artifact_paths",
+      "test_function": "test_g017_a7_duplicate_artifact_paths_refuse",
+      "attack_class": "A7",
+      "scenario": "Same product-release path listed twice in artifact_paths.",
+      "expected": "Refuse unique.",
+      "observed": "InvalidContractValue('artifact_paths must be unique').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_envelope_digest_tamper",
+      "test_function": "test_g017_a8_envelope_digest_tamper_refuses",
+      "attack_class": "A8",
+      "scenario": "Replace envelope_digest with unrelated sha256.",
+      "expected": "Refuse envelope_digest does not bind.",
+      "observed": "InvalidContractValue('envelope_digest does not bind its body').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_envelope_body_field_swap_without_redigest",
+      "test_function": "test_g017_a8_envelope_body_field_swap_without_redigest_refuses",
+      "attack_class": "A8",
+      "scenario": "Mutate release_id leaving envelope_digest stale.",
+      "expected": "Refuse envelope_digest does not bind.",
+      "observed": "InvalidContractValue('envelope_digest does not bind its body').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_envelope_path_swap_without_redigest",
+      "test_function": "test_g017_a8_envelope_path_swap_without_redigest_refuses",
+      "attack_class": "A8",
+      "scenario": "Swap artifact_paths leaving envelope_digest stale.",
+      "expected": "Refuse envelope_digest does not bind.",
+      "observed": "InvalidContractValue('envelope_digest does not bind its body').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_drill_receipt_digest_tamper",
+      "test_function": "test_g017_a8_drill_receipt_digest_tamper_refuses",
+      "attack_class": "A8",
+      "scenario": "OpsDrillReceiptV1 with forged receipt_digest.",
+      "expected": "Refuse ops drill receipt_digest does not bind.",
+      "observed": "InvalidContractValue('ops drill receipt_digest does not bind its body').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_drill_outcome_swap_without_redigest",
+      "test_function": "test_g017_a8_drill_outcome_swap_without_redigest_refuses",
+      "attack_class": "A8",
+      "scenario": "Honest PASS drill mutated to FAIL without redigest.",
+      "expected": "Refuse receipt_digest does not bind.",
+      "observed": "InvalidContractValue('ops drill receipt_digest does not bind its body').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_foundational_digest_not_sha256",
+      "test_function": "test_g017_a8_foundational_receipt_digest_must_be_sha256_hex",
+      "attack_class": "A8",
+      "scenario": "receipt_digest='not-a-digest'.",
+      "expected": "Refuse lowercase sha256.",
+      "observed": "InvalidContractValue('receipt_digest must be a lowercase sha256 hex digest').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_empty_artifact_paths",
+      "test_function": "test_g017_a8_empty_artifact_paths_refuse",
+      "attack_class": "A8",
+      "scenario": "artifact_paths=[].",
+      "expected": "Refuse non-empty list.",
+      "observed": "InvalidContractValue('artifact_paths must be a non-empty list').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_empty_drill_receipt_digests",
+      "test_function": "test_g017_a8_empty_drill_receipt_digests_refuse",
+      "attack_class": "A8",
+      "scenario": "drill_receipt_digests=[].",
+      "expected": "Refuse non-empty list.",
+      "observed": "InvalidContractValue('drill_receipt_digests must be a non-empty list').",
+      "verdict": "passed"
+    },
+    {
+      "id": "a8_round_trip_honest_envelope_binds",
+      "test_function": "test_g017_a8_round_trip_honest_envelope_binds",
+      "attack_class": "A8",
+      "scenario": "Honest envelope to_mapping/from_mapping round-trip + scope match with known foundation.",
+      "expected": "Digest stable; match accepts.",
+      "observed": "envelope_digest identical; assert_envelope_matches_scope_and_contract ok.",
+      "verdict": "passed"
+    }
+  ],
+  "summary": {
+    "collected": 71,
+    "passed": 71,
+    "failed": 0,
+    "attack_classes_covered": 8,
+    "full_suite_passed": 1648,
+    "full_suite_failed": 0,
+    "observed_gaps": 1,
+    "observed_gap_ids": [
+      "a1_dotdot_escape_omitting_literal_marker_observed_gap"
+    ]
+  },
+  "blockers": [],
+  "notes": "path .. collapse and foundational allowlist required fixed after red-team observation",
+  "pytest_full": "1648 passed in 46.77s"
+}

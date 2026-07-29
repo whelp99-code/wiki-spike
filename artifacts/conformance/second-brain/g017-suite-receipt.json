@@ -1,0 +1,7 @@
+{
+  "schema": "wiki-g017-suite-receipt-v1",
+  "pytest": "1648 passed",
+  "architecture": "PASS",
+  "secrets": "PASS",
+  "head": "stage5-hardened"
+}

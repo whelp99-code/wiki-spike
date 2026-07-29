@@ -163,7 +163,16 @@ def test_stale_and_unknown_foundational_receipts_fail_closed() -> None:
             capability_manifest_digest=scope_obj.capability_manifest_digest,
             benchmark_manifest_digest=digest("benchmark"),
             holdout_manifest_digest=digest("holdout"),
+            known_foundational_digests=(digest("fresh-foundation"),),
             stale_foundational_digests=(digest("fresh-foundation"),),
+        )
+    with pytest.raises(InvalidContractValue, match="explicit known_foundational_digests allowlist"):
+        assert_envelope_matches_scope_and_contract(
+            envelope, scope_obj, digest("contract"),
+            source_manifest_digest=scope_obj.source_manifest_digest,
+            capability_manifest_digest=scope_obj.capability_manifest_digest,
+            benchmark_manifest_digest=digest("benchmark"),
+            holdout_manifest_digest=digest("holdout"),
         )
     with pytest.raises(InvalidContractValue, match="unknown foundational"):
         assert_envelope_matches_scope_and_contract(

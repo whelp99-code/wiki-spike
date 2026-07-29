@@ -52,9 +52,27 @@ def _strict(data: Any, fields: set[str]) -> dict[str, Any]:
 
 
 def assert_product_release_path(path: str) -> str:
-    """Accept only paths inside the product-release namespace; reject Gate 8 paths."""
+    """Accept only paths inside the product-release namespace; reject Gate 8 paths.
+
+    Path segments are collapsed (``.`` / ``..``) before the namespace and marker
+    checks so a ``namespace/../gate8/...`` escape cannot omit the Gate 8 marker
+    while still targeting foundational evidence.
+    """
     text = _text(path, "path", maximum=1024)
-    normalized = text.replace("\\", "/").lstrip("./")
+    raw = text.replace("\\", "/")
+    parts: list[str] = []
+    absolute = raw.startswith("/")
+    for part in raw.split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            if parts:
+                parts.pop()
+            continue
+        parts.append(part)
+    normalized = "/".join(parts)
+    if absolute:
+        normalized = "/" + normalized
     for marker in _FORBIDDEN_FOUNDATION_PATH_MARKERS:
         if marker in normalized:
             raise InvalidContractValue("product-release path must not import or relabel Gate 8 evidence")
@@ -277,10 +295,14 @@ def assert_envelope_matches_scope_and_contract(
         raise InvalidContractValue("envelope capability manifest does not match resolved scope")
     known = set(known_foundational_digests)
     stale = set(stale_foundational_digests)
+    if envelope.foundational_receipt_refs and not known:
+        raise InvalidContractValue(
+            "foundational receipt refs require an explicit known_foundational_digests allowlist"
+        )
     for ref in envelope.foundational_receipt_refs:
         if ref.receipt_digest in stale:
             raise InvalidContractValue("stale foundational receipt cannot join product-release evidence")
-        if known and ref.receipt_digest not in known:
+        if ref.receipt_digest not in known:
             raise InvalidContractValue("unknown foundational receipt digest")
 
 
