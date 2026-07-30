@@ -90,6 +90,11 @@ def item_digests(directory: Path) -> list[str]:
     Symlinks are refused rather than skipped or followed: following one would
     silently fold bytes from outside the declared tree into the digest set, and
     skipping one would silently drop a file the operator believes was measured.
+
+    Anything else that is not a regular file -- a FIFO, socket, or device node --
+    is refused for the second of those reasons. Reading a FIFO would block
+    forever, so it cannot be measured, and skipping it would report a count that
+    silently omits an entry the operator can see in the directory.
     """
     if not directory.is_dir():
         raise EvidenceToolError(f"{directory} is not a directory")
@@ -100,8 +105,14 @@ def item_digests(directory: Path) -> list[str]:
                 f"{path} is a symlink; a corpus tree must contain only regular files "
                 "so every digest comes from inside the declared directory"
             )
-        if path.is_file():
-            digests.append(sha256(path.read_bytes()).hexdigest())
+        if path.is_dir():
+            continue
+        if not path.is_file():
+            raise EvidenceToolError(
+                f"{path} is not a regular file; a corpus tree must contain only regular "
+                "files so the digest count matches what the operator can see"
+            )
+        digests.append(sha256(path.read_bytes()).hexdigest())
     if not digests:
         raise EvidenceToolError(f"{directory} holds no files to digest")
     if len(set(digests)) != len(digests):

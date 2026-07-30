@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from hashlib import sha256
 from pathlib import Path
 
@@ -626,3 +627,29 @@ def test_a_non_digest_entry_is_refused_by_that_reason(tmp_path, chain, capsys):
         == 2
     )
     assert "not a sha256 digest" in capsys.readouterr().err
+
+
+def test_a_fifo_in_the_export_tree_is_refused_not_silently_skipped(tmp_path, capsys):
+    """A skipped entry reports a count that omits something the operator can see.
+
+    Reading a FIFO would block forever, so it cannot be measured. Skipping it
+    quietly is the same failure as following a symlink quietly: the digest set
+    stops describing the directory the operator pointed at.
+    """
+    directory = tmp_path / "export"
+    directory.mkdir()
+    (directory / "real.txt").write_text("real", encoding="utf-8")
+    os.mkfifo(directory / "pipe")
+    assert run("digests", "--dir", directory) == 2
+    assert "not a regular file" in capsys.readouterr().err
+
+
+def test_nested_directories_are_walked_not_refused(tmp_path, capsys):
+    """Directories themselves are skipped; their regular files are still measured."""
+    directory = tmp_path / "export"
+    (directory / "nested" / "deeper").mkdir(parents=True)
+    (directory / "top.txt").write_text("top", encoding="utf-8")
+    (directory / "nested" / "mid.txt").write_text("mid", encoding="utf-8")
+    (directory / "nested" / "deeper" / "leaf.txt").write_text("leaf", encoding="utf-8")
+    assert run("digests", "--dir", directory) == 0
+    assert json.loads(capsys.readouterr().out)["count"] == 3

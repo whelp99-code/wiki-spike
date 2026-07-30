@@ -4,10 +4,11 @@
 A test suite that stays green when a guard is deleted is decoration. This
 disables one guard at a time in the shipped source, runs the targeted suites,
 and records whether the suite noticed. Every mutation is reverted with
-`git checkout` before the next one, and the tree is verified clean at the end.
+an in-memory snapshot before the next one, and the files are verified unchanged at the end.
 """
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import subprocess
@@ -17,6 +18,7 @@ from pathlib import Path
 REPO = Path("/tmp/wiki-spike-native-measurement")
 CONTRACTS = REPO / "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py"
 COMMON = REPO / "scripts/second_brain_evidence_common.py"
+FILES = [CONTRACTS, COMMON]
 SUITES = [
     "tests/second_brain/test_migration_evidence_contracts.py",
     "tests/second_brain/test_migration_source_evidence_tool.py",
@@ -71,11 +73,31 @@ def run_suites() -> tuple[bool, str]:
     return r.returncode == 0, (r.stdout or "")[-200:].strip().replace("\n", " ")
 
 
+ORIGINAL = {path: path.read_text() for path in FILES}
+
+
 def restore() -> None:
-    subprocess.run(["git", "checkout", "--", str(CONTRACTS.relative_to(REPO)),
-                    str(COMMON.relative_to(REPO))], cwd=REPO, check=True)
+    """Restore from an in-memory snapshot.
+
+    Never `git checkout`: that reverts to HEAD and silently destroys any
+    uncommitted work in these files, including a fix being validated right now.
+    """
+    for path, text in ORIGINAL.items():
+        if path.read_text() != text:
+            path.write_text(text)
 
 
+def _restore_on_exit() -> None:
+    """Restore even if this process dies mid-mutation.
+
+    A harness that leaves a disabled guard behind in the working tree is worse
+    than no harness: the next run passes against mutated source and nobody
+    notices. `finally` covers exceptions; atexit covers everything else.
+    """
+    restore()
+
+
+atexit.register(_restore_on_exit)
 def main() -> int:
     baseline_ok, baseline_note = run_suites()
     print(f"baseline suites pass: {baseline_ok}  ({baseline_note})")
@@ -93,8 +115,10 @@ def main() -> int:
             print(f"  !! {label}: anchor not found")
             continue
         path.write_text(src.replace(needle, replacement, 1))
-        caught, note = (lambda ok, n: (not ok, n))(*run_suites())
-        restore()
+        try:
+            caught, note = (lambda ok, n: (not ok, n))(*run_suites())
+        finally:
+            restore()
         results.append({"guard": label,
                         "status": "CAUGHT" if caught else "SURVIVED",
                         "note": note})
@@ -102,10 +126,7 @@ def main() -> int:
             survivors.append(label)
         print(f"  {'CAUGHT  ' if caught else 'SURVIVED'} {label}")
 
-    dirty = subprocess.run(["git", "status", "--porcelain",
-                            str(CONTRACTS.relative_to(REPO)),
-                            str(COMMON.relative_to(REPO))],
-                           cwd=REPO, capture_output=True, text=True).stdout.strip()
+    dirty = "" if all(p.read_text() == t for p, t in ORIGINAL.items()) else "modified"
     print(f"\nsource restored cleanly: {not dirty}")
     print(f"mutants: {len(MUTANTS)} | caught: {len(MUTANTS)-len(survivors)} | survived: {len(survivors)}")
     for s in survivors:

@@ -9,6 +9,7 @@ digest field. Each of these keeps the code superficially working.
 """
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import subprocess
@@ -82,11 +83,31 @@ def run_suites():
     return r.returncode == 0, (r.stdout or "")[-160:].strip().replace("\n", " ")
 
 
-def restore():
-    subprocess.run(["git", "checkout", "--", *[str(f.relative_to(REPO)) for f in FILES]],
-                   cwd=REPO, check=True)
+ORIGINAL = {path: path.read_text() for path in FILES}
 
 
+def restore() -> None:
+    """Restore from an in-memory snapshot.
+
+    Never `git checkout`: that reverts to HEAD and silently destroys any
+    uncommitted work in these files, including a fix being validated right now.
+    """
+    for path, text in ORIGINAL.items():
+        if path.read_text() != text:
+            path.write_text(text)
+
+
+def _restore_on_exit() -> None:
+    """Restore even if this process dies mid-mutation.
+
+    A harness that leaves a disabled guard behind in the working tree is worse
+    than no harness: the next run passes against mutated source and nobody
+    notices. `finally` covers exceptions; atexit covers everything else.
+    """
+    restore()
+
+
+atexit.register(_restore_on_exit)
 def main() -> int:
     ok, note = run_suites()
     print(f"baseline suites pass: {ok} ({note})")
@@ -102,17 +123,17 @@ def main() -> int:
             print(f"  !! {label}: occurrences={src.count(needle)}")
             continue
         path.write_text(src.replace(needle, replacement, 1))
-        passed, note = run_suites()
-        restore()
+        try:
+            passed, note = run_suites()
+        finally:
+            restore()
         caught = not passed
         results.append({"guard": label, "status": "CAUGHT" if caught else "SURVIVED",
                         "note": note})
         if not caught:
             survivors.append(label)
         print(f"  {'CAUGHT  ' if caught else 'SURVIVED'} {label}")
-    dirty = subprocess.run(["git", "status", "--porcelain",
-                            *[str(f.relative_to(REPO)) for f in FILES]],
-                           cwd=REPO, capture_output=True, text=True).stdout.strip()
+    dirty = "" if all(p.read_text() == t for p, t in ORIGINAL.items()) else "modified"
     print(f"\nsource restored cleanly: {not dirty}")
     print(f"mutants: {len(MUTANTS)} | caught: {len(MUTANTS)-len(survivors)} | survived: {len(survivors)}")
     for s in survivors:
