@@ -13,7 +13,8 @@ import sys
 from hashlib import sha256
 from pathlib import Path
 
-REPO = Path("/tmp/wiki-spike-native-measurement")
+# Derived from this file's own location; see the driver for why.
+REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
 
 from wiki_spike.memory_core.errors import InvalidContractValue  # noqa: E402

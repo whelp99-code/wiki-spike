@@ -12,11 +12,15 @@ import io
 import json
 import os
 import sys
+import tempfile
 from contextlib import redirect_stderr, redirect_stdout
 from hashlib import sha256
 from pathlib import Path
 
-REPO = Path("/tmp/wiki-spike-native-measurement")
+# Derived from this file's own location. A hardcoded path would either fail in a
+# fresh clone or, worse, silently audit a different checkout than the one being
+# reviewed and report the results as if they described it.
+REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
 sys.path.insert(0, str(REPO / "scripts"))
 
@@ -38,7 +42,7 @@ spec = importlib.util.spec_from_file_location(
 TOOL = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(TOOL)
 
-SCRATCH = Path("/tmp/db03-qa/scratch")
+SCRATCH = Path(tempfile.mkdtemp(prefix="db03-adversarial-"))
 CASES: list[dict] = []
 
 
@@ -121,10 +125,6 @@ def profile_args(snapshot: Path, out: Path, **over) -> list:
 
 
 def main() -> int:
-    os.makedirs(SCRATCH, exist_ok=True)
-    for stale in SCRATCH.rglob("*"):
-        if stale.is_file() or stale.is_symlink():
-            stale.unlink()
 
     # --- baseline chain -------------------------------------------------
     snapshot = SCRATCH / "snapshot.json"
@@ -412,6 +412,15 @@ def main() -> int:
         "cases": CASES,
     }
     dest = REPO / "artifacts" / "second-brain" / "db03-migration-evidence-adversarial-report.json"
+    # Preserve sibling annotations this driver does not author. Re-running it used
+    # to drop refusalReasonAudit and mutationAudits, which the artifact-currency
+    # test requires -- so following the invitation to "re-run it yourself" turned
+    # the suite red. A tool should not destroy findings it did not produce.
+    if dest.exists():
+        previous = json.loads(dest.read_text(encoding="utf-8"))
+        for key in ("refusalReasonAudit", "mutationAudits"):
+            if key in previous:
+                report[key] = previous[key]
     dest.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({"cases": len(CASES), "failed": len(failed),
                       "failed_ids": [c["id"] for c in failed], "written_to": str(dest)}, indent=2))
