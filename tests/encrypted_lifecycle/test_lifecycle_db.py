@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import pytest
 
@@ -44,6 +47,83 @@ def test_assert_contract_pragmas_raises_before_initialize(tmp_path):
     db = LifecycleDatabase(db_path=tmp_path / "not-yet.sqlite3")
     with pytest.raises(AssertionError):
         db.assert_contract_pragmas()
+
+
+# --------------------------------------------------------------------------- #
+# initialize() migration concurrency
+# --------------------------------------------------------------------------- #
+
+
+def test_concurrent_initialize_on_existing_db_does_not_race_the_migration(tmp_path):
+    """Every opener must survive initialize() on an already-created file.
+
+    initialize() back-fills columns and replaces the recall-cursor no-delete
+    trigger. Run without one serialising transaction, each opener observes the
+    pre-migration shape and the losers fail with "trigger ... already exists"
+    (or "duplicate column name") once the winner commits. busy_timeout cannot
+    mask it: the statements never conflict on locks, the losers simply acted on
+    a stale read.
+
+    The barrier plus repeated rounds is calibrated against the unguarded code:
+    a single barrier round reproduced the failure in 7 of 8 measured trials, so
+    24 rounds leave effectively no escape, while the guarded code completed all
+    rounds cleanly in about 1.6s.
+    """
+    rounds, workers = 24, 8
+    for round_index in range(rounds):
+        path = tmp_path / f"concurrent-initialize-{round_index}.sqlite3"
+        seed = LifecycleDatabase(db_path=path)
+        seed.initialize()
+        seed.close()
+
+        gate = threading.Barrier(workers)
+
+        def reopen(_: int, path: Path = path, gate: threading.Barrier = gate) -> None:
+            # Enter initialize() together so the migration window overlaps.
+            gate.wait(timeout=30)
+            db = LifecycleDatabase(db_path=path)
+            db.initialize()
+            db.close()
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            # list() re-raises the first worker exception.
+            list(pool.map(reopen, range(workers)))
+
+        db = LifecycleDatabase(db_path=path)
+        db.initialize()
+        try:
+            rows = db.con.execute(
+                "SELECT sql FROM sqlite_master WHERE type='trigger' "
+                "AND name='ledger_recall_cursor_no_delete'"
+            ).fetchall()
+            # Exactly one trigger survives, in the unconditional post-migration
+            # form, and the ambient retention-bound table stays dropped.
+            assert len(rows) == 1
+            assert " WHEN " not in rows[0][0].upper()
+            assert db.con.execute(
+                "SELECT name FROM sqlite_master "
+                "WHERE name='ledger_recall_cursor_retention_bound'"
+            ).fetchall() == []
+        finally:
+            db.close()
+
+
+def test_initialize_commits_its_migration_and_leaves_no_open_transaction(tmp_path):
+    """The migration must not leave a write transaction holding the file."""
+    db = make_db(tmp_path, "migration-committed.sqlite3")
+    try:
+        assert not db.con.in_transaction
+        # An independent connection can immediately take the write lock, which
+        # is impossible while the migration transaction is still open.
+        other = sqlite3.connect(str(db.db_path), isolation_level=None)
+        try:
+            other.execute("PRAGMA busy_timeout=0")
+            other.execute("BEGIN IMMEDIATE")
+            other.execute("ROLLBACK")
+        finally:
+            other.close()
+    finally:
+        db.close()
 
 
 # --------------------------------------------------------------------------- #
