@@ -1,5 +1,32 @@
 # Encrypted Single-Memory Lifecycle — qwen Code 핸드오프 문서
 
+> **SUPERSEDED — 2026-07-30. 역사 기록으로만 보존한다. 이 문서의 작업 지시를 따르지 말 것.**
+>
+> 작성 이후 `main` 이 86커밋 진행했고, 아래 상태 서술은 전부 낡았다. 2026-07-30 실측 대조:
+>
+> | 이 문서의 주장 | 2026-07-30 실측 |
+> |---|---|
+> | HEAD `42a456c` (G7 complete) | `d6baff3` — 그 뒤 86커밋 |
+> | 전체 테스트 **1117 passed** | **1841 passed** |
+> | G007 완료 / G008 `🔴 active` | G008 종결 — `GATE8_COMPLETION_KR.md`, `artifacts/conformance/encrypted-lifecycle/gate8/` |
+> | §3 "Gate 7 — 🔜 qwen Code 작업" | 완료 — `src/wiki_spike/infrastructure/mcp.py`, `tests/encrypted_lifecycle/test_gate7_mcp.py` |
+> | §6 "Session ID 고정 `019f8ebe-…`" | 그 세션의 `ultragoal-state.json` 은 `current_phase: blocked` (2026-07-26 최종 갱신). 새 작업의 기준으로 쓰지 말 것 |
+>
+> 이후 second-brain Stage 0~6 이 PR #42~#46 으로, 오픈 마이그레이션 경합 수정·증거 복원·
+> native shadow-measurement 코호트가 PR #47~#49 로 병합됐다.
+>
+> **아직 유효한 부분:** §6 의 never-parallel-edit 권한 목록은 파일이 전부 실재하며 규칙도 살아 있다 —
+> `infrastructure/{crypto,keystore,binding_registry,floor_protocol}.py`, `memory_core/recovery.py`.
+> 다만 레이어 규칙과 권한의 정본은 이 문서가 아니라 `architecture-boundaries.json` 과 `docs/adr/` 다.
+> §5 명령어 치트시트의 `python3.12` 고정도 유효하다 (`python3` 는 3.11).
+>
+> **현재 상태의 근거:** `docs/ops/2026-07-28-ralplan-pass3-triage.md`,
+> `artifacts/conformance/second-brain/`, `artifacts/product-release/second-brain-v1/`.
+>
+> 원문은 아래에 손대지 않고 그대로 둔다.
+
+---
+
 > 작성일: 2026-07-25 22:30 (최종 갱신: 2026-07-25 23:55)
 > 현재 HEAD: `42a456c` (G7 complete)
 > 전체 테스트: **1117 passed**, boundary PASS, secret PASS, validator 121 PASS
