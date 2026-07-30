@@ -1,0 +1,84 @@
+{
+  "batch": "behaviour-not-rejection",
+  "caught": 13,
+  "kind": "algorithm-mutation-audit",
+  "mutantCount": 13,
+  "purpose": null,
+  "results": [
+    {
+      "guard": "uniqueness diff actually subtracts the canonical corpus",
+      "note": "acae5e94ab66c78c6044c98b66e8241b084536df',     ] !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 107 passed in 0.25s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "duplicate count is candidates minus unique",
+      "note": "ce_digest_is_th0/diff-snapshot-unified-db.json')) !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 106 passed, 1 error in 0.54s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "canonical corpus digest is order-independent",
+      "note": "f142ac2b25249edb6992d11540d64c0fb80edd7d5f842854 !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 124 passed in 0.58s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "item digests are emitted in sorted path order",
+      "note": "fc7895684c0c8e163526f9b4c26eaaaa4b3a8654',     ] !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 107 passed in 0.36s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "tool writes active_run_observed false",
+      "note": "iters-quiesced-at', '2026-07-30T00:00:00Z', ...]) !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 106 passed, 1 error in 0.26s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "tool writes write_capability_absent true",
+      "note": "d32bffa06a1e3f67a3c8aa625e51a2ec4dbdb6ab4', ...]) !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 106 passed, 1 error in 0.24s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "tool writes absence_is_not_deletion true",
+      "note": "gest_is_th0/treatment-snapshot-unified-db.json')) !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 106 passed, 1 error in 0.20s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "bundle runs the coherence assertion",
+      "note": "es_component0/profile-snapshot-me-wiki-8.json'}) !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 149 passed in 0.63s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "snapshot instants are canonicalised before digesting",
+      "note": "snapshot-taken-at': '2026-07-30T00:05:00.000Z'}) !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 128 passed in 0.46s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "digest must be 64 lowercase hex",
+      "note": "aaa] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 87 passed in 0.17s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "strict rejects non-mapping input",
+      "note": "'contract fields invalid unknown=[7] missing=[]' !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 95 passed in 0.23s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "digest tuple rejects a non-array",
+      "note": "le_digests must be a lowercase sha256 hex digest' !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 97 passed in 0.22s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "names must be a non-empty array",
+      "note": "d0] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 101 passed in 0.22s",
+      "status": "CAUGHT"
+    }
+  ],
+  "schemaVersion": 1,
+  "sourceRestoredCleanly": true,
+  "suites": [
+    "tests/second_brain/test_migration_evidence_contracts.py",
+    "tests/second_brain/test_migration_source_evidence_tool.py",
+    "tests/second_brain/test_migration_source_evidence_red_team.py",
+    "tests/second_brain/test_db03_doc_migration_agreement.py",
+    "tests/second_brain/test_evaluation_governance_tool.py"
+  ],
+  "survived": 0
+}

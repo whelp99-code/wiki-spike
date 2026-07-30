@@ -1,0 +1,73 @@
+{
+  "batch": "guards",
+  "caught": 11,
+  "kind": "algorithm-mutation-audit",
+  "mutantCount": 11,
+  "purpose": null,
+  "results": [
+    {
+      "guard": "count rejects non-ASCII digits",
+      "note": "007] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 18 passed in 0.13s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "zero-write proof (before == after)",
+      "note": "proof - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 4 passed in 0.13s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "active_run_observed must be false",
+      "note": "fused - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 5 passed in 0.13s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "absence_is_not_deletion must be true",
+      "note": "_off - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 54 passed in 0.14s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "tombstone samples forbidden when representation absent",
+      "note": "ples - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 48 passed in 0.16s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "history sample sets must be disjoint",
+      "note": "ates - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 53 passed in 0.17s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "six distinct export evidence documents",
+      "note": "ing] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 13 passed in 0.14s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "six distinct bundle digests",
+      "note": "lots - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 55 passed in 0.13s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "identifier charset on _text",
+      "note": "aaa] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 30 passed in 0.15s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "count partition (unique + duplicate == candidate)",
+      "note": "_set - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 45 passed in 0.17s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "symlink refusal in item_digests",
+      "note": "t-1842/test_a_symlink_in_the_export_t0/linked')) !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 117 passed in 0.28s",
+      "status": "CAUGHT"
+    }
+  ],
+  "schemaVersion": 1,
+  "sourceRestoredCleanly": true,
+  "suites": [
+    "tests/second_brain/test_migration_evidence_contracts.py",
+    "tests/second_brain/test_migration_source_evidence_tool.py",
+    "tests/second_brain/test_migration_source_evidence_red_team.py",
+    "tests/second_brain/test_db03_doc_migration_agreement.py"
+  ],
+  "survived": 0
+}

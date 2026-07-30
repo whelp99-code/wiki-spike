@@ -1,0 +1,86 @@
+^D[32m[1m### DB-03 runbook replay
+(B[m{
+  "written_to": "out/snapshot.json",
+  "snapshot_binding_digest": "383a4295a0b672fc493af041866872964c40d454dfbd2a70473e130f9845caba"
+}
+{
+  "written_to": "out/profile.json",
+  "profile_digest": "535e13c4a0eafbe4e5edcf4fe7e2f9d2d111be834c95a7f9fc7634c99ea14b93"
+}
+{
+  "written_to": "out/candidates.json",
+  "count": 3
+}
+{
+  "written_to": "out/canonical.json",
+  "count": 2
+}
+{
+  "written_to": "out/diff.json",
+  "diff_digest": "7c1fcb84c979e3a3f1e394df743b0bd2d5770e8795209fa7aadfce6ee6baccef"
+}
+{
+  "written_to": "out/treatment.json",
+  "treatment_digest": "7a95c2bfd07ab5a1c5686a0dd3f85486d15f50d6b4beb6a0f10707cb761209a6"
+}
+{
+  "written_to": "out/evidence.json",
+  "evidence_digest": "9fed50c790f76f96f9830087e811f07ddee665f8d78ab3a77b6d0b6668749651"
+}
+This evidence_digest is the value DB-03's evidence_digest takes for 'unified-db'. It makes the record signable; it is not a GO.
+{
+  "file": "out/snapshot.json",
+  "version": "second-brain-migration-snapshot-v1",
+  "digest_field": "snapshot_binding_digest",
+  "digest": "383a4295a0b672fc493af041866872964c40d454dfbd2a70473e130f9845caba"
+}
+{
+  "file": "out/profile.json",
+  "version": "second-brain-migration-export-profile-v1",
+  "digest_field": "profile_digest",
+  "digest": "535e13c4a0eafbe4e5edcf4fe7e2f9d2d111be834c95a7f9fc7634c99ea14b93"
+}
+{
+  "file": "out/diff.json",
+  "version": "second-brain-migration-uniqueness-diff-v1",
+  "digest_field": "diff_digest",
+  "digest": "7c1fcb84c979e3a3f1e394df743b0bd2d5770e8795209fa7aadfce6ee6baccef"
+}
+{
+  "file": "out/treatment.json",
+  "version": "second-brain-migration-history-treatment-v1",
+  "digest_field": "treatment_digest",
+  "digest": "7a95c2bfd07ab5a1c5686a0dd3f85486d15f50d6b4beb6a0f10707cb761209a6"
+}
+{
+  "file": "out/evidence.json",
+  "version": "second-brain-migration-source-evidence-v1",
+  "digest_field": "evidence_digest",
+  "digest": "9fed50c790f76f96f9830087e811f07ddee665f8d78ab3a77b6d0b6668749651"
+}
+[34m[1m### DB-05 runbook replay (shared-helper regression)
+(B[m{
+  "written_to": "out/slo.json",
+  "slo_digest": "a511af623ac20f648b5f7e29e7a231f2e94e5a13a31e03ed8ad33a7cbe2ff784"
+}
+{
+  "written_to": "out/benchmark.json",
+  "manifest_digest": "5220c5294ce61fb6459d68a681c68d4c44b96810e34bdf01362421725a0ff228"
+}
+{
+  "written_to": "out/holdout.json",
+  "manifest_digest": "bf7a503ba77f32c104e1e5dd0b79b0d58fd891329a6ac7787c7c489352d9c0f8"
+}
+{
+  "written_to": "out/governance.json",
+  "governance_digest": "406eb99ce66ed5f15e5e13f7dfb4e6db0db02ae9896ff17c01e7044b2704c267"
+}
+This governance_digest is the value DB-05's evidence_digest takes.
+{
+  "file": "out/governance.json",
+  "version": "second-brain-evaluation-governance-v1",
+  "digest_field": "governance_digest",
+  "digest": "406eb99ce66ed5f15e5e13f7dfb4e6db0db02ae9896ff17c01e7044b2704c267"
+}
+[32m[1m### BOTH REPLAYS OK
+(B[m

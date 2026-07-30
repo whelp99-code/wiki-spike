@@ -1,0 +1,689 @@
+{
+  "status": "passed",
+  "e2eStatus": "passed",
+  "redTeamStatus": "passed",
+  "evidence": "Leader-produced QA/red-team evidence: delegated executor lanes are unavailable this session because every task spawn is refused by a stale session repository binding. All evidence is from real invocations. 270 targeted tests across ten suites; full second_brain suite 864 passed; boundaries and secret scan PASS; both the DB-03 and DB-05 runbook sections replayed under a PTY; 50 adversarial cases with verdicts computed from observed behaviour, 0 failures; 75 mutants across five batches, all caught; refusal-reason audit clean at 24/24.",
+  "e2eCommands": [
+    "PYTHONPATH=src python3.12 -m pytest tests/second_brain -q",
+    "PYTHONPATH=src python3.12 -m pytest tests/encrypted_lifecycle tests/compat tests/phase3 tests/phase4 tests/test_*.py -q",
+    "script -q artifacts/second-brain/db03-migration-evidence-cli-transcript.txt /tmp/db03-qa/replay.sh"
+  ],
+  "redTeamCommands": [
+    "DB03_SOURCE_HASH=sha256:590a0afa96dceef30bf3038c5326dee01c9320b28578aa623c915f2df8873dbe python3.12 /tmp/db03-qa/run_adversarial.py",
+    "PYTHONPATH=src python3.12 -m pytest tests/second_brain/test_migration_source_evidence_red_team.py -q"
+  ],
+  "artifactRefs": [
+    {
+      "id": "test-report",
+      "kind": "api-package-test-report",
+      "path": "artifacts/second-brain/db03-migration-evidence-test-report.json",
+      "description": "six pytest suites, 166 passed, plus boundary and secret gate results"
+    },
+    {
+      "id": "adversarial-report",
+      "kind": "algorithm-adversarial-report",
+      "path": "artifacts/second-brain/db03-migration-evidence-adversarial-report.json",
+      "description": "50 adversarial cases, 0 failed, verdicts computed from observed behaviour"
+    },
+    {
+      "id": "cli-transcript",
+      "kind": "cli-replay",
+      "path": "artifacts/second-brain/db03-migration-evidence-cli-replay.json",
+      "description": "CLI replay envelope with audited PTY structural fallback for two Python CLIs"
+    },
+    {
+      "id": "cli-pty",
+      "kind": "pty-transcript",
+      "path": "artifacts/second-brain/db03-migration-evidence-cli-transcript.txt",
+      "description": "PTY capture of the DB-03 and DB-05 runbook replays"
+    }
+  ],
+  "contractCoverage": [
+    {
+      "id": "cc-1",
+      "contractRef": "DB-03 GO requirement 1: read-only export fixture that cannot mutate the source",
+      "obligation": "export method is read-only, write capability absent and backed by a probe digest",
+      "status": "covered",
+      "surfaceEvidenceRefs": [
+        "se-api"
+      ],
+      "adversarialCaseRefs": [
+        "a-21",
+        "a-22",
+        "a-23",
+        "a-24"
+      ]
+    },
+    {
+      "id": "cc-2",
+      "contractRef": "DB-03 GO requirement 2: pinned schema/version and identity/revision mapping",
+      "obligation": "schema version and digest pinned; identity and revision mapping are distinct documents",
+      "status": "covered",
+      "surfaceEvidenceRefs": [
+        "se-api"
+      ],
+      "adversarialCaseRefs": [
+        "a-21",
+        "a-13"
+      ]
+    },
+    {
+      "id": "cc-3",
+      "contractRef": "DB-03 GO requirement 3: watermark/cursor with overlap and restart behaviour",
+      "obligation": "cursor field, closed overlap behaviour with no unknown value, restart evidence digest",
+      "status": "covered",
+      "surfaceEvidenceRefs": [
+        "se-api"
+      ],
+      "adversarialCaseRefs": [
+        "a-23"
+      ]
+    },
+    {
+      "id": "cc-4",
+      "contractRef": "DB-03 GO requirement 4: deletion/history distinguishing three states without inference",
+      "obligation": "tombstone, retained and unavailable are disjoint; absence is never deletion",
+      "status": "covered",
+      "surfaceEvidenceRefs": [
+        "se-algorithm"
+      ],
+      "adversarialCaseRefs": [
+        "a-29",
+        "a-30",
+        "a-31",
+        "a-32"
+      ]
+    },
+    {
+      "id": "cc-5",
+      "contractRef": "DB-03 GO requirement 5: signed evidence digests and owner/Security signatures",
+      "obligation": "evidence_digest binds the bundle and flows into a signable DB-03 record; owner and Security are distinct",
+      "status": "covered",
+      "surfaceEvidenceRefs": [
+        "se-cli"
+      ],
+      "adversarialCaseRefs": [
+        "a-33",
+        "a-34",
+        "a-35"
+      ]
+    },
+    {
+      "id": "cc-6",
+      "contractRef": "unified-db-inventory nextRequiredEvidence: immutable snapshot and zero-write proof",
+      "obligation": "before and after source roots must be equal and no active run may be observed",
+      "status": "covered",
+      "surfaceEvidenceRefs": [
+        "se-algorithm"
+      ],
+      "adversarialCaseRefs": [
+        "a-25",
+        "a-26",
+        "a-27"
+      ]
+    },
+    {
+      "id": "cc-7",
+      "contractRef": "unified-db-inventory nextRequiredEvidence: body-free per-source uniqueness diff",
+      "obligation": "counts partition the candidate set and no record body or out-of-tree byte enters an artifact",
+      "status": "covered",
+      "surfaceEvidenceRefs": [
+        "se-algorithm"
+      ],
+      "adversarialCaseRefs": [
+        "a-06",
+        "a-07",
+        "a-09",
+        "a-10",
+        "a-11",
+        "a-12",
+        "a-17",
+        "a-18"
+      ]
+    }
+  ],
+  "surfaceEvidence": [
+    {
+      "id": "se-api",
+      "contractRef": "wiki_spike.memory_core.second_brain_migration_evidence_contracts",
+      "surface": "package",
+      "invocation": "PYTHONPATH=src python3.12 -m pytest tests/second_brain -q",
+      "verdict": "passed",
+      "artifactRefs": [
+        "test-report"
+      ]
+    },
+    {
+      "id": "se-algorithm",
+      "contractRef": "uniqueness set-difference and count-partition invariants",
+      "surface": "algorithm",
+      "invocation": "python3.12 /tmp/db03-qa/run_adversarial.py",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "se-cli",
+      "contractRef": "scripts/second_brain_migration_source_evidence.py and second_brain_evaluation_governance.py",
+      "surface": "cli",
+      "invocation": "script -q <transcript> /tmp/db03-qa/replay.sh",
+      "verdict": "passed",
+      "artifactRefs": [
+        "cli-transcript"
+      ],
+      "replayExempt": {
+        "reasonCode": "platform_unavailable",
+        "justification": "Executable argv replay is limited to the pinned Bun runtime; these are Python CLIs, so the audited PTY structural fallback is used.",
+        "evidenceKind": "pty",
+        "artifactRefs": [
+          "cli-transcript"
+        ]
+      }
+    }
+  ],
+  "adversarialCases": [
+    {
+      "id": "a-00",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "Full happy-path chain produces a bundle",
+      "expectedBehavior": "exit 0 and an evidence_digest the contract accepts",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-01",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "Arabic-Indic digits as unique_item_count (second encoding of one value)",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-02",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "Superscript two as unique_item_count (isdigit true, int() raises)",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-03",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "4301-digit count exceeding sys.get_int_max_str_digits()",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-04",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "21-digit count just past the declared bound",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-05",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "Leading-zero count creating a second encoding",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-06",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "Inflated unique_item_count without matching digests",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-07",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "Understated candidate_item_count hiding duplicates",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-08",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "Comparison method replaced by operator judgement",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-09",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "digests --dir over a symlink to a file outside the export tree",
+      "expectedBehavior": "exit 2, symlink refusal, no out-of-tree digest emitted",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-10",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "digests --dir over a symlink to a directory outside the export tree",
+      "expectedBehavior": "exit 2, symlink refusal, no out-of-tree digest emitted",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-11",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "digests --dir over a dangling symlink",
+      "expectedBehavior": "exit 2, symlink refusal, no out-of-tree digest emitted",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-12",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "symlink loop under the export tree",
+      "expectedBehavior": "exit 2 without hanging or recursing",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-13",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "body-free escape via email address in schema_version",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-14",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "body-free escape via absolute path in schema_version",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-15",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "body-free escape via NUL byte in watermark_cursor_field",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-16",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "body-free escape via newline in schema_version",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-17",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "body-free escape via spaced record excerpt in schema_version",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-18",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "body-free escape via non-ASCII record text in schema_version",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-19",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "body-free escape via JSON body in schema_version",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-20",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "body-free escape via 129-character schema_version",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-21",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "one document reused as both revision_mapping_digest and its twin",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-22",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "one document reused as both write_capability_probe_digest and its twin",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-23",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "one document reused as both source_fixture_digest and its twin",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-24",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "export profile with no write-capability probe digest",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-25",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "snapshot rebound with active_run_observed true",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-26",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "source root changed across the export window",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-27",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "snapshot taken before writers were quiesced",
+      "expectedBehavior": "exit 2 and no artifact written",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-28",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "source outside DB-03's three-name scope inventory (hermes)",
+      "expectedBehavior": "rejected before any artifact is produced",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-29",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "tombstone samples for a source whose representation is absent",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-30",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "unavailable history also presenting retained samples",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-31",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "one record counted as both retained and unavailable",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-32",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "absence_is_not_deletion switched off",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-33",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "owner attestation reused as the Security review",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-34",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "export profile digest reused as the Security review",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-35",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "one component digest filling two bundle slots",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-36",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "another source's export profile spliced into the bundle",
+      "expectedBehavior": "exit 2",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-37",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "component from a later snapshot of the same source",
+      "expectedBehavior": "exit 2",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-38",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "verify on a bundle carrying four other artifacts' digests",
+      "expectedBehavior": "reports evidence_digest, never a borrowed one",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-39",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "artifact carrying two version fields",
+      "expectedBehavior": "exit 2",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-40",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "--out pointing at a symlink",
+      "expectedBehavior": "exit 2 and the symlink target untouched",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-41",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "--out under a nonexistent parent directory",
+      "expectedBehavior": "exit 2 and no partial artifact or directory created",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-42",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "--out pointing at a directory",
+      "expectedBehavior": "exit 2 without a traceback",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-43",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "duplicate JSON keys in an artifact",
+      "expectedBehavior": "exit 2",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-44",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "JSON array where an artifact object is expected",
+      "expectedBehavior": "exit 2",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-45",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "empty file as an artifact",
+      "expectedBehavior": "exit 2",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-46",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "missing file",
+      "expectedBehavior": "exit 2 with a FAIL line and no traceback",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-47",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "candidate digest list containing duplicates",
+      "expectedBehavior": "exit 2",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-48",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "empty export directory",
+      "expectedBehavior": "exit 2",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    },
+    {
+      "id": "a-49",
+      "contractRef": "DB-03-migration-sources",
+      "scenario": "Deliberately identifier-encoded record excerpt in schema_version",
+      "expectedBehavior": "accepted; the charset is a documented accident guard, not a boundary",
+      "verdict": "passed",
+      "artifactRefs": [
+        "adversarial-report"
+      ]
+    }
+  ],
+  "blockers": [],
+  "sourceHash": "sha256:b31915b1fd28ee15027c4e3f69aa3f789af457c2e7b9bbd63e2debf256a655ed"
+}
