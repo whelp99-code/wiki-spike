@@ -479,6 +479,65 @@ def test_evidence_must_carry_the_snapshot_owner_attestation(bundle):
         assert_migration_evidence_bundle_coherent(spliced, bound, profile, diff, treatment)
 
 
+def test_the_bundle_binding_digest_actually_binds_its_body(bundle):
+    """The other four artifacts are covered by the parametrized test; this is the fifth."""
+    _, bound, profile, diff, treatment = bundle
+    body = evidence_body(bound, profile, diff, treatment)
+    MigrationSourceEvidenceV1.from_mapping(body)
+    with pytest.raises(InvalidContractValue, match="bind"):
+        MigrationSourceEvidenceV1.from_mapping({**body, "evidence_digest": d("forged")})
+    with pytest.raises(InvalidContractValue, match="bind"):
+        MigrationSourceEvidenceV1.from_mapping({**body, "workspace_ref": "workspace:elsewhere"})
+
+
+@pytest.mark.parametrize(
+    "component,match",
+    [
+        ("snapshot", "does not bind the supplied snapshot"),
+        ("profile", "does not bind the supplied export profile"),
+        ("diff", "does not bind the supplied uniqueness diff"),
+        ("treatment", "does not bind the supplied history treatment"),
+    ],
+)
+def test_a_bundle_presented_with_a_different_artifact_than_it_binds_is_refused(component, match):
+    """A self-consistent bundle plus a same-source, same-snapshot look-alike must not join.
+
+    The existing splice tests swap in a component from another source or another
+    snapshot, which trips the source-name and snapshot checks first. These cases
+    keep source and snapshot identical and vary only the artifact itself, so the
+    digest-equality checks are the only thing standing between a bundle and a
+    component it never bound.
+    """
+    bound = snapshot()
+    profile = MigrationExportProfileV1.from_mapping(profile_body(bound))
+    diff = MigrationUniquenessDiffV1.from_mapping(diff_body(bound))
+    treatment = MigrationHistoryTreatmentV1.from_mapping(treatment_body(bound))
+    evidence = MigrationSourceEvidenceV1.from_mapping(
+        evidence_body(bound, profile, diff, treatment)
+    )
+
+    # Look-alikes: same source, same snapshot where applicable, different digest.
+    other_snapshot = snapshot(snapshot_package_digest=d("a-different-package"))
+    other_profile = MigrationExportProfileV1.from_mapping(
+        profile_body(bound, schema_digest=d("a-different-schema"))
+    )
+    other_diff = MigrationUniquenessDiffV1.from_mapping(
+        diff_body(bound, canonical_corpus_digest=d("a-different-corpus"))
+    )
+    other_treatment = MigrationHistoryTreatmentV1.from_mapping(
+        treatment_body(bound, retained_history_sample_digests=[d("a-different-retained")])
+    )
+    swapped = {
+        "snapshot": (other_snapshot, profile, diff, treatment),
+        "profile": (bound, other_profile, diff, treatment),
+        "diff": (bound, profile, other_diff, treatment),
+        "treatment": (bound, profile, diff, other_treatment),
+    }[component]
+    assert other_snapshot.snapshot_binding_digest != bound.snapshot_binding_digest
+    with pytest.raises(InvalidContractValue, match=match):
+        assert_migration_evidence_bundle_coherent(evidence, *swapped)
+
+
 def scope(**overrides) -> ResolvedScopeV1:
     body = {
         "scope_version": "second-brain-resolved-scope-v1",
