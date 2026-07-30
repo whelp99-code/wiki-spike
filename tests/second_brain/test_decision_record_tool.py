@@ -162,6 +162,40 @@ def test_assemble_requires_exactly_one_owner_and_one_approver(tmp_path, roles):
     assert TOOL.main(args) == 2
 
 
+def test_inspect_round_trips_the_bytes_a_signer_is_asked_to_sign(tmp_path, capsys):
+    body_path = body(tmp_path)
+    out = tmp_path / "signing.bin"
+    assert TOOL.main(["signing-bytes", "--body", str(body_path), "--out", str(out)]) == 0
+    capsys.readouterr()
+    assert TOOL.main(["inspect", "--signing-bytes", str(out)]) == 0
+    shown = json.loads(capsys.readouterr().out)
+    # What the signer reads must be the body itself, not a companion file.
+    assert shown == json.loads(body_path.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize(
+    "corruption", ["appended", "truncated_domain", "non_canonical", "extra_field"]
+)
+def test_inspect_refuses_bytes_that_are_not_a_canonical_record(tmp_path, corruption):
+    body_path = body(tmp_path)
+    payload = TOOL.signing_bytes(json.loads(body_path.read_text(encoding="utf-8")))
+    split = len(DECISION_SIGNING_DOMAIN)
+    domain, encoded = payload[:split], payload[split:]
+    if corruption == "appended":
+        mutated = payload + b"X"
+    elif corruption == "truncated_domain":
+        mutated = encoded
+    elif corruption == "non_canonical":
+        mutated = domain + json.dumps(json.loads(encoded), indent=2).encode("utf-8")
+    else:
+        spiked = json.loads(encoded)
+        spiked["backdoor"] = 1
+        mutated = domain + json.dumps(spiked, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    path = tmp_path / "mutated.bin"
+    path.write_bytes(mutated)
+    assert TOOL.main(["inspect", "--signing-bytes", str(path)]) == 2
+
+
 def test_signing_bytes_refuses_an_already_signed_record(tmp_path):
     _, record_path = signed_record(tmp_path)
     assert TOOL.main(["signing-bytes", "--body", str(record_path)]) == 2

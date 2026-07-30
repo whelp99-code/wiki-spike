@@ -124,6 +124,49 @@ def cmd_signing_bytes(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_inspect(args: argparse.Namespace) -> int:
+    """Render a signing-bytes file back into what it actually says.
+
+    An approver must sign what they can read. Reading a companion JSON file is
+    not the same check: the file and the bytes can disagree. This decodes the
+    bytes themselves, so the review and the signature cover one artifact.
+    """
+    path = Path(args.signing_bytes)
+    try:
+        payload = path.read_bytes()
+    except OSError as exc:
+        raise DecisionToolError(f"cannot read {path}: {exc}") from exc
+    if not payload.startswith(DECISION_SIGNING_DOMAIN):
+        raise DecisionToolError(
+            f"{path} does not begin with the decision signing domain "
+            f"{DECISION_SIGNING_DOMAIN!r}; refuse to sign it"
+        )
+    encoded = payload[len(DECISION_SIGNING_DOMAIN):]
+    try:
+        body = json.loads(encoded.decode("utf-8"), object_pairs_hook=_reject_duplicates)
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise DecisionToolError(f"{path} does not carry a decodable record body: {exc}") from exc
+    if not isinstance(body, dict):
+        raise DecisionToolError(f"{path} does not carry a record body object")
+    _body(body, path)
+    # Re-derive the bytes from the decoded body: anything appended, truncated,
+    # or non-canonical fails here rather than being silently signed.
+    if signing_bytes(body) != payload:
+        raise DecisionToolError(
+            f"{path} is not the canonical encoding of the body it contains; refuse to sign it"
+        )
+    print(json.dumps(body, indent=2, ensure_ascii=False, sort_keys=True))
+    print(
+        json.dumps(
+            {"bytes": len(payload), "sha256": sha256(payload).hexdigest()},
+            indent=2,
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+    return 0
+
+
 def _envelope(path: Path) -> Ed25519SignatureEnvelopeV1:
     return Ed25519SignatureEnvelopeV1.from_mapping(
         _load(path), version=DECISION_SIGNATURE_VERSION
@@ -233,6 +276,12 @@ def build_parser() -> argparse.ArgumentParser:
     emit.add_argument("--body", required=True)
     emit.add_argument("--out", default=None)
     emit.set_defaults(func=cmd_signing_bytes)
+
+    inspect = sub.add_parser(
+        "inspect", help="decode a signing-bytes file so a signer can read what they sign"
+    )
+    inspect.add_argument("--signing-bytes", required=True)
+    inspect.set_defaults(func=cmd_inspect)
 
     envelope = sub.add_parser("envelope", help="wrap a raw signature into a signature envelope")
     envelope.add_argument("--role", required=True, choices=("owner", "approver"))
