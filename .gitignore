@@ -23,3 +23,6 @@ dist/
 
 # local CI/preflight logs
 .ci/
+
+# macOS
+.DS_Store
