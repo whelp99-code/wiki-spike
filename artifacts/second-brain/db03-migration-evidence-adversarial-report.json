@@ -458,32 +458,34 @@
   "mutationAudits": {
     "batches": [
       {
+        "batch": "guards",
         "caught": 11,
-        "mutants": 11,
-        "script": "db03-migration-evidence-mutation-audit.py"
+        "mutants": 11
       },
       {
+        "batch": "binding-coherence-scope",
         "caught": 18,
-        "mutants": 18,
-        "script": "db03-migration-evidence-mutation-audit-binding.py"
+        "mutants": 18
       },
       {
+        "batch": "enums-versions-uniqueness-tools",
         "caught": 21,
-        "mutants": 21,
-        "script": "db03-migration-evidence-mutation-audit-enums.py"
+        "mutants": 21
       },
       {
+        "batch": "behaviour-not-rejection",
         "caught": 13,
-        "mutants": 13,
-        "script": "db03-migration-evidence-mutation-audit-behaviour.py"
+        "mutants": 13
       },
       {
+        "batch": "weakened-not-deleted",
         "caught": 12,
-        "mutants": 12,
-        "script": "db03-migration-evidence-mutation-audit-weakening.py"
+        "mutants": 12
       }
     ],
-    "purpose": "A guard whose removal leaves the suite green is decoration. Five batches disable guards, weaken them, and corrupt the computations they protect.",
+    "harness": "artifacts/second-brain/db03-migration-evidence-mutation-audit.py",
+    "mutantTable": "artifacts/second-brain/db03-migration-evidence-mutants.json",
+    "purpose": "A guard whose removal leaves the suite green is decoration. Five batches delete guards, weaken them without removing them, and corrupt the computations they protect.",
     "survivorsJudgedNotDefects": [
       "to_mapping returning a tuple rather than a list for native_identity_fields: canonical encoding is byte-identical for both, so this is an equivalent mutant",
       "sort_keys in the artifact file writer: changes on-disk layout, not what is digested"

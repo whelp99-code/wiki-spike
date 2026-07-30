@@ -1,0 +1,124 @@
+{
+  "batch": "enums-versions-uniqueness-tools",
+  "caught": 21,
+  "kind": "algorithm-mutation-audit",
+  "mutantCount": 21,
+  "purpose": null,
+  "results": [
+    {
+      "guard": "ref prefix requirement",
+      "note": "-30] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 44 passed in 0.23s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "closed enum membership",
+      "note": "/RAG] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 1 passed in 0.20s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "_true constant guard",
+      "note": "essage: 'treatment_digest does not bind its body' !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 54 passed in 0.21s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "_false constant guard",
+      "note": ": 'snapshot_binding_digest does not bind its body' !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 5 passed in 0.19s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "positive-count floor rejects 0",
+      "note": "g[0] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 17 passed in 0.20s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "version pin: snapshot",
+      "note": "ion] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 81 passed in 0.27s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "version pin: export profile",
+      "note": "ion] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 82 passed in 0.25s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "version pin: uniqueness diff",
+      "note": "ion] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 83 passed in 0.29s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "version pin: history treatment",
+      "note": "ion] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 84 passed in 0.22s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "version pin: source evidence",
+      "note": "ring - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 85 passed in 0.23s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "declared tombstone representation needs a sample",
+      "note": "mple - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 49 passed in 0.27s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "unavailable history rules",
+      "note": "les] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 50 passed in 0.22s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "complete history rules",
+      "note": "les] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 51 passed in 0.23s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "partial history needs both sample sets",
+      "note": "oth] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 52 passed in 0.26s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "write_atomic refuses a symlink destination",
+      "note": "test_a_symlinked_out_path_is_n0/artifact.json'}) !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 162 passed in 1.00s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "export directory must hold files",
+      "note": "st-1806/test_an_empty_or_byte_identica0/empty')) !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 116 passed in 0.44s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "export directory rejects byte-identical duplicates",
+      "note": "test-1807/test_an_empty_or_byte_identica0/dup')) !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 116 passed in 0.43s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "verify requires exactly one version field",
+      "note": "CaptureFixture object at 0x107b6c890>.readouterr !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 164 passed in 1.12s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "verify rejects an unrecognised version",
+      "note": "CaptureFixture object at 0x10781d6d0>.readouterr !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 165 passed in 1.09s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "digest list must be a non-empty array",
+      "note": "CaptureFixture object at 0x105048230>.readouterr !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 166 passed in 1.05s",
+      "status": "CAUGHT"
+    },
+    {
+      "guard": "digest list rejects duplicates",
+      "note": "CaptureFixture object at 0x105ccbd40>.readouterr !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 167 passed in 1.18s",
+      "status": "CAUGHT"
+    }
+  ],
+  "schemaVersion": 1,
+  "sourceRestoredCleanly": true,
+  "suites": [
+    "tests/second_brain/test_migration_evidence_contracts.py",
+    "tests/second_brain/test_migration_source_evidence_tool.py",
+    "tests/second_brain/test_migration_source_evidence_red_team.py",
+    "tests/second_brain/test_db03_doc_migration_agreement.py",
+    "tests/second_brain/test_evaluation_governance_tool.py"
+  ],
+  "survived": 0
+}

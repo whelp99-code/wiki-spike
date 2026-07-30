@@ -1,0 +1,510 @@
+{
+  "behaviour-not-rejection": {
+    "mutants": [
+      {
+        "file": "scripts/second_brain_migration_source_evidence.py",
+        "find": "    unique = [digest for digest in candidates if digest not in canonical_set]",
+        "label": "uniqueness diff actually subtracts the canonical corpus",
+        "replace": "    unique = list(candidates)"
+      },
+      {
+        "file": "scripts/second_brain_migration_source_evidence.py",
+        "find": "        \"duplicate_item_count\": str(len(candidates) - len(unique)),",
+        "label": "duplicate count is candidates minus unique",
+        "replace": "        \"duplicate_item_count\": \"0\","
+      },
+      {
+        "file": "scripts/second_brain_migration_source_evidence.py",
+        "find": "return canonical_ledger_digest(CANONICAL_CORPUS_DOMAIN, {\"item_digests\": sorted(digests)})",
+        "label": "canonical corpus digest is order-independent",
+        "replace": "return canonical_ledger_digest(CANONICAL_CORPUS_DOMAIN, {\"item_digests\": list(digests)})"
+      },
+      {
+        "file": "scripts/second_brain_evidence_common.py",
+        "find": "    for path in sorted(directory.rglob(\"*\")):",
+        "label": "item digests are emitted in sorted path order",
+        "replace": "    for path in list(directory.rglob(\"*\")):"
+      },
+      {
+        "file": "scripts/second_brain_migration_source_evidence.py",
+        "find": "        \"active_run_observed\": False,",
+        "label": "tool writes active_run_observed false",
+        "replace": "        \"active_run_observed\": True,"
+      },
+      {
+        "file": "scripts/second_brain_migration_source_evidence.py",
+        "find": "        \"write_capability_absent\": True,",
+        "label": "tool writes write_capability_absent true",
+        "replace": "        \"write_capability_absent\": False,"
+      },
+      {
+        "file": "scripts/second_brain_migration_source_evidence.py",
+        "find": "        \"absence_is_not_deletion\": True,",
+        "label": "tool writes absence_is_not_deletion true",
+        "replace": "        \"absence_is_not_deletion\": False,"
+      },
+      {
+        "file": "scripts/second_brain_migration_source_evidence.py",
+        "find": "    assert_migration_evidence_bundle_coherent(evidence, snapshot, profile, diff, treatment)",
+        "label": "bundle runs the coherence assertion",
+        "replace": "    pass"
+      },
+      {
+        "file": "scripts/second_brain_migration_source_evidence.py",
+        "find": "        \"snapshot_taken_at\": canonical_ledger_instant(\n            args.snapshot_taken_at, \"snapshot_taken_at\"\n        ),",
+        "label": "snapshot instants are canonicalised before digesting",
+        "replace": "        \"snapshot_taken_at\": args.snapshot_taken_at,"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "    if not isinstance(value, str) or len(value) != 64 or any(ch not in _HEX64 for ch in value):",
+        "label": "digest must be 64 lowercase hex",
+        "replace": "    if not isinstance(value, str):"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "    if not isinstance(data, Mapping) or any(not isinstance(k, str) for k in data):",
+        "label": "strict rejects non-mapping input",
+        "replace": "    if not isinstance(data, Mapping):"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "    if not isinstance(value, (list, tuple)):",
+        "label": "digest tuple rejects a non-array",
+        "replace": "    if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "    if not isinstance(value, (list, tuple)) or not value:",
+        "label": "names must be a non-empty array",
+        "replace": "    if False:"
+      }
+    ],
+    "purpose": null,
+    "suites": [
+      "tests/second_brain/test_migration_evidence_contracts.py",
+      "tests/second_brain/test_migration_source_evidence_tool.py",
+      "tests/second_brain/test_migration_source_evidence_red_team.py",
+      "tests/second_brain/test_db03_doc_migration_agreement.py",
+      "tests/second_brain/test_evaluation_governance_tool.py"
+    ]
+  },
+  "binding-coherence-scope": {
+    "mutants": [
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if digest != canonical_ledger_digest(\"migration-snapshot-v1\", body):",
+        "label": "binding digest: snapshot",
+        "replace": "        if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if digest != canonical_ledger_digest(\"migration-export-profile-v1\", body):",
+        "label": "binding digest: export profile",
+        "replace": "        if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if digest != canonical_ledger_digest(\"migration-uniqueness-diff-v1\", body):",
+        "label": "binding digest: uniqueness diff",
+        "replace": "        if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if digest != canonical_ledger_digest(\"migration-history-treatment-v1\", body):",
+        "label": "binding digest: history treatment",
+        "replace": "        if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if digest != canonical_ledger_digest(\"migration-source-evidence-v1\", body):",
+        "label": "binding digest: source evidence bundle",
+        "replace": "        if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if len(unique) != int(unique_count):",
+        "label": "unique_item_count matches enumerated digests",
+        "replace": "        if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "    if names != {evidence.source_name}:",
+        "label": "coherence: all components share one source name",
+        "replace": "    if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "    if snapshot.snapshot_binding_digest != evidence.snapshot_binding_digest:",
+        "label": "coherence: evidence binds the supplied snapshot",
+        "replace": "    if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if component != snapshot.snapshot_binding_digest:",
+        "label": "coherence: each component binds the same snapshot",
+        "replace": "        if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "    if profile.profile_digest != evidence.export_profile_digest:",
+        "label": "coherence: evidence binds the supplied export profile",
+        "replace": "    if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "    if diff.diff_digest != evidence.uniqueness_diff_digest:",
+        "label": "coherence: evidence binds the supplied uniqueness diff",
+        "replace": "    if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "    if treatment.treatment_digest != evidence.history_treatment_digest:",
+        "label": "coherence: evidence binds the supplied history treatment",
+        "replace": "    if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "    if snapshot.owner_attestation_digest != evidence.owner_attestation_digest:",
+        "label": "coherence: evidence carries the snapshot owner attestation",
+        "replace": "    if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "    if unknown or missing:",
+        "label": "strict field set (unknown/missing rejected)",
+        "replace": "    if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if _as_utc(taken) < _as_utc(quiesced):",
+        "label": "snapshot instant ordering",
+        "replace": "        if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "    if name in dict(scope.disabled_migration_sources):",
+        "label": "registrable: NO_GO source refused",
+        "replace": "    if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "    if name not in set(scope.enabled_migration_sources):",
+        "label": "registrable: source must be enabled by a GO",
+        "replace": "    if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if name in set(collection):",
+        "label": "registrable: never also a serving surface",
+        "replace": "        if False:"
+      }
+    ],
+    "purpose": null,
+    "suites": [
+      "tests/second_brain/test_migration_evidence_contracts.py",
+      "tests/second_brain/test_migration_source_evidence_tool.py",
+      "tests/second_brain/test_migration_source_evidence_red_team.py",
+      "tests/second_brain/test_db03_doc_migration_agreement.py"
+    ]
+  },
+  "enums-versions-uniqueness-tools": {
+    "mutants": [
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "    if not isinstance(value, str) or not value.startswith(prefix + \":\"):",
+        "label": "ref prefix requirement",
+        "replace": "    if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "    if not isinstance(value, str) or value not in allowed:",
+        "label": "closed enum membership",
+        "replace": "    if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "    if value is not True:",
+        "label": "_true constant guard",
+        "replace": "    if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "    if value is not False:",
+        "label": "_false constant guard",
+        "replace": "    if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "    if value == \"0\":",
+        "label": "positive-count floor rejects 0",
+        "replace": "    if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if values[\"snapshot_version\"] != MIGRATION_SNAPSHOT_V1:",
+        "label": "version pin: snapshot",
+        "replace": "        if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if values[\"profile_version\"] != MIGRATION_EXPORT_PROFILE_V1:",
+        "label": "version pin: export profile",
+        "replace": "        if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if values[\"diff_version\"] != MIGRATION_UNIQUENESS_DIFF_V1:",
+        "label": "version pin: uniqueness diff",
+        "replace": "        if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if values[\"treatment_version\"] != MIGRATION_HISTORY_TREATMENT_V1:",
+        "label": "version pin: history treatment",
+        "replace": "        if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if values[\"evidence_version\"] != MIGRATION_SOURCE_EVIDENCE_V1:",
+        "label": "version pin: source evidence",
+        "replace": "        if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if representation != \"absent\" and not tombstones:",
+        "label": "declared tombstone representation needs a sample",
+        "replace": "        if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if availability == \"unavailable\":",
+        "label": "unavailable history rules",
+        "replace": "        if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if availability == \"complete\":",
+        "label": "complete history rules",
+        "replace": "        if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if availability == \"partial-with-proof\" and not (retained and unavailable):",
+        "label": "partial history needs both sample sets",
+        "replace": "        if False:"
+      },
+      {
+        "file": "scripts/second_brain_evidence_common.py",
+        "find": "    if path.is_symlink():\n        raise EvidenceToolError(f\"{path} is a symlink; refusing to write through it\")",
+        "label": "write_atomic refuses a symlink destination",
+        "replace": "    if False:\n        pass"
+      },
+      {
+        "file": "scripts/second_brain_evidence_common.py",
+        "find": "    if not digests:",
+        "label": "export directory must hold files",
+        "replace": "    if False:"
+      },
+      {
+        "file": "scripts/second_brain_evidence_common.py",
+        "find": "    if len(set(digests)) != len(digests):",
+        "label": "export directory rejects byte-identical duplicates",
+        "replace": "    if False:"
+      },
+      {
+        "file": "scripts/second_brain_evidence_common.py",
+        "find": "    if len(versions) != 1:",
+        "label": "verify requires exactly one version field",
+        "replace": "    if False:"
+      },
+      {
+        "file": "scripts/second_brain_evidence_common.py",
+        "find": "    if entry is None:",
+        "label": "verify rejects an unrecognised version",
+        "replace": "    if False:"
+      },
+      {
+        "file": "scripts/second_brain_migration_source_evidence.py",
+        "find": "    if not isinstance(raw, list) or not raw:",
+        "label": "digest list must be a non-empty array",
+        "replace": "    if False:"
+      },
+      {
+        "file": "scripts/second_brain_migration_source_evidence.py",
+        "find": "    if len(set(raw)) != len(raw):",
+        "label": "digest list rejects duplicates",
+        "replace": "    if False:"
+      }
+    ],
+    "purpose": null,
+    "suites": [
+      "tests/second_brain/test_migration_evidence_contracts.py",
+      "tests/second_brain/test_migration_source_evidence_tool.py",
+      "tests/second_brain/test_migration_source_evidence_red_team.py",
+      "tests/second_brain/test_db03_doc_migration_agreement.py",
+      "tests/second_brain/test_evaluation_governance_tool.py"
+    ]
+  },
+  "guards": {
+    "mutants": [
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "if not isinstance(value, str) or len(value) > _MAX_COUNT_DIGITS or _DECIMAL.fullmatch(value) is None:",
+        "label": "count rejects non-ASCII digits",
+        "replace": "if not isinstance(value, str) or not value.isdigit():"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if before != after:",
+        "label": "zero-write proof (before == after)",
+        "replace": "        if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "\"active_run_observed\": _false(values[\"active_run_observed\"], \"active_run_observed\"),",
+        "label": "active_run_observed must be false",
+        "replace": "\"active_run_observed\": values[\"active_run_observed\"],"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "\"absence_is_not_deletion\": _true(\n                values[\"absence_is_not_deletion\"], \"absence_is_not_deletion\"\n            ),",
+        "label": "absence_is_not_deletion must be true",
+        "replace": "\"absence_is_not_deletion\": values[\"absence_is_not_deletion\"],"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if representation == \"absent\" and tombstones:",
+        "label": "tombstone samples forbidden when representation absent",
+        "replace": "        if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "            if set(left) & set(right):",
+        "label": "history sample sets must be disjoint",
+        "replace": "            if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if len(set(evidence_digests)) != len(evidence_digests):",
+        "label": "six distinct export evidence documents",
+        "replace": "        if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if len(set(bound_digests)) != len(bound_digests):",
+        "label": "six distinct bundle digests",
+        "replace": "        if False:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "    if not isinstance(value, str) or _TOKEN.fullmatch(value) is None:",
+        "label": "identifier charset on _text",
+        "replace": "    if not isinstance(value, str) or not value:"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if int(unique_count) + int(duplicate_count) != int(candidate_count):",
+        "label": "count partition (unique + duplicate == candidate)",
+        "replace": "        if False:"
+      },
+      {
+        "file": "scripts/second_brain_evidence_common.py",
+        "find": "        if path.is_symlink():",
+        "label": "symlink refusal in item_digests",
+        "replace": "        if False:"
+      }
+    ],
+    "purpose": null,
+    "suites": [
+      "tests/second_brain/test_migration_evidence_contracts.py",
+      "tests/second_brain/test_migration_source_evidence_tool.py",
+      "tests/second_brain/test_migration_source_evidence_red_team.py",
+      "tests/second_brain/test_db03_doc_migration_agreement.py"
+    ]
+  },
+  "weakened-not-deleted": {
+    "mutants": [
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if digest != canonical_ledger_digest(\"migration-snapshot-v1\", body):",
+        "label": "snapshot binds under its own digest domain",
+        "replace": "        if digest != canonical_ledger_digest(\"migration-export-profile-v1\", body):"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if digest != canonical_ledger_digest(\"migration-uniqueness-diff-v1\", body):",
+        "label": "uniqueness diff binds under its own digest domain",
+        "replace": "        if digest != canonical_ledger_digest(\"migration-history-treatment-v1\", body):"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        if digest != canonical_ledger_digest(\"migration-source-evidence-v1\", body):",
+        "label": "bundle binds under its own digest domain",
+        "replace": "        if digest != canonical_ledger_digest(\"migration-snapshot-v1\", body):"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "    return datetime.fromisoformat(canonical[:-1] + \"+00:00\").astimezone(timezone.utc)",
+        "label": "instant ordering compares real time, not spelling",
+        "replace": "    return canonical"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "_MAX_COUNT_DIGITS = 20",
+        "label": "count digit bound stays tight",
+        "replace": "_MAX_COUNT_DIGITS = 4300"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "_TOKEN = re.compile(r\"[A-Za-z0-9][A-Za-z0-9._+/-]{0,127}\")",
+        "label": "identifier token bound stays at 128",
+        "replace": "_TOKEN = re.compile(r\"[A-Za-z0-9][A-Za-z0-9._+/-]{0,4096}\")"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "MIGRATION_SOURCE_NAMES = (\"legacy Mem0/RAG\", \"me-wiki\", \"unified-db\")",
+        "label": "DB-03 scope inventory stays exactly three names",
+        "replace": "MIGRATION_SOURCE_NAMES = (\"legacy Mem0/RAG\", \"me-wiki\", \"unified-db\", \"hermes\")"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "READ_ONLY_EXPORT_METHODS = (\n    \"read-only-transaction\",",
+        "label": "export methods stay read-only",
+        "replace": "READ_ONLY_EXPORT_METHODS = (\n    \"read-write-transaction\",\n    \"read-only-transaction\","
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "OVERLAP_BEHAVIORS = (\"replay-overlap\", \"exactly-once-cursor\")",
+        "label": "overlap behaviour admits no unknown value",
+        "replace": "OVERLAP_BEHAVIORS = (\"replay-overlap\", \"exactly-once-cursor\", \"unknown\")"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "            \"page_size_limit\": _positive_count(values[\"page_size_limit\"], \"page_size_limit\"),",
+        "label": "page size limit must be positive, not merely decimal",
+        "replace": "            \"page_size_limit\": _count(values[\"page_size_limit\"], \"page_size_limit\"),"
+      },
+      {
+        "file": "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py",
+        "find": "        candidate_count = _positive_count(values[\"candidate_item_count\"], \"candidate_item_count\")",
+        "label": "candidate count must be positive, not merely decimal",
+        "replace": "        candidate_count = _count(values[\"candidate_item_count\"], \"candidate_item_count\")"
+      },
+      {
+        "file": "scripts/second_brain_migration_source_evidence.py",
+        "find": "MIGRATION_SOURCE_EVIDENCE_V1: (MigrationSourceEvidenceV1, \"evidence_digest\"),",
+        "label": "verify reports the bundle's own digest field",
+        "replace": "MIGRATION_SOURCE_EVIDENCE_V1: (MigrationSourceEvidenceV1, \"snapshot_binding_digest\"),"
+      }
+    ],
+    "purpose": null,
+    "suites": [
+      "tests/second_brain/test_migration_evidence_contracts.py",
+      "tests/second_brain/test_migration_source_evidence_tool.py",
+      "tests/second_brain/test_migration_source_evidence_red_team.py",
+      "tests/second_brain/test_db03_doc_migration_agreement.py",
+      "tests/second_brain/test_evaluation_governance_tool.py"
+    ]
+  }
+}

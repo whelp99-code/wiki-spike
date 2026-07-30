@@ -95,8 +95,12 @@ def test_the_mutation_tally_matches_the_committed_batch_reports():
     """The adversarial report summarises the batches; the batches must agree."""
     declared = load(ADVERSARIAL)["mutationAudits"]
     total_mutants = total_caught = 0
+    assert (ROOT / declared["harness"]).is_file()
+    table = json.loads((ROOT / declared["mutantTable"]).read_text(encoding="utf-8"))
     for batch in declared["batches"]:
-        path = ARTIFACTS / batch["script"].replace(".py", ".json")
+        assert batch["batch"] in table, f"{batch['batch']} is not in the mutant table"
+        assert len(table[batch["batch"]]["mutants"]) == batch["mutants"]
+        path = ARTIFACTS / f"db03-migration-evidence-mutation-audit-{batch['batch']}.json"
         actual = load(path)
         assert actual["mutantCount"] == batch["mutants"], f"{path.name} mutant count drifted"
         assert actual["caught"] == batch["caught"], f"{path.name} caught count drifted"

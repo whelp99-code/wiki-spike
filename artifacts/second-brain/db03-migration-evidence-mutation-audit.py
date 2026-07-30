@@ -1,13 +1,32 @@
 #!/usr/bin/env python3.12
-"""Mutation audit: does removing each guard actually break the tests?
+"""Mutation audit: does removing or weakening each guard actually break the tests?
 
-A test suite that stays green when a guard is deleted is decoration. This
-disables one guard at a time in the shipped source, runs the targeted suites,
-and records whether the suite noticed. Every mutation is reverted with
-an in-memory snapshot before the next one, and the files are verified unchanged at the end.
+A guard whose removal leaves the suite green is decoration. This disables or
+weakens one guard at a time in the shipped source, runs the relevant suites, and
+records whether the suite noticed.
+
+Five batches, defined as data in `db03-migration-evidence-mutants.json`:
+
+  guards                          delete the field-level rules outright
+  binding-coherence-scope         delete the digest binding and cross-artifact checks
+  enums-versions-uniqueness-tools delete the enum closures, version pins and tool guards
+  behaviour-not-rejection         corrupt the computations, not the guards
+  weakened-not-deleted            leave guards in place but make them mean less
+
+  ./db03-migration-evidence-mutation-audit.py                # every batch
+  ./db03-migration-evidence-mutation-audit.py --batch guards # one batch
+
+Restoration is deliberate. An earlier version of this harness restored with
+`git checkout`, which reverts to HEAD and silently destroyed uncommitted work in
+the files under test -- twice -- and left a mutation behind in the working tree
+when it crashed mid-cycle, so a later suite run went green against mutated
+source. Restore now comes from an in-memory snapshot taken at import, every
+cycle is wrapped in try/finally, and atexit covers the rest. Verified by killing
+the harness mid-run with SIGTERM.
 """
 from __future__ import annotations
 
+import argparse
 import atexit
 import json
 import os
@@ -15,140 +34,93 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO = Path("/tmp/wiki-spike-native-measurement")
-CONTRACTS = REPO / "src/wiki_spike/memory_core/second_brain_migration_evidence_contracts.py"
-COMMON = REPO / "scripts/second_brain_evidence_common.py"
-FILES = [CONTRACTS, COMMON]
-SUITES = [
-    "tests/second_brain/test_migration_evidence_contracts.py",
-    "tests/second_brain/test_migration_source_evidence_tool.py",
-    "tests/second_brain/test_migration_source_evidence_red_team.py",
-    "tests/second_brain/test_db03_doc_migration_agreement.py",
-]
-
-# (label, file, exact source substring, replacement that disables the guard)
-MUTANTS = [
-    ("count rejects non-ASCII digits", CONTRACTS,
-     "if not isinstance(value, str) or len(value) > _MAX_COUNT_DIGITS or _DECIMAL.fullmatch(value) is None:",
-     "if not isinstance(value, str) or not value.isdigit():"),
-    ("zero-write proof (before == after)", CONTRACTS,
-     "        if before != after:",
-     "        if False:"),
-    ("active_run_observed must be false", CONTRACTS,
-     '"active_run_observed": _false(values["active_run_observed"], "active_run_observed"),',
-     '"active_run_observed": values["active_run_observed"],'),
-    ("absence_is_not_deletion must be true", CONTRACTS,
-     '"absence_is_not_deletion": _true(\n                values["absence_is_not_deletion"], "absence_is_not_deletion"\n            ),',
-     '"absence_is_not_deletion": values["absence_is_not_deletion"],'),
-    ("tombstone samples forbidden when representation absent", CONTRACTS,
-     '        if representation == "absent" and tombstones:',
-     "        if False:"),
-    ("history sample sets must be disjoint", CONTRACTS,
-     "            if set(left) & set(right):",
-     "            if False:"),
-    ("six distinct export evidence documents", CONTRACTS,
-     "        if len(set(evidence_digests)) != len(evidence_digests):",
-     "        if False:"),
-    ("six distinct bundle digests", CONTRACTS,
-     "        if len(set(bound_digests)) != len(bound_digests):",
-     "        if False:"),
-    ("identifier charset on _text", CONTRACTS,
-     "    if not isinstance(value, str) or _TOKEN.fullmatch(value) is None:",
-     "    if not isinstance(value, str) or not value:"),
-    ("count partition (unique + duplicate == candidate)", CONTRACTS,
-     "        if int(unique_count) + int(duplicate_count) != int(candidate_count):",
-     "        if False:"),
-    ("symlink refusal in item_digests", COMMON,
-     "        if path.is_symlink():",
-     "        if False:"),
-]
-
-
-def run_suites() -> tuple[bool, str]:
-    r = subprocess.run(
-        [sys.executable, "-m", "pytest", *SUITES, "-q", "--no-header", "-x"],
-        cwd=REPO, capture_output=True, text=True,
-        env={**os.environ, "PYTHONPATH": "src"},
-    )
-    return r.returncode == 0, (r.stdout or "")[-200:].strip().replace("\n", " ")
-
-
-ORIGINAL = {path: path.read_text() for path in FILES}
+HERE = Path(__file__).resolve().parent
+REPO = HERE.parents[1]
+MUTANTS = json.loads((HERE / "db03-migration-evidence-mutants.json").read_text(encoding="utf-8"))
+FILES = sorted({
+    REPO / entry["file"]
+    for batch in MUTANTS.values() for entry in batch["mutants"]
+})
+ORIGINAL = {path: path.read_text(encoding="utf-8") for path in FILES}
 
 
 def restore() -> None:
-    """Restore from an in-memory snapshot.
-
-    Never `git checkout`: that reverts to HEAD and silently destroys any
-    uncommitted work in these files, including a fix being validated right now.
-    """
+    """Restore from the in-memory snapshot; never `git checkout`."""
     for path, text in ORIGINAL.items():
-        if path.read_text() != text:
-            path.write_text(text)
+        if path.read_text(encoding="utf-8") != text:
+            path.write_text(text, encoding="utf-8")
 
 
-def _restore_on_exit() -> None:
-    """Restore even if this process dies mid-mutation.
-
-    A harness that leaves a disabled guard behind in the working tree is worse
-    than no harness: the next run passes against mutated source and nobody
-    notices. `finally` covers exceptions; atexit covers everything else.
-    """
-    restore()
+atexit.register(restore)
 
 
-atexit.register(_restore_on_exit)
-def main() -> int:
-    baseline_ok, baseline_note = run_suites()
-    print(f"baseline suites pass: {baseline_ok}  ({baseline_note})")
-    if not baseline_ok:
-        print("baseline is red; aborting so results are meaningful")
-        return 2
+def run_suites(suites: list[str]) -> tuple[bool, str]:
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", *suites, "-q", "--no-header", "-x"],
+        cwd=REPO, capture_output=True, text=True,
+        env={**os.environ, "PYTHONPATH": "src"},
+    )
+    return result.returncode == 0, (result.stdout or "")[-160:].strip().replace("\n", " ")
+
+
+def run_batch(name: str) -> dict:
+    batch = MUTANTS[name]
+    suites = batch["suites"]
+    ok, note = run_suites(suites)
+    print(f"[{name}] baseline suites pass: {ok} ({note})")
+    if not ok:
+        return {"batch": name, "error": "baseline red", "mutantCount": len(batch["mutants"]),
+                "caught": 0, "survived": len(batch["mutants"]), "results": []}
 
     results, survivors = [], []
-    for label, path, needle, replacement in MUTANTS:
-        src = path.read_text()
-        if needle not in src:
-            results.append({"guard": label, "status": "MUTANT_NOT_APPLIED",
-                            "note": "source anchor not found"})
-            survivors.append(label)
-            print(f"  !! {label}: anchor not found")
+    for entry in batch["mutants"]:
+        path = REPO / entry["file"]
+        source = path.read_text(encoding="utf-8")
+        if source.count(entry["find"]) != 1:
+            results.append({"guard": entry["label"], "status": "ANCHOR_AMBIGUOUS",
+                            "note": f"occurrences={source.count(entry['find'])}"})
+            survivors.append(entry["label"])
+            print(f"  !! {entry['label']}: occurrences={source.count(entry['find'])}")
             continue
-        path.write_text(src.replace(needle, replacement, 1))
+        path.write_text(source.replace(entry["find"], entry["replace"], 1), encoding="utf-8")
         try:
-            caught, note = (lambda ok, n: (not ok, n))(*run_suites())
+            passed, note = run_suites(suites)
         finally:
             restore()
-        results.append({"guard": label,
-                        "status": "CAUGHT" if caught else "SURVIVED",
+        caught = not passed
+        results.append({"guard": entry["label"], "status": "CAUGHT" if caught else "SURVIVED",
                         "note": note})
         if not caught:
-            survivors.append(label)
-        print(f"  {'CAUGHT  ' if caught else 'SURVIVED'} {label}")
+            survivors.append(entry["label"])
+        print(f"  {'CAUGHT  ' if caught else 'SURVIVED'} {entry['label']}")
 
-    dirty = "" if all(p.read_text() == t for p, t in ORIGINAL.items()) else "modified"
-    print(f"\nsource restored cleanly: {not dirty}")
-    print(f"mutants: {len(MUTANTS)} | caught: {len(MUTANTS)-len(survivors)} | survived: {len(survivors)}")
-    for s in survivors:
-        print(f"  SURVIVOR: {s}")
-
+    clean = all(p.read_text(encoding="utf-8") == t for p, t in ORIGINAL.items())
     report = {
-        "schemaVersion": 1,
-        "kind": "algorithm-mutation-audit",
-        "purpose": ("A guard whose removal leaves the suite green is decoration. Each guard is "
-                    "disabled in the shipped source, the targeted suites are re-run, and the "
-                    "result records whether the suite noticed. Every mutation is reverted."),
-        "suites": SUITES,
-        "mutantCount": len(MUTANTS),
-        "caught": len(MUTANTS) - len(survivors),
-        "survived": len(survivors),
-        "sourceRestoredCleanly": not dirty,
-        "results": results,
+        "schemaVersion": 1, "kind": "algorithm-mutation-audit", "batch": name,
+        "purpose": batch.get("purpose"), "suites": suites,
+        "mutantCount": len(batch["mutants"]),
+        "caught": len(batch["mutants"]) - len(survivors), "survived": len(survivors),
+        "sourceRestoredCleanly": clean, "results": results,
     }
-    out = REPO / "artifacts/second-brain/db03-migration-evidence-mutation-audit.json"
+    out = HERE / f"db03-migration-evidence-mutation-audit-{name}.json"
     out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"written_to: {out}")
-    return 1 if (survivors or dirty) else 0
+    print(f"[{name}] mutants: {report['mutantCount']} | caught: {report['caught']} | "
+          f"survived: {report['survived']} | restored cleanly: {clean}")
+    for survivor in survivors:
+        print(f"  SURVIVOR: {survivor}")
+    return report
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--batch", choices=sorted(MUTANTS), action="append")
+    args = parser.parse_args(argv)
+    names = args.batch or sorted(MUTANTS)
+    reports = [run_batch(name) for name in names]
+    total = sum(r["mutantCount"] for r in reports)
+    caught = sum(r["caught"] for r in reports)
+    print(f"\nTOTAL: {caught}/{total} guards and computations proven load-bearing")
+    return 0 if caught == total and all(r.get("sourceRestoredCleanly") for r in reports) else 1
 
 
 if __name__ == "__main__":
