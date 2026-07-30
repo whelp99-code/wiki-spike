@@ -1307,29 +1307,44 @@ class LifecycleDatabase:
         self.con.execute("PRAGMA foreign_keys=ON")
         self.con.execute("PRAGMA busy_timeout=5000")
         self.con.executescript(SCHEMA)
-        for table, column in (
-            ("ledger_candidate_version", "start_cut TEXT"),
-            ("ledger_candidate_version", "end_cut TEXT"),
-            ("ledger_edge", "start_cut TEXT"),
-            ("ledger_edge", "end_cut TEXT"),
-            ("ledger_provenance", "provenance_payload_hex TEXT"),
-        ):
-            columns = {row[1] for row in self.con.execute(f"PRAGMA table_info({table})")}
-            if column.split()[0] not in columns:
-                self.con.execute(f"ALTER TABLE {table} ADD COLUMN {column}")
-        # Class-fix migration for pre-c853676 files: CREATE TRIGGER IF NOT EXISTS
-        # leaves the old conditional no_delete body (WHEN retention_bound ...) in
-        # place, and the ambient retention_bound table may still exist. Replace
-        # the trigger body unconditionally and drop the bound table so upgraded
-        # databases receive the same "ordinary DELETE always refuses" guarantee
-        # as a fresh initialize, without waiting for the first purge.
-        self.con.execute("DROP TRIGGER IF EXISTS ledger_recall_cursor_no_delete")
-        self.con.execute(
-            "CREATE TRIGGER ledger_recall_cursor_no_delete "
-            "BEFORE DELETE ON ledger_recall_cursor "
-            "BEGIN SELECT RAISE(ABORT, 'live ledger recall cursor cannot be deleted'); END"
-        )
-        self.con.execute("DROP TABLE IF EXISTS ledger_recall_cursor_retention_bound")
+        # Concurrent openers must not race this migration. A bare
+        # check-then-ALTER column add, or a DROP+CREATE TRIGGER pair, lets a
+        # second initialize() observe the pre-migration shape and then fail
+        # with "duplicate column name"/"already exists" once the first opener
+        # commits. busy_timeout cannot help: nothing conflicts on locks, the
+        # loser simply acts on a stale observation. One BEGIN IMMEDIATE
+        # serialises the whole class fix so the loser waits, re-reads, and
+        # converges instead of erroring.
+        self.con.execute("BEGIN IMMEDIATE")
+        try:
+            for table, column in (
+                ("ledger_candidate_version", "start_cut TEXT"),
+                ("ledger_candidate_version", "end_cut TEXT"),
+                ("ledger_edge", "start_cut TEXT"),
+                ("ledger_edge", "end_cut TEXT"),
+                ("ledger_provenance", "provenance_payload_hex TEXT"),
+            ):
+                columns = {row[1] for row in self.con.execute(f"PRAGMA table_info({table})")}
+                if column.split()[0] not in columns:
+                    self.con.execute(f"ALTER TABLE {table} ADD COLUMN {column}")
+            # Class-fix migration for pre-c853676 files: CREATE TRIGGER IF NOT
+            # EXISTS leaves the old conditional no_delete body (WHEN
+            # retention_bound ...) in place, and the ambient retention_bound
+            # table may still exist. Replace the trigger body unconditionally
+            # and drop the bound table so upgraded databases receive the same
+            # "ordinary DELETE always refuses" guarantee as a fresh
+            # initialize, without waiting for the first purge.
+            self.con.execute("DROP TRIGGER IF EXISTS ledger_recall_cursor_no_delete")
+            self.con.execute(
+                "CREATE TRIGGER ledger_recall_cursor_no_delete "
+                "BEFORE DELETE ON ledger_recall_cursor "
+                "BEGIN SELECT RAISE(ABORT, 'live ledger recall cursor cannot be deleted'); END"
+            )
+            self.con.execute("DROP TABLE IF EXISTS ledger_recall_cursor_retention_bound")
+        except BaseException:
+            self.con.execute("ROLLBACK")
+            raise
+        self.con.execute("COMMIT")
         self._read_con = sqlite3.connect(str(self.db_path), isolation_level=None)
         self._read_con.execute("PRAGMA journal_mode=WAL")
         self._read_con.execute("PRAGMA synchronous=FULL")
