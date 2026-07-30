@@ -2,7 +2,7 @@
   "status": "passed",
   "e2eStatus": "passed",
   "redTeamStatus": "passed",
-  "evidence": "Leader-produced QA/red-team evidence: delegated executor lanes are unavailable this session because every task spawn is refused by a stale session repository binding. All evidence below is from real invocations, not restated intent. 166 targeted tests across six suites; full suite 2023 passed; boundaries and secret scan PASS; both the DB-03 and DB-05 runbook sections replayed under a PTY; 50 adversarial cases driven programmatically with every verdict computed by comparing observed behaviour to a declared expectation, 0 failures.",
+  "evidence": "Leader-produced QA/red-team evidence: delegated executor lanes are unavailable this session because every task spawn is refused by a stale session repository binding. All evidence is from real invocations. 270 targeted tests across ten suites; full second_brain suite 864 passed; boundaries and secret scan PASS; both the DB-03 and DB-05 runbook sections replayed under a PTY; 50 adversarial cases with verdicts computed from observed behaviour, 0 failures; 75 mutants across five batches, all caught; refusal-reason audit clean at 24/24.",
   "e2eCommands": [
     "PYTHONPATH=src python3.12 -m pytest tests/second_brain -q",
     "PYTHONPATH=src python3.12 -m pytest tests/encrypted_lifecycle tests/compat tests/phase3 tests/phase4 tests/test_*.py -q",
@@ -684,5 +684,6 @@
       ]
     }
   ],
-  "blockers": []
+  "blockers": [],
+  "sourceHash": "sha256:b31915b1fd28ee15027c4e3f69aa3f789af457c2e7b9bbd63e2debf256a655ed"
 }

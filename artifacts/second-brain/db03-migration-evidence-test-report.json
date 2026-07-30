@@ -1,4 +1,5 @@
 {
+  "describesCommit": "b5014b29d2f3e8de409926a0da23729beaaca001",
   "gates": [
     {
       "command": "python3.12 scripts/check_architecture_boundaries.py",
@@ -9,56 +10,91 @@
       "result": "PASS"
     }
   ],
-  "generation": 3,
   "kind": "api-package-test-report",
+  "note": "sourceHash and describesCommit name the change set these counts were measured against. They are regenerated whenever the change set moves; a mismatch between describesCommit and HEAD means this artifact is stale and must be regenerated before it is cited as evidence.",
   "producedBy": "ultragoal leader (delegation unavailable this session)",
   "schemaVersion": 1,
-  "sourceHash": "sha256:590a0afa96dceef30bf3038c5326dee01c9320b28578aa623c915f2df8873dbe",
+  "sourceHash": "sha256:16f7d67002035b2b3a7cad9e72d8203970be1929113d4e4eb3728ec162d9445f",
   "suites": [
     {
       "command": "PYTHONPATH=src python3.12 -m pytest tests/second_brain/test_migration_evidence_contracts.py -q",
       "failed": 0,
-      "passed": 76,
+      "passed": 106,
       "suite": "tests/second_brain/test_migration_evidence_contracts.py",
-      "summary": "76 passed in 0.22s"
+      "summary": "106 passed in 0.14s"
     },
     {
       "command": "PYTHONPATH=src python3.12 -m pytest tests/second_brain/test_migration_source_evidence_tool.py -q",
       "failed": 0,
-      "passed": 18,
+      "passed": 19,
       "suite": "tests/second_brain/test_migration_source_evidence_tool.py",
-      "summary": "18 passed in 0.37s"
+      "summary": "19 passed in 0.28s"
     },
     {
       "command": "PYTHONPATH=src python3.12 -m pytest tests/second_brain/test_migration_source_evidence_red_team.py -q",
       "failed": 0,
-      "passed": 39,
+      "passed": 46,
       "suite": "tests/second_brain/test_migration_source_evidence_red_team.py",
-      "summary": "39 passed in 0.98s"
+      "summary": "46 passed in 0.59s"
     },
     {
       "command": "PYTHONPATH=src python3.12 -m pytest tests/second_brain/test_db03_doc_migration_agreement.py -q",
       "failed": 0,
       "passed": 4,
       "suite": "tests/second_brain/test_db03_doc_migration_agreement.py",
-      "summary": "4 passed in 0.10s"
+      "summary": "4 passed in 0.07s"
+    },
+    {
+      "command": "PYTHONPATH=src python3.12 -m pytest tests/second_brain/test_db03_runbook_cli_agreement.py -q",
+      "failed": 0,
+      "passed": 14,
+      "suite": "tests/second_brain/test_db03_runbook_cli_agreement.py",
+      "summary": "14 passed in 0.09s"
+    },
+    {
+      "command": "PYTHONPATH=src python3.12 -m pytest tests/second_brain/test_migration_evidence_properties.py -q",
+      "failed": 0,
+      "passed": 29,
+      "suite": "tests/second_brain/test_migration_evidence_properties.py",
+      "summary": "29 passed in 0.10s"
+    },
+    {
+      "command": "PYTHONPATH=src python3.12 -m pytest tests/second_brain/test_evidence_digest_stability.py -q",
+      "failed": 0,
+      "passed": 10,
+      "suite": "tests/second_brain/test_evidence_digest_stability.py",
+      "summary": "10 passed in 0.18s"
+    },
+    {
+      "command": "PYTHONPATH=src python3.12 -m pytest tests/second_brain/test_db03_evidence_end_to_end.py -q",
+      "failed": 0,
+      "passed": 13,
+      "suite": "tests/second_brain/test_db03_evidence_end_to_end.py",
+      "summary": "13 passed in 0.66s"
     },
     {
       "command": "PYTHONPATH=src python3.12 -m pytest tests/second_brain/test_evaluation_governance_tool.py -q",
       "failed": 0,
       "passed": 11,
       "suite": "tests/second_brain/test_evaluation_governance_tool.py",
-      "summary": "11 passed in 3.58s"
+      "summary": "11 passed in 0.18s"
     },
     {
       "command": "PYTHONPATH=src python3.12 -m pytest tests/second_brain/test_decision_record_tool.py -q",
       "failed": 0,
       "passed": 18,
       "suite": "tests/second_brain/test_decision_record_tool.py",
-      "summary": "18 passed in 0.17s"
+      "summary": "18 passed in 0.18s"
+    },
+    {
+      "command": "PYTHONPATH=src python3.12 -m pytest tests/second_brain/test_db03_evidence_artifacts_are_current.py -q",
+      "failed": 0,
+      "passed": 18,
+      "suite": "tests/second_brain/test_db03_evidence_artifacts_are_current.py",
+      "summary": "18 passed in 4.19s"
     }
   ],
   "surface": "api-package",
   "totalFailed": 0,
-  "totalPassed": 166
+  "totalPassed": 288
 }

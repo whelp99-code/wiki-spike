@@ -455,6 +455,42 @@
   "failed": 0,
   "generation": 3,
   "kind": "algorithm-adversarial-report",
+  "mutationAudits": {
+    "batches": [
+      {
+        "caught": 11,
+        "mutants": 11,
+        "script": "db03-migration-evidence-mutation-audit.py"
+      },
+      {
+        "caught": 18,
+        "mutants": 18,
+        "script": "db03-migration-evidence-mutation-audit-binding.py"
+      },
+      {
+        "caught": 21,
+        "mutants": 21,
+        "script": "db03-migration-evidence-mutation-audit-enums.py"
+      },
+      {
+        "caught": 13,
+        "mutants": 13,
+        "script": "db03-migration-evidence-mutation-audit-behaviour.py"
+      },
+      {
+        "caught": 12,
+        "mutants": 12,
+        "script": "db03-migration-evidence-mutation-audit-weakening.py"
+      }
+    ],
+    "purpose": "A guard whose removal leaves the suite green is decoration. Five batches disable guards, weaken them, and corrupt the computations they protect.",
+    "survivorsJudgedNotDefects": [
+      "to_mapping returning a tuple rather than a list for native_identity_fields: canonical encoding is byte-identical for both, so this is an equivalent mutant",
+      "sort_keys in the artifact file writer: changes on-disk layout, not what is digested"
+    ],
+    "totalCaught": 75,
+    "totalMutants": 75
+  },
   "passed": 50,
   "producedBy": "ultragoal leader (delegation unavailable this session)",
   "refusalReasonAudit": {
@@ -466,6 +502,6 @@
     "script": "artifacts/second-brain/db03-migration-evidence-refusal-reason-audit.py"
   },
   "schemaVersion": 1,
-  "sourceHash": "sha256:590a0afa96dceef30bf3038c5326dee01c9320b28578aa623c915f2df8873dbe",
+  "sourceHash": "sha256:1f948e298fa25bd192f41a41a35d6aeae9b9d2624c36b4a1159d939fd936b74c",
   "surface": "algorithm+api+cli"
 }
