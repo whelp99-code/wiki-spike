@@ -187,6 +187,75 @@ the tool prints that caveat on stderr rather than implying more than it checked.
 
 ---
 
+## Producing the DB-05 evidence bundle
+
+`evidence_digest` is not free text. For DB-05 it is the `governance_digest` of
+an `EvaluationGovernanceV1`, which binds the five things DB-05's evidence list
+demands. `scripts/second_brain_evaluation_governance.py` builds it.
+
+No benchmark or holdout manifest existed in this repository, which is what made
+DB-05 unsignable regardless of who consented.
+
+Freeze the SLOs. The defaults are the enforced floors; raise them if you intend
+to, never lower them.
+
+```sh
+python3.12 scripts/second_brain_evaluation_governance.py slo \
+  --parity-min-bps 9000 --citation-min-bps 9000 \
+  --completeness-min-bps 9000 --availability-min-bps 9900 \
+  --out out/slo.json
+```
+
+Build the benchmark manifest from the labelled corpus. Only digests enter the
+manifest; no corpus content does, which is what keeps the evidence body-free.
+
+```sh
+python3.12 scripts/second_brain_evaluation_governance.py benchmark-manifest \
+  --corpus-dir ~/benchmark-corpus \
+  --workspace-ref "workspace:second-brain-final" \
+  --corpus-key-ref "key:benchmark-corpus-2026" \
+  --capability-ref "capability:benchmark-read-2026" \
+  --label-review-digest LABEL_REVIEW_SHA256 \
+  --consent-digest OWNER_CONSENT_SHA256 \
+  --out out/benchmark.json
+```
+
+Build the holdout manifest from a **separate** corpus under a **separate** key.
+
+```sh
+python3.12 scripts/second_brain_evaluation_governance.py holdout-manifest \
+  --corpus-dir ~/holdout-corpus \
+  --workspace-ref "workspace:second-brain-final" \
+  --holdout-key-ref "key:holdout-corpus-2026" \
+  --capability-ref "capability:holdout-read-2026" \
+  --separation-digest SEPARATION_SHA256 \
+  --out out/holdout.json
+```
+
+Bind them.
+
+```sh
+python3.12 scripts/second_brain_evaluation_governance.py governance \
+  --benchmark out/benchmark.json --holdout out/holdout.json --slo out/slo.json \
+  --workspace-ref "workspace:second-brain-final" \
+  --encryption-isolation-digest ISOLATION_DESIGN_SHA256 \
+  --serving-corpus-digest SERVING_CORPUS_SHA256 \
+  --out out/governance.json
+```
+
+The printed `governance_digest` is DB-05's `evidence_digest`.
+
+Separation is enforced, not assumed. Refused: an item digest present in both
+corpora, one key used under two names, either corpus digest reused as the
+serving corpus digest, an empty corpus, and byte-identical duplicates within a
+corpus.
+
+The four attestation digests - label review, consent, separation, encryption
+isolation - come from human processes. The tool takes them as input and refuses
+to invent them.
+
+---
+
 ## Order of work
 
 Signing is the last step, not the first. `evidence_digest` must already point at
@@ -215,8 +284,12 @@ quiesce writers -> immutable snapshot -> zero-write proof
                             CutoverDecisionV1 -> Stage 6
 ```
 
-DB-05 is the exception: it freezes SLOs **before** observation, so it is signed
-first and starts the 3-day clock. Everything else waits on the snapshot.
+DB-05 does not wait on the unified-db snapshot: it freezes SLOs **before**
+observation, so signing it starts the 3-day clock. It is not free of
+prerequisites, though. Its `evidence_digest` binds a benchmark manifest and a
+holdout manifest, so both corpora must exist, be labelled and consented, sit
+under separate keys, and share no item. Build the bundle above first; consent
+alone does not make DB-05 signable.
 
 DB-01, DB-04, DB-05 and DB-07 are globally fatal; an invalid or missing record
 blocks the whole product plan. DB-02, DB-03, DB-06 and DB-08 are scoped and
