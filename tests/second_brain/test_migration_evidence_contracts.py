@@ -715,3 +715,24 @@ def test_native_identity_fields_must_be_a_non_empty_array(bad):
     bound = snapshot()
     with pytest.raises(InvalidContractValue, match="non-empty array"):
         MigrationExportProfileV1.from_mapping(profile_body(bound, native_identity_fields=bad))
+
+
+def test_a_diff_over_zero_candidate_items_is_refused():
+    """An export that produced nothing cannot support any claim about the source.
+
+    The CLI cannot emit this -- `read_digest_list` rejects an empty list -- but a
+    hand-authored artifact could, and the counts would partition consistently at
+    0 = 0 + 0. Mutation testing showed relaxing `_positive_count` to `_count`
+    here left the suite green.
+    """
+    bound = snapshot()
+    with pytest.raises(InvalidContractValue, match="greater than zero"):
+        MigrationUniquenessDiffV1.from_mapping(
+            diff_body(
+                bound,
+                candidate_item_count="0",
+                duplicate_item_count="0",
+                unique_item_count="0",
+                unique_item_digests=[],
+            )
+        )
