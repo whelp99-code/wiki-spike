@@ -571,3 +571,58 @@ def test_a_refused_write_leaves_no_partial_artifact(tmp_path):
     assert run(*snapshot_args(tmp_path, **{"--out": str(out)})) == 2
     assert not out.exists()
     assert not (tmp_path / "nested").exists()
+
+# --- guards whose tests were passing for the wrong reason ---------------------
+# Mutation testing showed each of these could be deleted with the suite still
+# green: the exit code stayed 2 because a *later* guard tripped instead. Exit
+# codes alone are too coarse here, so these assert the specific refusal.
+
+
+def test_verify_refuses_two_version_fields_by_that_reason(tmp_path, chain, capsys):
+    spliced = {**json.loads(chain["snapshot"].read_text(encoding="utf-8")),
+               "diff_version": "second-brain-migration-uniqueness-diff-v1"}
+    path = tmp_path / "two-versions.json"
+    path.write_text(json.dumps(spliced), encoding="utf-8")
+    assert run("verify", "--file", path) == 2
+    assert "exactly one version field" in capsys.readouterr().err
+
+
+def test_verify_refuses_an_unrecognised_version_by_that_reason(tmp_path, capsys):
+    path = tmp_path / "unknown-version.json"
+    path.write_text(json.dumps({"snapshot_version": "second-brain-not-a-thing-v1"}),
+                    encoding="utf-8")
+    assert run("verify", "--file", path) == 2
+    assert "unrecognised version" in capsys.readouterr().err
+
+
+def test_an_empty_digest_list_is_refused_by_that_reason(tmp_path, chain, capsys):
+    path = tmp_path / "empty-list.json"
+    path.write_text("[]", encoding="utf-8")
+    assert (
+        run("uniqueness-diff", "--snapshot", chain["snapshot"],
+            "--candidates", path, "--canonical", chain["canonical_digests"])
+        == 2
+    )
+    assert "non-empty JSON array" in capsys.readouterr().err
+
+
+def test_a_duplicate_digest_list_is_refused_by_that_reason(tmp_path, chain, capsys):
+    path = tmp_path / "dupes.json"
+    path.write_text(json.dumps([d("x"), d("y"), d("x")]), encoding="utf-8")
+    assert (
+        run("uniqueness-diff", "--snapshot", chain["snapshot"],
+            "--candidates", path, "--canonical", chain["canonical_digests"])
+        == 2
+    )
+    assert "duplicate digests" in capsys.readouterr().err
+
+
+def test_a_non_digest_entry_is_refused_by_that_reason(tmp_path, chain, capsys):
+    path = tmp_path / "not-digests.json"
+    path.write_text(json.dumps(["short"]), encoding="utf-8")
+    assert (
+        run("uniqueness-diff", "--snapshot", chain["snapshot"],
+            "--candidates", path, "--canonical", chain["canonical_digests"])
+        == 2
+    )
+    assert "not a sha256 digest" in capsys.readouterr().err

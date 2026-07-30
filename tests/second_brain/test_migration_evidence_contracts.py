@@ -623,3 +623,44 @@ def test_every_binding_digest_actually_binds_its_body(loader, body_fn, field):
         loader.from_mapping({**body, "source_name": "me-wiki"})
     with pytest.raises(InvalidContractValue, match="bind"):
         loader.from_mapping({**body, field: d("forged")})
+
+
+@pytest.mark.parametrize(
+    "loader,body_fn,version_field",
+    [
+        (MigrationSnapshotV1, lambda: snapshot_body(), "snapshot_version"),
+        (MigrationExportProfileV1, lambda: profile_body(snapshot()), "profile_version"),
+        (MigrationUniquenessDiffV1, lambda: diff_body(snapshot()), "diff_version"),
+        (MigrationHistoryTreatmentV1, lambda: treatment_body(snapshot()), "treatment_version"),
+    ],
+)
+def test_a_wrong_version_constant_is_refused_by_the_version_pin(loader, body_fn, version_field):
+    """The pin fires before any digest work, so it must be tested on its own terms.
+
+    Mutation testing showed these pins could be deleted with the suite still
+    green: every existing case that perturbs a body also breaks its binding
+    digest, so the binding check was always the thing doing the work.
+    """
+    body = body_fn()
+    loader.from_mapping(body)
+    with pytest.raises(InvalidContractValue, match="unsupported"):
+        loader.from_mapping({**body, version_field: "second-brain-something-else-v9"})
+
+
+def test_the_bundle_version_pin_is_also_load_bearing(bundle):
+    _, bound, profile, diff, treatment = bundle
+    body = evidence_body(bound, profile, diff, treatment)
+    MigrationSourceEvidenceV1.from_mapping(body)
+    with pytest.raises(InvalidContractValue, match="unsupported"):
+        MigrationSourceEvidenceV1.from_mapping(
+            {**body, "evidence_version": "second-brain-something-else-v9"}
+        )
+
+
+def test_every_version_constant_is_distinct():
+    """A shared constant would let one artifact type parse as another."""
+    constants = [
+        MIGRATION_SNAPSHOT_V1, MIGRATION_EXPORT_PROFILE_V1, MIGRATION_UNIQUENESS_DIFF_V1,
+        MIGRATION_HISTORY_TREATMENT_V1, MIGRATION_SOURCE_EVIDENCE_V1,
+    ]
+    assert len(set(constants)) == len(constants)

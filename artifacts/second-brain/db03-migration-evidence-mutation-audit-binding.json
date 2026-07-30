@@ -7,17 +7,17 @@
   "results": [
     {
       "guard": "binding digest: snapshot",
-      "note": "est] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 77 passed in 0.25s",
+      "note": "est] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 77 passed in 0.38s",
       "status": "CAUGHT"
     },
     {
       "guard": "binding digest: export profile",
-      "note": "est] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 78 passed in 0.27s",
+      "note": "est] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 78 passed in 0.24s",
       "status": "CAUGHT"
     },
     {
       "guard": "binding digest: uniqueness diff",
-      "note": "est] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 79 passed in 0.23s",
+      "note": "est] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 79 passed in 0.31s",
       "status": "CAUGHT"
     },
     {
@@ -27,72 +27,72 @@
     },
     {
       "guard": "binding digest: source evidence bundle",
-      "note": "body - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 63 passed in 0.22s",
+      "note": "body - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 63 passed in 0.38s",
       "status": "CAUGHT"
     },
     {
       "guard": "unique_item_count matches enumerated digests",
-      "note": "ests - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 46 passed in 0.23s",
+      "note": "ests - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 46 passed in 0.28s",
       "status": "CAUGHT"
     },
     {
       "guard": "coherence: all components share one source name",
-      "note": "sage: 'export profile binds a different snapshot' !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 60 passed in 0.19s",
+      "note": "sage: 'export profile binds a different snapshot' !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 60 passed in 0.40s",
       "status": "CAUGHT"
     },
     {
       "guard": "coherence: evidence binds the supplied snapshot",
-      "note": "sage: 'export profile binds a different snapshot' !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 64 passed in 0.36s",
+      "note": "sage: 'export profile binds a different snapshot' !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 64 passed in 0.42s",
       "status": "CAUGHT"
     },
     {
       "guard": "coherence: each component binds the same snapshot",
-      "note": "nce does not bind the supplied history treatment' !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 61 passed in 0.16s",
+      "note": "nce does not bind the supplied history treatment' !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 61 passed in 0.50s",
       "status": "CAUGHT"
     },
     {
       "guard": "coherence: evidence binds the supplied export profile",
-      "note": "ile] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 65 passed in 0.18s",
+      "note": "ile] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 65 passed in 0.21s",
       "status": "CAUGHT"
     },
     {
       "guard": "coherence: evidence binds the supplied uniqueness diff",
-      "note": "iff] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 66 passed in 0.22s",
+      "note": "iff] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 66 passed in 0.20s",
       "status": "CAUGHT"
     },
     {
       "guard": "coherence: evidence binds the supplied history treatment",
-      "note": "ent] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 67 passed in 0.17s",
+      "note": "ent] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 67 passed in 0.16s",
       "status": "CAUGHT"
     },
     {
       "guard": "coherence: evidence carries the snapshot owner attestation",
-      "note": "tion - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 62 passed in 0.40s",
+      "note": "tion - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 62 passed in 0.16s",
       "status": "CAUGHT"
     },
     {
       "guard": "strict field set (unknown/missing rejected)",
-      "note": "igest - KeyError: 'write_capability_probe_digest' !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 16 passed in 0.25s",
+      "note": "igest - KeyError: 'write_capability_probe_digest' !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 16 passed in 0.19s",
       "status": "CAUGHT"
     },
     {
       "guard": "snapshot instant ordering",
-      "note": "fused - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 6 passed in 0.15s",
+      "note": "fused - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 6 passed in 0.24s",
       "status": "CAUGHT"
     },
     {
       "guard": "registrable: NO_GO source refused",
-      "note": "is not enabled by a signed DB-03 GO: unified-db' !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 69 passed in 0.45s",
+      "note": "is not enabled by a signed DB-03 GO: unified-db' !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 69 passed in 0.19s",
       "status": "CAUGHT"
     },
     {
       "guard": "registrable: source must be enabled by a GO",
-      "note": "able - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 69 passed in 0.28s",
+      "note": "able - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 69 passed in 0.15s",
       "status": "CAUGHT"
     },
     {
       "guard": "registrable: never also a serving surface",
-      "note": "ile] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 70 passed in 0.16s",
+      "note": "ile] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 70 passed in 0.18s",
       "status": "CAUGHT"
     }
   ],
