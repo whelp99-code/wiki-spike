@@ -256,6 +256,167 @@ to invent them.
 
 ---
 
+## Producing a DB-03 evidence bundle
+
+DB-03 resolves one source at a time, so each of `legacy Mem0/RAG`, `me-wiki` and
+`unified-db` needs its own bundle and its own record. For a migration source the
+`evidence_digest` is the `evidence_digest` of a `MigrationSourceEvidenceV1`,
+which binds the five things a source-specific `GO` requires.
+`scripts/second_brain_migration_source_evidence.py` builds it.
+
+`artifacts/product-release/second-brain-v1/unified-db-inventory-v1.json` recorded
+`STOP_PENDING_IMMUTABLE_SNAPSHOT_AND_DIFF` and named five missing items. Three of
+them are yours, not the tool's: the immutable snapshot taken after writers are
+quiesced, the before/after zero-write proof, and the owner key binding. The tool
+takes their digests and refuses to invent them. The other two - the uniqueness
+diff and the deletion/history treatment - it computes from that snapshot.
+
+### 1. Bind the snapshot
+
+The zero-write proof is the equality of the source-root digest observed before
+and after the export window. Unequal roots mean writers were still running, and
+the contract refuses the snapshot rather than recording a weaker claim.
+
+```sh
+python3.12 scripts/second_brain_migration_source_evidence.py snapshot \
+  --source-name unified-db \
+  --snapshot-ref "snapshot:unified-db-2026-07-30" \
+  --writers-quiesced-at 2026-07-30T00:00:00Z \
+  --snapshot-taken-at 2026-07-30T00:05:00Z \
+  --source-root-digest-before ROOT_SHA256 \
+  --source-root-digest-after ROOT_SHA256 \
+  --snapshot-package-digest PACKAGE_SHA256 \
+  --owner-key-ref "key:migration-owner-2026" \
+  --owner-attestation-digest OWNER_ATTESTATION_SHA256 \
+  --out out/snapshot.json
+```
+
+`active_run_observed` is not an argument. It is written `false` and enforced
+`false`, because the inventory refused to derive a package from a live instance
+and no flag should be able to undo that.
+
+### 2. Pin the read-only export
+
+Every later command reads the source name out of the snapshot, so a profile,
+diff or treatment can never disagree with the snapshot it claims to describe.
+
+```sh
+python3.12 scripts/second_brain_migration_source_evidence.py export-profile \
+  --snapshot out/snapshot.json \
+  --export-method read-only-transaction \
+  --write-capability-probe-digest WRITE_PROBE_SHA256 \
+  --schema-version unified-db-2026-07 --schema-digest SCHEMA_SHA256 \
+  --native-identity-field source_id \
+  --native-identity-field native_id \
+  --native-identity-field content_hash \
+  --identity-mapping-digest IDENTITY_MAPPING_SHA256 \
+  --revision-semantics content-hash-revision \
+  --revision-mapping-digest REVISION_MAPPING_SHA256 \
+  --watermark-cursor-field source_cursor \
+  --overlap-behavior replay-overlap \
+  --restart-evidence-digest RESTART_SHA256 \
+  --page-size-limit 500 --retention-days 90 \
+  --source-fixture-digest FIXTURE_SHA256 \
+  --out out/profile.json
+```
+
+`--export-method` accepts only read-only methods, and `write_capability_absent`
+is enforced true against `--write-capability-probe-digest`, which must be the
+digest of evidence that a write through the export credential was actually
+attempted and refused. A read-only query run under a credential that still holds
+write capability is not a read-only export, and DB-03's strongest requirement is
+not allowed to rest on a bare boolean. The six evidence digests - schema,
+identity mapping, revision mapping, restart, write-capability probe and fixture -
+must be six distinct documents. `--overlap-behavior` has no "unknown" value: a
+source that cannot say whether its cursor replays or is exactly-once has not
+produced watermark evidence.
+
+### 3. Diff for uniqueness, body-free
+
+Hash the exported snapshot and the supported canonical corpus into digests, then
+diff. Only digests enter the artifact; no exported record content does.
+
+```sh
+python3.12 scripts/second_brain_migration_source_evidence.py digests \
+  --dir ~/snapshot-export --out out/candidates.json
+python3.12 scripts/second_brain_migration_source_evidence.py digests \
+  --dir ~/canonical-export --out out/canonical.json
+
+python3.12 scripts/second_brain_migration_source_evidence.py uniqueness-diff \
+  --snapshot out/snapshot.json \
+  --candidates out/candidates.json --canonical out/canonical.json \
+  --out out/diff.json
+```
+
+Byte-identical duplicates are refused on input: a content-digest comparison
+cannot tell them apart, so deduplicate deliberately rather than silently.
+Symlinks under `--dir` are refused rather than followed, so bytes from outside
+the declared export tree can never enter the digest set. If no candidate
+survives the diff the tool says so on stderr - a source that adds nothing is a
+`NO_GO` candidate, and the artifact records that honestly instead of hiding it.
+
+Confirm the export directory is the snapshot before you diff. The diff binds
+`canonical_corpus_digest`, but the candidate side is bound only transitively
+through the snapshot's `snapshot_package_digest`: check that your export
+directory is the package that digest names. Nothing in the tool can do that
+check for you.
+
+### 4. Record deletion and history without inferring it
+
+Three states, never collapsed into two: tombstoned, retained, and unavailable.
+
+```sh
+python3.12 scripts/second_brain_migration_source_evidence.py history-treatment \
+  --snapshot out/snapshot.json \
+  --tombstone-representation absent \
+  --history-availability partial-with-proof \
+  --retained-sample RETAINED_SHA256 \
+  --unavailable-sample UNAVAILABLE_SHA256 \
+  --out out/treatment.json
+```
+
+The inventory recorded `explicitTombstoneColumn: false` and
+`absenceMayNotBeInterpretedAsDeletion: true` for unified-db, so its
+representation is `absent` - and with `absent` the tool refuses tombstone
+samples outright, because producing one would require inferring a deletion from
+a missing row. Conversely a declared representation requires at least one real
+sample. `unavailable` history may not also present retained samples, `complete`
+may not also present unavailable ones, `partial-with-proof` needs both, and the
+three sample sets must not overlap.
+
+### 5. Bind the bundle
+
+```sh
+python3.12 scripts/second_brain_migration_source_evidence.py evidence \
+  --snapshot out/snapshot.json --export-profile out/profile.json \
+  --uniqueness-diff out/diff.json --history-treatment out/treatment.json \
+  --workspace-ref "workspace:second-brain-final" \
+  --security-review-digest SECURITY_REVIEW_SHA256 \
+  --out out/evidence.json
+```
+
+The printed `evidence_digest` is DB-03's `evidence_digest` for that source.
+
+Splices are refused: components from another source, components from a different
+snapshot of the same source, one digest reused for two of the six bound slots,
+and the owner attestation reused as the Security review. DB-03's owner is
+Migration and its approver is Security; one document cannot be both.
+
+Before signing, confirm the owner envelope's `key_id` matches the bundle's
+`owner_key_ref`. Nothing enforces that join: `owner_key_ref` is an opaque
+identity inside the evidence, and the signature keys are checked separately by
+`TrustedDecisionKeyBindingsV1`. A bundle naming one owner key signed by another
+verifies today.
+
+`verify --file` revalidates any of the five artifacts and reports that
+artifact's own binding digest, never one of the four it carries.
+
+Building a bundle is not approving a source. It makes DB-03 signable; the `GO` or
+`NO_GO` lives in the signed record, and registration additionally requires the
+resolved scope to carry that source as enabled.
+
+---
+
 ## Order of work
 
 Signing is the last step, not the first. `evidence_digest` must already point at
@@ -290,6 +451,10 @@ prerequisites, though. Its `evidence_digest` binds a benchmark manifest and a
 holdout manifest, so both corpora must exist, be labelled and consented, sit
 under separate keys, and share no item. Build the bundle above first; consent
 alone does not make DB-05 signable.
+
+DB-03 is where the snapshot chain lands. Each source needs its own bundle from
+step 1 above before its record can be signed, and `unified-db` in particular
+cannot be signed from the live instance the inventory observed.
 
 DB-01, DB-04, DB-05 and DB-07 are globally fatal; an invalid or missing record
 blocks the whole product plan. DB-02, DB-03, DB-06 and DB-08 are scoped and

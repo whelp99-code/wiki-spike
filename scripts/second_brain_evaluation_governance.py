@@ -19,12 +19,19 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from hashlib import sha256
 from pathlib import Path
-from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from second_brain_evidence_common import (  # noqa: E402
+    EvidenceToolError,
+    dispatch_version,
+    emit,
+    item_digests,
+    load_object,
+    run,
+)
 from wiki_spike.memory_core.second_brain_evaluation_contracts import (  # noqa: E402
     BENCHMARK_MANIFEST_V1,
     EVALUATION_GOVERNANCE_V1,
@@ -38,61 +45,6 @@ from wiki_spike.memory_core.second_brain_evaluation_contracts import (  # noqa: 
 from wiki_spike.memory_core.second_brain_ledger_contracts import (  # noqa: E402
     canonical_ledger_digest,
 )
-
-
-class GovernanceToolError(Exception):
-    """Operator-facing failure."""
-
-
-def _reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise GovernanceToolError(f"duplicate JSON key: {key}")
-        result[key] = value
-    return result
-
-
-def _load(path: Path) -> dict[str, Any]:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicates)
-    except (OSError, ValueError) as exc:
-        raise GovernanceToolError(f"cannot read {path}: {exc}") from exc
-    if not isinstance(data, dict):
-        raise GovernanceToolError(f"{path} must contain a JSON object")
-    return data
-
-
-def _emit(body: dict[str, Any], digest_field: str, domain: str, out: str | None) -> int:
-    body = dict(body)
-    body[digest_field] = canonical_ledger_digest(domain, body)
-    text = json.dumps(body, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
-    if out:
-        Path(out).write_text(text, encoding="utf-8")
-        print(json.dumps({"written_to": out, digest_field: body[digest_field]}, indent=2))
-    else:
-        print(text, end="")
-    return 0
-
-
-def item_digests(directory: Path) -> list[str]:
-    """Hash every regular file under ``directory``, deepest path order.
-
-    Only digests leave this function. No corpus content is read into the
-    manifest, which is what keeps the evidence body-free under DB-08.
-    """
-    if not directory.is_dir():
-        raise GovernanceToolError(f"{directory} is not a directory")
-    digests = []
-    for path in sorted(p for p in directory.rglob("*") if p.is_file()):
-        digests.append(sha256(path.read_bytes()).hexdigest())
-    if not digests:
-        raise GovernanceToolError(f"{directory} holds no files to digest")
-    if len(set(digests)) != len(digests):
-        raise GovernanceToolError(
-            f"{directory} holds byte-identical duplicates; item_digests must be unique"
-        )
-    return digests
 
 
 def cmd_items(args: argparse.Namespace) -> int:
@@ -119,7 +71,7 @@ def cmd_slo(args: argparse.Namespace) -> int:
     }
     body["slo_digest"] = canonical_ledger_digest("recall-slo-v1", body)
     RecallSloV1.from_mapping(body)
-    return _emit(
+    return emit(
         {k: v for k, v in body.items() if k != "slo_digest"}, "slo_digest", "recall-slo-v1", args.out
     )
 
@@ -137,7 +89,7 @@ def cmd_benchmark(args: argparse.Namespace) -> int:
     probe = dict(body)
     probe["manifest_digest"] = canonical_ledger_digest("benchmark-manifest-v1", body)
     BenchmarkManifestV1.from_mapping(probe)
-    return _emit(body, "manifest_digest", "benchmark-manifest-v1", args.out)
+    return emit(body, "manifest_digest", "benchmark-manifest-v1", args.out)
 
 
 def cmd_holdout(args: argparse.Namespace) -> int:
@@ -152,21 +104,21 @@ def cmd_holdout(args: argparse.Namespace) -> int:
     probe = dict(body)
     probe["manifest_digest"] = canonical_ledger_digest("holdout-manifest-v1", body)
     HoldoutManifestV1.from_mapping(probe)
-    return _emit(body, "manifest_digest", "holdout-manifest-v1", args.out)
+    return emit(body, "manifest_digest", "holdout-manifest-v1", args.out)
 
 
 def cmd_governance(args: argparse.Namespace) -> int:
-    benchmark = BenchmarkManifestV1.from_mapping(_load(Path(args.benchmark)))
-    holdout = HoldoutManifestV1.from_mapping(_load(Path(args.holdout)))
-    slo = RecallSloV1.from_mapping(_load(Path(args.slo)))
+    benchmark = BenchmarkManifestV1.from_mapping(load_object(Path(args.benchmark)))
+    holdout = HoldoutManifestV1.from_mapping(load_object(Path(args.holdout)))
+    slo = RecallSloV1.from_mapping(load_object(Path(args.slo)))
     shared = set(benchmark.item_digests) & set(holdout.item_digests)
     if shared:
-        raise GovernanceToolError(
+        raise EvidenceToolError(
             f"{len(shared)} item(s) appear in both the benchmark and the holdout; "
             "separation is the property this manifest pair exists to prove"
         )
     if benchmark.corpus_key_ref == holdout.holdout_key_ref:
-        raise GovernanceToolError(
+        raise EvidenceToolError(
             "benchmark and holdout must use separate keys, not one key under two names"
         )
     body = {
@@ -182,7 +134,7 @@ def cmd_governance(args: argparse.Namespace) -> int:
     probe = dict(body)
     probe["governance_digest"] = canonical_ledger_digest("evaluation-governance-v1", body)
     EvaluationGovernanceV1.from_mapping(probe)
-    result = _emit(body, "governance_digest", "evaluation-governance-v1", args.out)
+    result = emit(body, "governance_digest", "evaluation-governance-v1", args.out)
     print(
         "This governance_digest is the value DB-05's evidence_digest takes.",
         file=sys.stderr,
@@ -199,30 +151,19 @@ _ARTIFACTS = {
     HOLDOUT_MANIFEST_V1: (HoldoutManifestV1, "manifest_digest"),
     EVALUATION_GOVERNANCE_V1: (EvaluationGovernanceV1, "governance_digest"),
 }
+_VERSION_FIELDS = ("manifest_version", "slo_version", "governance_version")
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
     path = Path(args.file)
-    data = _load(path)
-    versions = [
-        data[field]
-        for field in ("manifest_version", "slo_version", "governance_version")
-        if field in data
-    ]
-    if len(versions) != 1:
-        raise GovernanceToolError(
-            f"{path} must carry exactly one version field; found {len(versions)}"
-        )
-    entry = _ARTIFACTS.get(versions[0])
-    if entry is None:
-        raise GovernanceToolError(f"{path} carries an unrecognised version: {versions[0]!r}")
-    loader, digest_field = entry
+    data = load_object(path)
+    version, loader, digest_field = dispatch_version(path, data, _VERSION_FIELDS, _ARTIFACTS)
     loaded = loader.from_mapping(data)
     print(
         json.dumps(
             {
                 "file": str(path),
-                "version": versions[0],
+                "version": version,
                 "digest_field": digest_field,
                 "digest": getattr(loaded, digest_field),
             },
@@ -290,14 +231,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    try:
-        return int(args.func(args))
-    except GovernanceToolError as exc:
-        print(f"FAIL: {exc}", file=sys.stderr)
-        return 2
-    except Exception as exc:
-        print(f"FAIL: {type(exc).__name__}: {exc}", file=sys.stderr)
-        return 2
+    return run(args.func, args)
 
 
 if __name__ == "__main__":
