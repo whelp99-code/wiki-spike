@@ -1,0 +1,64 @@
+{
+  "gates": [
+    {
+      "command": "python3.12 scripts/check_architecture_boundaries.py",
+      "result": "PASS"
+    },
+    {
+      "command": "python3.12 scripts/scan_secrets.py",
+      "result": "PASS"
+    }
+  ],
+  "generation": 3,
+  "kind": "api-package-test-report",
+  "producedBy": "ultragoal leader (delegation unavailable this session)",
+  "schemaVersion": 1,
+  "sourceHash": "sha256:590a0afa96dceef30bf3038c5326dee01c9320b28578aa623c915f2df8873dbe",
+  "suites": [
+    {
+      "command": "PYTHONPATH=src python3.12 -m pytest tests/second_brain/test_migration_evidence_contracts.py -q",
+      "failed": 0,
+      "passed": 76,
+      "suite": "tests/second_brain/test_migration_evidence_contracts.py",
+      "summary": "76 passed in 0.22s"
+    },
+    {
+      "command": "PYTHONPATH=src python3.12 -m pytest tests/second_brain/test_migration_source_evidence_tool.py -q",
+      "failed": 0,
+      "passed": 18,
+      "suite": "tests/second_brain/test_migration_source_evidence_tool.py",
+      "summary": "18 passed in 0.37s"
+    },
+    {
+      "command": "PYTHONPATH=src python3.12 -m pytest tests/second_brain/test_migration_source_evidence_red_team.py -q",
+      "failed": 0,
+      "passed": 39,
+      "suite": "tests/second_brain/test_migration_source_evidence_red_team.py",
+      "summary": "39 passed in 0.98s"
+    },
+    {
+      "command": "PYTHONPATH=src python3.12 -m pytest tests/second_brain/test_db03_doc_migration_agreement.py -q",
+      "failed": 0,
+      "passed": 4,
+      "suite": "tests/second_brain/test_db03_doc_migration_agreement.py",
+      "summary": "4 passed in 0.10s"
+    },
+    {
+      "command": "PYTHONPATH=src python3.12 -m pytest tests/second_brain/test_evaluation_governance_tool.py -q",
+      "failed": 0,
+      "passed": 11,
+      "suite": "tests/second_brain/test_evaluation_governance_tool.py",
+      "summary": "11 passed in 3.58s"
+    },
+    {
+      "command": "PYTHONPATH=src python3.12 -m pytest tests/second_brain/test_decision_record_tool.py -q",
+      "failed": 0,
+      "passed": 18,
+      "suite": "tests/second_brain/test_decision_record_tool.py",
+      "summary": "18 passed in 0.17s"
+    }
+  ],
+  "surface": "api-package",
+  "totalFailed": 0,
+  "totalPassed": 166
+}

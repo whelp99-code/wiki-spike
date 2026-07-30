@@ -1,0 +1,463 @@
+{
+  "adversarial_case_count": 50,
+  "cases": [
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "exit 0 and an evidence_digest the contract accepts",
+      "id": "a-00",
+      "observed": "exit 0",
+      "scenario": "Full happy-path chain produces a bundle",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-01",
+      "observed": "InvalidContractValue: unique_item_count must be a canonical decimal string of at most 20 digits",
+      "scenario": "Arabic-Indic digits as unique_item_count (second encoding of one value)",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-02",
+      "observed": "InvalidContractValue: unique_item_count must be a canonical decimal string of at most 20 digits",
+      "scenario": "Superscript two as unique_item_count (isdigit true, int() raises)",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-03",
+      "observed": "InvalidContractValue: unique_item_count must be a canonical decimal string of at most 20 digits",
+      "scenario": "4301-digit count exceeding sys.get_int_max_str_digits()",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-04",
+      "observed": "InvalidContractValue: unique_item_count must be a canonical decimal string of at most 20 digits",
+      "scenario": "21-digit count just past the declared bound",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-05",
+      "observed": "InvalidContractValue: unique_item_count must be a canonical decimal string of at most 20 digits",
+      "scenario": "Leading-zero count creating a second encoding",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-06",
+      "observed": "InvalidContractValue: unique_item_count does not match unique_item_digests",
+      "scenario": "Inflated unique_item_count without matching digests",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-07",
+      "observed": "InvalidContractValue: unique and duplicate counts must partition the candidate count",
+      "scenario": "Understated candidate_item_count hiding duplicates",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-08",
+      "observed": "InvalidContractValue: comparison_method must be one of ['content-digest-set-difference']",
+      "scenario": "Comparison method replaced by operator judgement",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "exit 2, symlink refusal, no out-of-tree digest emitted",
+      "id": "a-09",
+      "observed": "exit 2; stderr=FAIL: /tmp/db03-qa/scratch/link-a-09/l is a symlink; a corpus tree must contain only regul",
+      "scenario": "digests --dir over a symlink to a file outside the export tree",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "exit 2, symlink refusal, no out-of-tree digest emitted",
+      "id": "a-10",
+      "observed": "exit 2; stderr=FAIL: /tmp/db03-qa/scratch/link-a-10/l is a symlink; a corpus tree must contain only regul",
+      "scenario": "digests --dir over a symlink to a directory outside the export tree",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "exit 2, symlink refusal, no out-of-tree digest emitted",
+      "id": "a-11",
+      "observed": "exit 2; stderr=FAIL: /tmp/db03-qa/scratch/link-a-11/l is a symlink; a corpus tree must contain only regul",
+      "scenario": "digests --dir over a dangling symlink",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "exit 2 without hanging or recursing",
+      "id": "a-12",
+      "observed": "exit 2",
+      "scenario": "symlink loop under the export tree",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-13",
+      "observed": "InvalidContractValue: schema_version must be at most 128 identifier characters (A-Z a-z 0-9 . _ + / -)",
+      "scenario": "body-free escape via email address in schema_version",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-14",
+      "observed": "InvalidContractValue: schema_version must be at most 128 identifier characters (A-Z a-z 0-9 . _ + / -)",
+      "scenario": "body-free escape via absolute path in schema_version",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-15",
+      "observed": "InvalidContractValue: watermark_cursor_field must be at most 128 identifier characters (A-Z a-z 0-9 . _ + / -)",
+      "scenario": "body-free escape via NUL byte in watermark_cursor_field",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-16",
+      "observed": "InvalidContractValue: schema_version must be at most 128 identifier characters (A-Z a-z 0-9 . _ + / -)",
+      "scenario": "body-free escape via newline in schema_version",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-17",
+      "observed": "InvalidContractValue: schema_version must be at most 128 identifier characters (A-Z a-z 0-9 . _ + / -)",
+      "scenario": "body-free escape via spaced record excerpt in schema_version",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-18",
+      "observed": "InvalidContractValue: schema_version must be at most 128 identifier characters (A-Z a-z 0-9 . _ + / -)",
+      "scenario": "body-free escape via non-ASCII record text in schema_version",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-19",
+      "observed": "InvalidContractValue: schema_version must be at most 128 identifier characters (A-Z a-z 0-9 . _ + / -)",
+      "scenario": "body-free escape via JSON body in schema_version",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-20",
+      "observed": "InvalidContractValue: schema_version must be at most 128 identifier characters (A-Z a-z 0-9 . _ + / -)",
+      "scenario": "body-free escape via 129-character schema_version",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-21",
+      "observed": "InvalidContractValue: schema, identity mapping, revision mapping, restart, write-capability probe and fixture evidence must be six d",
+      "scenario": "one document reused as both revision_mapping_digest and its twin",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-22",
+      "observed": "InvalidContractValue: schema, identity mapping, revision mapping, restart, write-capability probe and fixture evidence must be six d",
+      "scenario": "one document reused as both write_capability_probe_digest and its twin",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-23",
+      "observed": "InvalidContractValue: schema, identity mapping, revision mapping, restart, write-capability probe and fixture evidence must be six d",
+      "scenario": "one document reused as both source_fixture_digest and its twin",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-24",
+      "observed": "InvalidContractValue: contract fields invalid unknown=[] missing=['write_capability_probe_digest']",
+      "scenario": "export profile with no write-capability probe digest",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-25",
+      "observed": "InvalidContractValue: active_run_observed must be false",
+      "scenario": "snapshot rebound with active_run_observed true",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-26",
+      "observed": "InvalidContractValue: source root changed across the export window; writers were not quiesced and the snapshot is not a zero-write p",
+      "scenario": "source root changed across the export window",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "exit 2 and no artifact written",
+      "id": "a-27",
+      "observed": "exit 2; artifact_exists=False",
+      "scenario": "snapshot taken before writers were quiesced",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "rejected before any artifact is produced",
+      "id": "a-28",
+      "observed": "exit 2",
+      "scenario": "source outside DB-03's three-name scope inventory (hermes)",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-29",
+      "observed": "InvalidContractValue: a source with no tombstone representation cannot produce tombstone samples; absence is not deletion",
+      "scenario": "tombstone samples for a source whose representation is absent",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-30",
+      "observed": "InvalidContractValue: unavailable history cannot also present retained history samples",
+      "scenario": "unavailable history also presenting retained samples",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-31",
+      "observed": "InvalidContractValue: retained and unavailable history samples overlap; one record cannot be in two states",
+      "scenario": "one record counted as both retained and unavailable",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-32",
+      "observed": "InvalidContractValue: absence_is_not_deletion must be true",
+      "scenario": "absence_is_not_deletion switched off",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-33",
+      "observed": "InvalidContractValue: owner attestation and Security review must be separate documents; DB-03 is owner Migration, approver Security",
+      "scenario": "owner attestation reused as the Security review",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-34",
+      "observed": "InvalidContractValue: the four components and the two attestations must be six distinct artifacts",
+      "scenario": "export profile digest reused as the Security review",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "refused as InvalidContractValue",
+      "id": "a-35",
+      "observed": "InvalidContractValue: the four components and the two attestations must be six distinct artifacts",
+      "scenario": "one component digest filling two bundle slots",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "exit 2",
+      "id": "a-36",
+      "observed": "exit 2",
+      "scenario": "another source's export profile spliced into the bundle",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "exit 2",
+      "id": "a-37",
+      "observed": "exit 2",
+      "scenario": "component from a later snapshot of the same source",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "reports evidence_digest, never a borrowed one",
+      "id": "a-38",
+      "observed": "digest_field=evidence_digest",
+      "scenario": "verify on a bundle carrying four other artifacts' digests",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "exit 2",
+      "id": "a-39",
+      "observed": "exit 2",
+      "scenario": "artifact carrying two version fields",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "exit 2 and the symlink target untouched",
+      "id": "a-40",
+      "observed": "exit 2; target='{}'",
+      "scenario": "--out pointing at a symlink",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "exit 2 and no partial artifact or directory created",
+      "id": "a-41",
+      "observed": "exit 2; created=False",
+      "scenario": "--out under a nonexistent parent directory",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "exit 2 without a traceback",
+      "id": "a-42",
+      "observed": "exit 2",
+      "scenario": "--out pointing at a directory",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "exit 2",
+      "id": "a-43",
+      "observed": "exit 2",
+      "scenario": "duplicate JSON keys in an artifact",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "exit 2",
+      "id": "a-44",
+      "observed": "exit 2",
+      "scenario": "JSON array where an artifact object is expected",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "exit 2",
+      "id": "a-45",
+      "observed": "exit 2",
+      "scenario": "empty file as an artifact",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "exit 2 with a FAIL line and no traceback",
+      "id": "a-46",
+      "observed": "exit 2; stderr_starts='FAIL: cannot'",
+      "scenario": "missing file",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "exit 2",
+      "id": "a-47",
+      "observed": "exit 2",
+      "scenario": "candidate digest list containing duplicates",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "exit 2",
+      "id": "a-48",
+      "observed": "exit 2",
+      "scenario": "empty export directory",
+      "verdict": "passed"
+    },
+    {
+      "artifactRefs": [],
+      "contractRef": "DB-03-migration-sources",
+      "expectedBehavior": "accepted; the charset is a documented accident guard, not a boundary",
+      "id": "a-49",
+      "observed": "ACCEPTED, as the module docstring states",
+      "scenario": "Deliberately identifier-encoded record excerpt in schema_version",
+      "verdict": "passed"
+    }
+  ],
+  "failed": 0,
+  "generation": 3,
+  "kind": "algorithm-adversarial-report",
+  "passed": 50,
+  "producedBy": "ultragoal leader (delegation unavailable this session)",
+  "schemaVersion": 1,
+  "sourceHash": "sha256:590a0afa96dceef30bf3038c5326dee01c9320b28578aa623c915f2df8873dbe",
+  "surface": "algorithm+api+cli"
+}
