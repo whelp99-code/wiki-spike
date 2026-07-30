@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "kind": "black-box-api-test-report",
+  "goalId": "G001",
+  "outcome": "NO_GO_SKIP",
+  "inventorySha256": "9e7d68ae8df714da7464b908872580ca2f83bd62fd7041bd7bd04239ff122aeb",
+  "db03ReceiptSha256": "ff7f7a425956bb90fb188c82bb127be2c66e52713eb181402a721b705bf5f1f1",
+  "checks": {
+    "candidateUnique": "unresolved",
+    "reviewCandidates": 0,
+    "importerResidue": false,
+    "servingAuthorized": false,
+    "routeSwitchAuthorized": false,
+    "ownerSignatureVerified": true,
+    "securitySignatureVerified": true
+  },
+  "verdict": "passed",
+  "scope": "Option-0 default stop only; no import or measurement claim"
+}

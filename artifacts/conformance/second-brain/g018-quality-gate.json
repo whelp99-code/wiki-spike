@@ -148,7 +148,7 @@
   },
   "iteration": {
     "status": "passed",
-    "evidence": "DB-07 single-source fix after architect REQUEST CHANGES; full suite clean.",
+    "evidence": "Single-source fix after architect REQUEST CHANGES; terminal critic OKAY; suite 1773 passed.",
     "fullRerun": true,
     "rerunCommands": [
       "/usr/local/bin/python3.12 -m pytest -q",
@@ -159,7 +159,7 @@
   },
   "criticReview": {
     "verdict": "OKAY",
-    "evidence": "Terminal critic of final required-goal state: Stages 3-6 implemented on second-brain-stage3 with gate-clean evidence; no unauthorized production route switch; remaining deferred items (crypto signatures on cutover, composition wiring of live switch) are explicitly gated behind human_external_approvals and out of unauthorized automation. Aggregate objectives under original brief constraints satisfied for the implemented product stages without claiming a live cutover.",
+    "evidence": "Aggregate terminus OKAY on worktree /private/tmp/wiki-spike-second-brain-stage3 HEAD 89b1e5b. G015-G018 delivered Stages 3-6 with gate-clean evidence; no unauthorized production route switch; live switch/decommission require human_external_approvals_present; original brief constraints preserved; durable ledger complete. Terminal critic agent 19-TerminalCriticAggregate.",
     "blockers": []
   }
 }
