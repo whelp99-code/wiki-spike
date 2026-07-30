@@ -322,3 +322,122 @@ def test_a_record_bound_to_the_wrong_evidence_digest_still_resolves_but_is_trace
     assert bound != real_evidence["unified-db"], (
         "the substitution is detectable by comparing the signed digest to the artifact"
     )
+
+
+# --- one link further: the Stage 6 cutover gate ------------------------------
+# DB-03 says a later cutover "may use only a roster that is a subset of, and
+# binds the exact digest of, allowed migration sources in the resolved scope;
+# Stage 6 cannot cut over a source unless its DB-03/capability resolution is
+# GO." Resolution and registrability were verified above. This is the consumer
+# that clause actually names.
+
+
+def cohort_for(scope: ResolvedScopeV1, source: str, state: str = "DISCOVERED"):
+    from wiki_spike.memory_core.second_brain_cutover import (
+        COHORT_MANIFEST_V1,
+        MigrationCohortManifestV1,
+    )
+    from wiki_spike.memory_core.second_brain_ledger_contracts import canonical_ledger_digest
+    from wiki_spike.memory_core.second_brain_product_release import resolved_scope_digest
+
+    body = {
+        "manifest_version": COHORT_MANIFEST_V1,
+        "workspace_ref": "workspace:second-brain-final",
+        "cohort_state": state,
+        "source_names": [source],
+        "resolved_scope_digest": resolved_scope_digest(scope),
+        "source_manifest_digest": scope.source_manifest_digest,
+    }
+    body["manifest_digest"] = canonical_ledger_digest("migration-cohort-manifest-v1", body)
+    return MigrationCohortManifestV1.from_mapping(body)
+
+
+@pytest.mark.parametrize("source", MIGRATION_SOURCE_NAMES)
+def test_a_go_source_can_join_a_cutover_cohort(built, real_evidence, source):
+    from wiki_spike.memory_core.second_brain_cutover import (
+        assert_cohort_subset_of_enabled_migration_sources,
+    )
+    records = full_record_set(real_evidence)
+    scope = resolved_scope()
+    resolve_second_brain_contract(
+        records, scope, expected_manifest(), aggregate(records, scope), trusted_keys=TRUSTED
+    )
+    assert_migration_source_registrable(bundle_for(built, source), scope)
+    assert_cohort_subset_of_enabled_migration_sources(cohort_for(scope, source), scope)
+
+
+def test_a_no_go_source_cannot_join_a_cutover_cohort(built, real_evidence):
+    """The DB-03 clause, end to end: NO_GO must stop Stage 6, not just registration."""
+    from wiki_spike.memory_core.second_brain_cutover import (
+        assert_cohort_subset_of_enabled_migration_sources,
+    )
+    raw = [r.to_mapping() for r in full_record_set(real_evidence)]
+    index = next(i for i, r in enumerate(raw)
+                 if r["decision_id"] == "DB-03" and r["scope_name"] == "unified-db")
+    raw[index] = signed_decision("DB-03", "unified-db", real_evidence["unified-db"], "NO_GO")
+    records = [DecisionRecordV1.from_mapping(x) for x in raw]
+    scope = ResolvedScopeV1.from_mapping({
+        **resolved_scope().to_mapping(),
+        "enabled_migration_sources": [n for n in MIGRATION_SOURCE_NAMES if n != "unified-db"],
+        "disabled_migration_sources": {"unified-db": "signed NO_GO"},
+    })
+    assert resolve_second_brain_contract(
+        records, scope, expected_manifest(), aggregate(records, scope), trusted_keys=TRUSTED
+    ).outcome == "RESOLVED"
+
+    with pytest.raises(InvalidContractValue, match="not enabled in resolved scope"):
+        assert_cohort_subset_of_enabled_migration_sources(
+            cohort_for(scope, "unified-db"), scope
+        )
+    # The other two sources are unaffected by one source's NO_GO.
+    for other in (n for n in MIGRATION_SOURCE_NAMES if n != "unified-db"):
+        assert_cohort_subset_of_enabled_migration_sources(cohort_for(scope, other), scope)
+
+
+def test_a_cohort_bound_to_a_different_scope_is_refused(built, real_evidence):
+    """The roster must bind the exact scope digest, not merely name enabled sources."""
+    from wiki_spike.memory_core.second_brain_cutover import (
+        assert_cohort_subset_of_enabled_migration_sources,
+    )
+    scope = resolved_scope()
+    other_scope = ResolvedScopeV1.from_mapping({
+        **scope.to_mapping(),
+        "enabled_migration_sources": [n for n in MIGRATION_SOURCE_NAMES if n != "me-wiki"],
+        "disabled_migration_sources": {"me-wiki": "signed NO_GO"},
+    })
+    cohort = cohort_for(other_scope, "unified-db")
+    with pytest.raises(InvalidContractValue, match="resolved_scope_digest mismatch"):
+        assert_cohort_subset_of_enabled_migration_sources(cohort, scope)
+
+
+def test_a_directly_constructed_scope_cannot_smuggle_a_disabled_source_into_a_cohort():
+    """Defence in depth, reachable only by bypassing `ResolvedScopeV1.from_mapping`.
+
+    A parsed scope can never list a source as both enabled and disabled -- the
+    parser refuses it -- so the cohort guard's `name in disabled` branch is
+    unreachable through normal construction. Mutation testing showed that branch
+    could be deleted with the suite still green.
+
+    It is not dead code though: `dataclasses.replace` bypasses the parser, and
+    the repository already tests that the resolver revalidates directly
+    constructed scope objects rather than trusting them. The same reasoning
+    applies here, so the branch is pinned instead of removed.
+    """
+    from dataclasses import replace
+
+    from wiki_spike.memory_core.second_brain_cutover import (
+        assert_cohort_subset_of_enabled_migration_sources,
+    )
+
+    parsed = resolved_scope()
+    with pytest.raises(InvalidContractValue, match="cannot be both enabled and disabled"):
+        ResolvedScopeV1.from_mapping({
+            **parsed.to_mapping(),
+            "disabled_migration_sources": {"unified-db": "contradictory"},
+        })
+
+    smuggled = replace(parsed, disabled_migration_sources=(("unified-db", "contradictory"),))
+    with pytest.raises(InvalidContractValue, match="disabled migration source cannot join"):
+        assert_cohort_subset_of_enabled_migration_sources(
+            cohort_for(smuggled, "unified-db"), smuggled
+        )
