@@ -17,6 +17,10 @@ Migrate one source at a time into final-workspace, non-serving cohorts. Each coh
 
 A signed cutover transaction binds the cohort roster, resolved-scope and contract digests, source/capability and benchmark/holdout manifests, generation/checkpoint, route version, capability epoch, observation period, thresholds, aggregates, formula, and approvers. Before the first canonical mutation, a signed emergency rollback may route the whole cohort to the exact read-only pre-cutover UI/API with a banner and write freeze; wiki-spike stops capture and promotion.
 
+The `approvers` field binds exactly four external approver roles: `migration`, `quality`, `security`, and `product`. `CutoverDecisionV1` rejects any other set, including a missing role, an extra role, and a duplicate role; role names are compared case-insensitively. This is a fixed set, not a minimum, so a cohort cannot be activated by a narrower or a broader approval panel.
+
+A cohort advances through exactly these states: `DISCOVERED`, `IMPORTING`, `QUARANTINED_ITEM`, `RECONCILING`, `READY_NON_SERVING`, `CUTOVER_READY`, `ROUTE_SWITCHED_NO_MUTATION`, `CANONICAL_MUTATED`, `ROLLBACK_CLOSED`, `ROLLED_BACK_RECONCILE`, `DECOMMISSIONED`. `ROUTE_SWITCHED_NO_MUTATION` is the only state from which the emergency rollback above is legal. External rollback is closed in `CANONICAL_MUTATED`, `ROLLBACK_CLOSED`, and `DECOMMISSIONED`. Decommission is legal only from `ROLLBACK_CLOSED`, and only after the 90-day read-only retention has elapsed.
+
 The first canonical mutation closes rollback. Mutation includes remember, capture acceptance, review, correction, promotion, revoke, forget, consent, or route-authority mutation. After that point, failure is fail-closed disable/read-abstention: never legacy routing, resurrection of keys/history, dual-write, or query merge.
 
 ## Required evidence and signatures
