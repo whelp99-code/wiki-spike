@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "kind": "unified-db-metadata-inventory",
+  "sourceRef": "unified-db",
+  "observedAt": "2026-07-29T07:32:00Z",
+  "access": {
+    "mode": "postgres-transaction-read-only",
+    "sourceMutationAttempted": false,
+    "sourcePathDisclosed": false
+  },
+  "schemaDigest": "c9f953dc64bb8be6fdffea3486535c1f5ca030233c6e269c5fe6db80aa4ff69f",
+  "tableStatsDigest": "a59e332a7a9e936115f4de15ec7d9bbf2672cebfb454cdc3cf55ce00c4719322",
+  "sources": [
+    {"source":"codex","adapter":"codex","enabled":true,"sensitivity":"T2","events":541,"evidence":542},
+    {"source":"git","adapter":"git","enabled":true,"sensitivity":"T1","events":62,"evidence":62},
+    {"source":"hermes","adapter":"hermes","enabled":true,"sensitivity":"T2","events":236,"evidence":239},
+    {"source":"journal","adapter":"journal","enabled":true,"sensitivity":"T2","events":532,"evidence":534},
+    {"source":"legacy-mem0","adapter":"legacy_json","enabled":true,"sensitivity":"T2","events":36,"evidence":37},
+    {"source":"legacy-rag","adapter":"legacy_json","enabled":true,"sensitivity":"T2","events":114,"evidence":115},
+    {"source":"memory-bank","adapter":"memory_bank","enabled":true,"sensitivity":"T2","events":4,"evidence":288},
+    {"source":"me-wiki","adapter":"me_wiki","enabled":true,"sensitivity":"T2","events":0,"evidence":0}
+  ],
+  "totals": {
+    "events": 1525,
+    "evidence": 1817,
+    "sourceRuns": 3126,
+    "reviewCandidates": 0
+  },
+  "watermarkSemantics": {
+    "sourceCursor": "json-object-per-source",
+    "runStates": ["running","succeeded","partial","failed"],
+    "restartEvidencePresent": true,
+    "activeRunObserved": true
+  },
+  "revisionSemantics": {
+    "identity": "source-id plus native-id plus content-hash",
+    "contentDigest": "sha256",
+    "duplicateConstraint": "source-id/native-id/content-hash",
+    "explicitRevisionColumn": false
+  },
+  "deletionHistorySemantics": {
+    "explicitTombstoneColumn": false,
+    "foreignKeyDeletion": "restrict-or-set-null",
+    "absenceMayNotBeInterpretedAsDeletion": true,
+    "historyAvailability": "incomplete-without-source-specific-export-proof"
+  },
+  "classification": {
+    "candidateUnique": "unresolved",
+    "reason": "The live database contains material across seven populated sources, including journal and legacy stores, but uniqueness against supported canonical sources has not been proven. An active source run was observed, so no immutable package may be derived from this live instance.",
+    "defaultDecision": "STOP_PENDING_IMMUTABLE_SNAPSHOT_AND_DIFF"
+  },
+  "nextRequiredEvidence": [
+    "owner-produced immutable snapshot taken after writers are quiesced",
+    "before-and-after source root and zero-write proof",
+    "trusted owner-key binding and signature",
+    "body-free per-source uniqueness diff against supported canonical sources",
+    "source-specific deletion/history treatment"
+  ]
+}
