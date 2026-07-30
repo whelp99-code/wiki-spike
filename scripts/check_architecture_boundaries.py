@@ -31,7 +31,10 @@ class Violation:
 
 
 def _module_for_path(repo: Path, path: Path) -> str:
-    relative = path.resolve().relative_to((repo / "src").resolve())
+    try:
+        relative = path.resolve().relative_to((repo / "src").resolve())
+    except ValueError:
+        return ""
     parts = list(relative.with_suffix("").parts)
     if parts[-1] == "__init__":
         parts.pop()
@@ -168,9 +171,16 @@ def lint_boundaries(repo: Path, config_path: Path) -> list[Violation]:
     violations: list[Violation] = []
     for scan_root in scan_roots:
         root = (repo / scan_root).resolve()
+        try:
+            root.relative_to(repo.resolve())
+        except ValueError as exc:
+            raise PreflightError(f"scan root escapes repository: {scan_root}") from exc
         if not root.exists():
-            continue
-        for path in sorted(root.rglob("*.py")):
+            raise PreflightError(f"configured scan root is missing: {scan_root}")
+        paths = (root,) if root.is_file() else tuple(sorted(root.rglob("*.py")))
+        if root.is_file() and root.suffix != ".py":
+            raise PreflightError(f"configured scan root is not Python source: {scan_root}")
+        for path in paths:
             if path.is_symlink():
                 raise PreflightError(f"symlinked Python source is not allowed: {path}")
             relative = path.relative_to(repo).as_posix()

@@ -576,8 +576,16 @@ def invalidate_reflection_support_transitive(
         if withdrawn.isdisjoint(proposal.support_candidate_refs)
     )
 
+NATIVE_SHADOW_MEASUREMENT_V1 = "second-brain-native-shadow-measurement-v1"
+NATIVE_SHADOW_SAMPLE_V1 = "second-brain-native-shadow-sample-v1"
+NATIVE_SHADOW_SOURCES = ("Codex", "Claude/Memory Bank", "Git", "Markdown")
+NATIVE_SHADOW_OUTCOMES = ("valid", "invalid", "abstained", "source-unavailable")
 
 __all__ = [
+    "NATIVE_SHADOW_MEASUREMENT_V1",
+    "NATIVE_SHADOW_SAMPLE_V1",
+    "NATIVE_SHADOW_SOURCES",
+    "NATIVE_SHADOW_OUTCOMES",
     "EVALUATION_GOVERNANCE_V1",
     "BENCHMARK_MANIFEST_V1",
     "HOLDOUT_MANIFEST_V1",
