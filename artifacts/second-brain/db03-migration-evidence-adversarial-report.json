@@ -457,6 +457,14 @@
   "kind": "algorithm-adversarial-report",
   "passed": 50,
   "producedBy": "ultragoal leader (delegation unavailable this session)",
+  "refusalReasonAudit": {
+    "casesAudited": 24,
+    "notRefusedAtAll": 0,
+    "purpose": "The driver records a case as passed on any InvalidContractValue, which would let a case refuse for an unrelated reason and still be green. This audit re-runs every refusal case and asserts the refusal message names the property under test.",
+    "refusedForWrongReason": 0,
+    "result": "no vacuous passes",
+    "script": "artifacts/second-brain/db03-migration-evidence-refusal-reason-audit.py"
+  },
   "schemaVersion": 1,
   "sourceHash": "sha256:590a0afa96dceef30bf3038c5326dee01c9320b28578aa623c915f2df8873dbe",
   "surface": "algorithm+api+cli"
