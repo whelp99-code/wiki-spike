@@ -664,3 +664,54 @@ def test_every_version_constant_is_distinct():
         MIGRATION_HISTORY_TREATMENT_V1, MIGRATION_SOURCE_EVIDENCE_V1,
     ]
     assert len(set(constants)) == len(constants)
+
+
+# --- primitive validators, pinned after mutation testing found them unpinned --
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "a" * 63,                    # too short
+        "a" * 65,                    # too long
+        "A" * 64,                    # uppercase hex
+        "g" * 64,                    # not hex at all
+        "a" * 63 + "-",              # right length, wrong alphabet
+        None,
+        123,
+        ["a" * 64],
+    ],
+)
+def test_a_malformed_digest_is_refused(bad):
+    """Nothing previously supplied a wrong-shaped digest string to a contract."""
+    bound = snapshot()
+    with pytest.raises(InvalidContractValue, match="sha256 hex digest"):
+        MigrationExportProfileV1.from_mapping(profile_body(bound, schema_digest=bad))
+
+
+def test_a_mapping_with_non_string_keys_is_refused():
+    body = snapshot_body()
+    with pytest.raises(InvalidContractValue, match="string keys"):
+        MigrationSnapshotV1.from_mapping({**body, 7: "seven"})
+
+
+def test_a_non_mapping_is_refused():
+    with pytest.raises(InvalidContractValue, match="object with string keys"):
+        MigrationSnapshotV1.from_mapping([("snapshot_version", MIGRATION_SNAPSHOT_V1)])
+
+
+@pytest.mark.parametrize("bad", ["not-an-array", 5, None, {"a": 1}])
+def test_a_digest_field_that_is_not_an_array_is_refused(bad):
+    bound = snapshot()
+    with pytest.raises(InvalidContractValue, match="array of digests"):
+        MigrationHistoryTreatmentV1.from_mapping(
+            treatment_body(bound, retained_history_sample_digests=bad)
+        )
+
+
+@pytest.mark.parametrize("bad", [[], "source_id", None, 5])
+def test_native_identity_fields_must_be_a_non_empty_array(bad):
+    """A source with no stated native identity has not mapped its identity."""
+    bound = snapshot()
+    with pytest.raises(InvalidContractValue, match="non-empty array"):
+        MigrationExportProfileV1.from_mapping(profile_body(bound, native_identity_fields=bad))

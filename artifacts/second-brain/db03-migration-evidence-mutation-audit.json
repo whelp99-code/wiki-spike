@@ -6,7 +6,7 @@
   "results": [
     {
       "guard": "count rejects non-ASCII digits",
-      "note": "_be_a_positive_canonical_decimal_string[007] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 18 passed in 0.20s",
+      "note": "_be_a_positive_canonical_decimal_string[007] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 18 passed in 0.17s",
       "status": "CAUGHT"
     },
     {
@@ -16,47 +16,47 @@
     },
     {
       "guard": "active_run_observed must be false",
-      "note": "pshot_derived_from_a_live_instance_is_refused - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 5 passed in 0.36s",
+      "note": "pshot_derived_from_a_live_instance_is_refused - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 5 passed in 0.48s",
       "status": "CAUGHT"
     },
     {
       "guard": "absence_is_not_deletion must be true",
-      "note": "sence_is_not_deletion_cannot_be_switched_off - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 54 passed in 0.25s",
+      "note": "sence_is_not_deletion_cannot_be_switched_off - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 54 passed in 0.24s",
       "status": "CAUGHT"
     },
     {
       "guard": "tombstone samples forbidden when representation absent",
-      "note": "_tombstones_cannot_present_tombstone_samples - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 48 passed in 0.21s",
+      "note": "_tombstones_cannot_present_tombstone_samples - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 48 passed in 1.16s",
       "status": "CAUGHT"
     },
     {
       "guard": "history sample sets must be disjoint",
-      "note": "t_one_record_cannot_be_in_two_history_states - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 53 passed in 0.34s",
+      "note": "t_one_record_cannot_be_in_two_history_states - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 53 passed in 0.68s",
       "status": "CAUGHT"
     },
     {
       "guard": "six distinct export evidence documents",
-      "note": "nt[revision_mapping_digest-identity-mapping] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 13 passed in 0.22s",
+      "note": "nt[revision_mapping_digest-identity-mapping] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 13 passed in 0.16s",
       "status": "CAUGHT"
     },
     {
       "guard": "six distinct bundle digests",
-      "note": "t_one_component_digest_cannot_fill_two_slots - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 55 passed in 0.47s",
+      "note": "t_one_component_digest_cannot_fill_two_slots - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 55 passed in 0.21s",
       "status": "CAUGHT"
     },
     {
       "guard": "identifier charset on _text",
-      "note": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 30 passed in 0.24s",
+      "note": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa] - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 30 passed in 0.19s",
       "status": "CAUGHT"
     },
     {
       "guard": "count partition (unique + duplicate == candidate)",
-      "note": "ness_counts_must_partition_the_candidate_set - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 45 passed in 0.32s",
+      "note": "ness_counts_must_partition_the_candidate_set - Failed: DID NOT RAISE InvalidContractValue !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 45 passed in 0.16s",
       "status": "CAUGHT"
     },
     {
       "guard": "symlink refusal in item_digests",
-      "note": "vy2j7ts0gxhr0000gn/T/pytest-of-jmpark/pytest-66/test_a_symlink_in_the_export_t0/linked')) !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 98 passed in 0.71s",
+      "note": "y2j7ts0gxhr0000gn/T/pytest-of-jmpark/pytest-95/test_a_symlink_in_the_export_t0/linked')) !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!! 1 failed, 116 passed in 0.41s",
       "status": "CAUGHT"
     }
   ],

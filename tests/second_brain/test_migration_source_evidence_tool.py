@@ -407,3 +407,32 @@ def test_tool_never_emits_an_outcome():
     source = SCRIPT.read_text(encoding="utf-8")
     assert '"outcome"' not in source
     assert "NO_GO" not in source.replace("it is a NO_GO candidate, not a GO one.", "")
+
+
+def test_the_canonical_corpus_digest_is_independent_of_input_order(tmp_path, pipeline):
+    """Sorting is the point: the same corpus must bind the same digest either way.
+
+    Mutation testing showed `sorted(digests)` could become `list(digests)` with
+    the suite still green, because every test happened to supply one order.
+    """
+    canonical = json.loads(pipeline["canonical_digests"].read_text(encoding="utf-8"))
+    forward = tmp_path / "canonical-forward.json"
+    reverse = tmp_path / "canonical-reverse.json"
+    forward.write_text(json.dumps({"item_digests": canonical["item_digests"]}), encoding="utf-8")
+    reverse.write_text(
+        json.dumps({"item_digests": list(reversed(canonical["item_digests"]))}), encoding="utf-8"
+    )
+    assert canonical["item_digests"] != list(reversed(canonical["item_digests"]))
+
+    out_a, out_b = tmp_path / "diff-a.json", tmp_path / "diff-b.json"
+    for canon, out in ((forward, out_a), (reverse, out_b)):
+        assert (
+            run("uniqueness-diff", "--snapshot", pipeline["snapshot"],
+                "--candidates", pipeline["candidate_digests"], "--canonical", canon,
+                "--out", out)
+            == 0
+        )
+    a = json.loads(out_a.read_text(encoding="utf-8"))
+    b = json.loads(out_b.read_text(encoding="utf-8"))
+    assert a["canonical_corpus_digest"] == b["canonical_corpus_digest"]
+    assert a["diff_digest"] == b["diff_digest"]
