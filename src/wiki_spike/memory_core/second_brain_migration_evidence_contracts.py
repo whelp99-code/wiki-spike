@@ -18,8 +18,16 @@ were still running is not evidence, and this module refuses to represent one.
 
 Nothing here attests. Owner and Security attestations, the snapshot itself, and
 the zero-write proof come from human processes; the contracts take their digests
-and refuse to invent them. Evidence stays body-free: digests, counts, and closed
-enumerations only, never source bodies or content-disclosing paths.
+and refuse to invent them.
+
+Evidence is body-free by construction: every field is a digest, a canonical
+decimal count, a closed enumeration, or a bounded identifier token. The
+identifier bound is an accident guard, not a security boundary. It stops a
+record body from leaking into a metadata field, because real bodies carry
+spaces, punctuation or non-ASCII and are refused; it does not stop an operator
+who deliberately hyphen-joins an excerpt into 128 identifier characters. The
+defence against that is review of the operator's own evidence, not this regex,
+and it is stated here so no later reader mistakes the check for more than it is.
 """
 from __future__ import annotations
 
@@ -126,8 +134,10 @@ def _false(value: Any, field: str) -> bool:
 def _text(value: Any, field: str) -> str:
     """A short opaque token: a schema version, a column name, a cursor name.
 
-    Bounded and charset-restricted so a record body, an address, or a path
-    cannot be smuggled through a metadata field.
+    Bounded and charset-restricted so a record body, an address or a path cannot
+    leak in by accident: real bodies carry spaces, punctuation or non-ASCII. The
+    module docstring explains why this is an accident guard, not a boundary
+    against an operator who deliberately encodes an excerpt as identifiers.
     """
     if not isinstance(value, str) or _TOKEN.fullmatch(value) is None:
         raise InvalidContractValue(

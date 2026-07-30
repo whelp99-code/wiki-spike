@@ -279,6 +279,38 @@ def test_metadata_fields_reject_anything_that_is_not_an_identifier(field, value)
 
 
 @pytest.mark.parametrize(
+    "excerpt",
+    [
+        "patient record 12345",
+        "diagnosis: hypertension",
+        "\uc8fc\ubbfc\ubc88\ud638 900101-1234567",
+        '{"body":"secret"}',
+    ],
+)
+def test_a_leaked_record_body_cannot_reach_a_metadata_field(excerpt):
+    """Real bodies carry spaces, punctuation or non-ASCII, so accidents are refused."""
+    bound = snapshot()
+    with pytest.raises(InvalidContractValue, match="identifier characters"):
+        MigrationExportProfileV1.from_mapping(profile_body(bound, schema_version=excerpt))
+
+
+def test_the_identifier_bound_is_an_accident_guard_not_a_boundary():
+    """Pin the stated limitation: hyphen-joined identifier text is accepted.
+
+    The module docstring says so explicitly. This test exists so the claim stays
+    true rather than quietly hardening into a security boundary nobody verified,
+    and so a future tightening has to update the documented promise with it.
+    """
+    bound = snapshot()
+    deliberate = "patient-12345-diagnosis-hypertension"
+    assert len(deliberate) <= 128
+    profile = MigrationExportProfileV1.from_mapping(
+        profile_body(bound, schema_version=deliberate)
+    )
+    assert profile.schema_version == deliberate
+
+
+@pytest.mark.parametrize(
     "field,value",
     [
         ("snapshot_ref", "snapshot:/var/lib/unified-db"),
