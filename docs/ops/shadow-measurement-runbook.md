@@ -97,6 +97,34 @@ cat $C/collector.err                                            # must be empty
 Consecutive `collected_at` values more than an hour apart mean the cohort is
 already dead, whatever the log says afterwards.
 
+### Watching for the cliff
+
+`scripts/watch_shadow_measurement.py` classifies the cohort and, with
+`--notify`, raises a macOS notification when that classification changes:
+
+| State | Meaning |
+|---|---|
+| `collecting` | healthy and inside the window |
+| `stalling` | no sample for 40 minutes; the cohort is still saveable |
+| `dead` | a gap, rollback, or unreadable journal already ended it |
+| `complete` | every SLO reason cleared |
+
+```sh
+/usr/local/bin/python3.12 scripts/watch_shadow_measurement.py \
+  --cohort-dir artifacts/second-brain/operational-cohort
+```
+
+A second agent, `com.wiki-spike.shadow-watcher`, runs this every 15 minutes
+with `--notify`.
+
+The `stalling` state is the point of the watcher. The cliff is unrecoverable
+once crossed, so an alert that arrives with the cohort already dead tells you
+only that three days are gone. Warning at 40 minutes leaves 20 minutes to wake
+the machine or reload the collector while the cohort can still be saved.
+
+Transitions are announced once each, tracked in `.watch-state`, so the agent
+does not repeat itself.
+
 ## What the collector actually measures
 
 `scripts/collect_shadow_samples.py` is a **pipeline canary**, not a
