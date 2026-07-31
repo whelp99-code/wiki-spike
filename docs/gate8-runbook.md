@@ -88,33 +88,50 @@ a path is omitted, substituted, duplicated/aliased, extra, noncanonical, or
 has the wrong digest. Both the pre-review manifest and evidence join must
 contain identical strict receipts.
 
-```python
-from wiki_spike.infrastructure.conformance import (
-    ARCHITECT, CRITIC, attest_manifest, write_final_review_receipt,
-    import_final_review_receipt,
-)
+`scripts/issue_gate8_receipt.py` wraps exactly this API (`attest_manifest`,
+`write_final_review_receipt`, `import_final_review_receipt`); run it instead of
+hand-writing Python. Each ARCHITECT/CRITIC reviewer runs `attest` independently
+under their own private key (never shared), then either reviewer runs `receipt`
+to write and self-verify the final receipt, and anyone can run `verify` to
+strictly re-import it later:
 
-arch = attest_manifest(
-    reviewer_role=ARCHITECT, reviewer_key_id="arch-key", private_key=arch_sk,
-    workspace_id=workspace_id, implementation_commit=implementation_commit,
-    manifest_digest=manifest.manifest_digest, issued_at=issued_at, expires_at=expires_at,
-)
-critic = attest_manifest(
-    reviewer_role=CRITIC, reviewer_key_id="critic-key", private_key=critic_sk,
-    workspace_id=workspace_id, implementation_commit=implementation_commit,
-    manifest_digest=manifest.manifest_digest, issued_at=issued_at, expires_at=expires_at,
-)
-receipt = write_final_review_receipt(
-    workspace_id=workspace_id, implementation_commit=implementation_commit,
-    manifest=manifest, evidence_join=evidence_join, attestations=(arch, critic),
-    trusted_reviewers=trusted_reviewers, now=now,
-)
-import_final_review_receipt(
-    receipt, trusted_reviewers=trusted_reviewers, workspace_id=workspace_id,
-    implementation_commit=implementation_commit, manifest=manifest,
-    evidence_join=evidence_join, now=now,
-)
+```sh
+python scripts/issue_gate8_receipt.py attest \
+  --manifest pre-review-manifest.json --role ARCHITECT \
+  --key-id arch-key --private-key /path/to/arch-private-key.hex \
+  --issued-at "$ISSUED_AT" --expires-at "$EXPIRES_AT" \
+  --out arch-attestation.json
+
+python scripts/issue_gate8_receipt.py attest \
+  --manifest pre-review-manifest.json --role CRITIC \
+  --key-id critic-key --private-key /path/to/critic-private-key.hex \
+  --issued-at "$ISSUED_AT" --expires-at "$EXPIRES_AT" \
+  --out critic-attestation.json
+
+python scripts/issue_gate8_receipt.py receipt \
+  --manifest pre-review-manifest.json --join evidence-join.json \
+  --attestation arch-attestation.json --attestation critic-attestation.json \
+  --trusted-reviewer ARCHITECT=arch-key=/path/to/arch-public-key.hex \
+  --trusted-reviewer CRITIC=critic-key=/path/to/critic-public-key.hex \
+  --workspace-id "$WORKSPACE_ID" --implementation-commit "$IMPLEMENTATION_COMMIT" \
+  --now "$NOW" --out final-review-receipt.json
+
+python scripts/issue_gate8_receipt.py verify \
+  --receipt final-review-receipt.json \
+  --manifest pre-review-manifest.json --join evidence-join.json \
+  --trusted-reviewer ARCHITECT=arch-key=/path/to/arch-public-key.hex \
+  --trusted-reviewer CRITIC=critic-key=/path/to/critic-public-key.hex \
+  --workspace-id "$WORKSPACE_ID" --implementation-commit "$IMPLEMENTATION_COMMIT" \
+  --now "$NOW"
 ```
+
+Private keys are caller-supplied raw 32-byte ed25519 hex files and are never
+written to the repository; public keys are the matching raw ed25519 hex.
+`attest` reloads and strictly re-validates the manifest, rejecting on any
+`manifest_digest` mismatch, before signing. `receipt` re-verifies the evidence
+join against the manifest digest and refuses to write a receipt that fails its
+own strict re-import. Every rejection prints `REJECTED [code] message` to
+stderr and exits non-zero.
 
 `trusted_reviewers` maps each role to its current `(key_id, public_key)`.
 `issued_at`, `expires_at`, and `now` are canonical UTC timestamps; attestations
