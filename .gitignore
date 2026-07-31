@@ -12,6 +12,13 @@ remote.git/
 cas/
 .wiki-spike/
 
+# live shadow-measurement cohort state (keys, growing journal, locks)
+artifacts/second-brain/operational-cohort/
+
+# agent/tool session state
+.gjc/
+.omo/
+
 # python
 __pycache__/
 *.pyc
