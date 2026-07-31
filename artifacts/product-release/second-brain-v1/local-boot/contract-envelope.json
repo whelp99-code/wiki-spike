@@ -1,0 +1,190 @@
+{
+  "contract_envelope_version": "second-brain-contract-envelope-v1",
+  "contract_version": "second-brain-contract-digest-v1",
+  "contract_body": {
+    "contract_version": "second-brain-contract-digest-v1",
+    "decision_digests": [
+      {
+        "decision_id": "DB-01",
+        "scope_kind": "global",
+        "scope_name": "",
+        "digest": "6f6fbbbc7b254501ec78a4de97a00d9cdebefea6b237c024350eaa50a525d7ea"
+      },
+      {
+        "decision_id": "DB-02",
+        "scope_kind": "source_profile",
+        "scope_name": "Claude/Memory Bank",
+        "digest": "7423ca437498e3fc88c1ed8d02294c365764f691b0cbf5b40564ecfdc46505c5"
+      },
+      {
+        "decision_id": "DB-02",
+        "scope_kind": "source_profile",
+        "scope_name": "Codex",
+        "digest": "5d3897b1273092013d04ed684c390d6bf98a017969726875e68da0f67b2545ff"
+      },
+      {
+        "decision_id": "DB-02",
+        "scope_kind": "source_profile",
+        "scope_name": "Git",
+        "digest": "e292c83f0065f989fc9346ae7d9aff6378a34140b57fa180d02ca784ff8d7778"
+      },
+      {
+        "decision_id": "DB-02",
+        "scope_kind": "source_profile",
+        "scope_name": "Markdown",
+        "digest": "f0e551eee184c36e59da57bf8e0f5b6d9a6ed28e032e9a48fddcc98894904627"
+      },
+      {
+        "decision_id": "DB-03",
+        "scope_kind": "migration_source",
+        "scope_name": "legacy Mem0/RAG",
+        "digest": "8c1da544bd07d4b424863bc08287ff4c2319eec35e8816d32c72b0f24c2b1acc"
+      },
+      {
+        "decision_id": "DB-03",
+        "scope_kind": "migration_source",
+        "scope_name": "me-wiki",
+        "digest": "9a8f0e7c9ded8551301f5eab47b8313de6bd2bdca6cc5b6f208548504e4a32c5"
+      },
+      {
+        "decision_id": "DB-03",
+        "scope_kind": "migration_source",
+        "scope_name": "unified-db",
+        "digest": "44131f251bf22e90ac219b1272e6739d45b6b5bdca536f6e009d39ae4c8ff962"
+      },
+      {
+        "decision_id": "DB-04",
+        "scope_kind": "global",
+        "scope_name": "",
+        "digest": "9374b88c1b81a09ad25a02fdc144c1b521375d1cd81f9aaac3624021c7c27d81"
+      },
+      {
+        "decision_id": "DB-05",
+        "scope_kind": "global",
+        "scope_name": "",
+        "digest": "3c27df8907b5f1491b8fedf04e559057a7649e1aebd88050863eede4e997e39c"
+      },
+      {
+        "decision_id": "DB-06",
+        "scope_kind": "external_model_route",
+        "scope_name": "model-a",
+        "digest": "1b24d93cb2c31dcfde8daaf21df2ee49cdeb73f6a153258b4603a4876e8f9452"
+      },
+      {
+        "decision_id": "DB-07",
+        "scope_kind": "global",
+        "scope_name": "",
+        "digest": "e84448072f6ec9511d899daa403e43e7013ed68c05908aae174d55797377a316"
+      },
+      {
+        "decision_id": "DB-08",
+        "scope_kind": "export_destination",
+        "scope_name": "archive",
+        "digest": "473fcac7fa1c1d9ea9850e1113af4f6b74609b10858ff3e99f7c8962f2a28ebd"
+      }
+    ],
+    "resolved_scope": {
+      "scope_version": "second-brain-resolved-scope-v1",
+      "enabled_source_profiles": [
+        "Claude/Memory Bank",
+        "Codex",
+        "Git",
+        "Markdown"
+      ],
+      "disabled_source_profiles": {},
+      "enabled_migration_sources": [
+        "legacy Mem0/RAG",
+        "me-wiki",
+        "unified-db"
+      ],
+      "disabled_migration_sources": {},
+      "feature_flags": [
+        "benchmark-governance",
+        "conflict-behavior",
+        "cutover-retention",
+        "identity-auth"
+      ],
+      "egress_destinations": [],
+      "enabled_external_model_routes": [],
+      "disabled_external_model_routes": {
+        "model-a": "signed NO_GO"
+      },
+      "disabled_export_destinations": {
+        "archive": "signed NO_GO"
+      },
+      "capability_manifest_digest": "f5ea130c7cb38a0b903c4bdc62bdc64c9311a5d32e029b2c2baeee17be6da9f3",
+      "source_manifest_digest": "efc9e5b65d4104b2d3f51d6aa5860150ccaf0ada3f51ebb93c2d717ff590623d",
+      "mandatory_release_constraints": [
+        "local-boot-non-production",
+        "signed-release-baseline"
+      ]
+    },
+    "expected_scope_manifest": {
+      "manifest_version": "second-brain-expected-scope-manifest-v1",
+      "expected_scopes": [
+        {
+          "decision_id": "DB-02",
+          "scope_kind": "source_profile",
+          "scope_name": "Claude/Memory Bank"
+        },
+        {
+          "decision_id": "DB-02",
+          "scope_kind": "source_profile",
+          "scope_name": "Codex"
+        },
+        {
+          "decision_id": "DB-02",
+          "scope_kind": "source_profile",
+          "scope_name": "Git"
+        },
+        {
+          "decision_id": "DB-02",
+          "scope_kind": "source_profile",
+          "scope_name": "Markdown"
+        },
+        {
+          "decision_id": "DB-03",
+          "scope_kind": "migration_source",
+          "scope_name": "legacy Mem0/RAG"
+        },
+        {
+          "decision_id": "DB-03",
+          "scope_kind": "migration_source",
+          "scope_name": "me-wiki"
+        },
+        {
+          "decision_id": "DB-03",
+          "scope_kind": "migration_source",
+          "scope_name": "unified-db"
+        },
+        {
+          "decision_id": "DB-06",
+          "scope_kind": "external_model_route",
+          "scope_name": "model-a"
+        },
+        {
+          "decision_id": "DB-08",
+          "scope_kind": "export_destination",
+          "scope_name": "archive"
+        }
+      ]
+    }
+  },
+  "contract_digest": "fae50cacc3de0e891a92f135416a1bdd2d4b0b17d7211b5d0b738f7915a1b5ca",
+  "signatures": [
+    {
+      "signature_version": "second-brain-contract-signature-v1",
+      "role": "approver",
+      "key_id": "approver",
+      "public_key_b64": "qqjshbOlaEeE5umj4jBVJPYqOqFypULm4nX9FSxIMNQ=",
+      "signature_b64": "0fm48sRjVC6z0zXmvMg5LUDx4F6kvedy06IyfWllIDXJwycjvdV7SRSopqdWuTnSJ3nyUb2Gl8rCsycknSumDw=="
+    },
+    {
+      "signature_version": "second-brain-contract-signature-v1",
+      "role": "owner",
+      "key_id": "owner",
+      "public_key_b64": "AqkUcin7vP0DSKNKq77+AoG4dLivjs7gBQC+I2U0znQ=",
+      "signature_b64": "F6LGNP54E+zpizbSiE81V5aVkkRlUNX1IDMLyhD3mbqS+HZIsOwN3FPy7ql//cAmtIXpUiDnnY+W3Na4hLe5Dw=="
+    }
+  ]
+}

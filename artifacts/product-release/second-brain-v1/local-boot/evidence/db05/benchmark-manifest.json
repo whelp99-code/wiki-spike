@@ -1,0 +1,15 @@
+{
+  "capability_ref": "capability:local-boot-benchmark-read",
+  "consent_digest": "6dc07bd909aa16ed5bdbdbbb058e12a611e54b0f3f290638f970ae5b9688db08",
+  "corpus_key_ref": "key:local-boot-benchmark-2026",
+  "item_digests": [
+    "56f78963fef0b036007d5eba2af5c9c4ec67f13e7300f29b3112189dfd978eed",
+    "19913291fb3fb4d777e6945256903077ad9c7ceaf89e07e7cbd5dc1ad07bfb34",
+    "e71746cf352c6ee031758f14bbd4398477fd826226fb00f95173c2caa8368491",
+    "514c763c2656c6342d8f888ea027f536632917eed0e335e7eac6f8a741fdfe6b"
+  ],
+  "label_review_digest": "466725f4b82c5dfc9c704c17e84aa784b2fe65c009f989b502965ce69f1411ff",
+  "manifest_digest": "82832e3f6f22673803a0010ab32526a672e58c030a2695b11403ad45e99fb502",
+  "manifest_version": "second-brain-benchmark-manifest-v1",
+  "workspace_ref": "workspace:second-brain-local-boot"
+}

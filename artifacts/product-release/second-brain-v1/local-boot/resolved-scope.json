@@ -1,0 +1,36 @@
+{
+  "scope_version": "second-brain-resolved-scope-v1",
+  "enabled_source_profiles": [
+    "Claude/Memory Bank",
+    "Codex",
+    "Git",
+    "Markdown"
+  ],
+  "disabled_source_profiles": {},
+  "enabled_migration_sources": [
+    "legacy Mem0/RAG",
+    "me-wiki",
+    "unified-db"
+  ],
+  "disabled_migration_sources": {},
+  "feature_flags": [
+    "benchmark-governance",
+    "conflict-behavior",
+    "cutover-retention",
+    "identity-auth"
+  ],
+  "egress_destinations": [],
+  "enabled_external_model_routes": [],
+  "disabled_external_model_routes": {
+    "model-a": "signed NO_GO"
+  },
+  "disabled_export_destinations": {
+    "archive": "signed NO_GO"
+  },
+  "capability_manifest_digest": "f5ea130c7cb38a0b903c4bdc62bdc64c9311a5d32e029b2c2baeee17be6da9f3",
+  "source_manifest_digest": "efc9e5b65d4104b2d3f51d6aa5860150ccaf0ada3f51ebb93c2d717ff590623d",
+  "mandatory_release_constraints": [
+    "local-boot-non-production",
+    "signed-release-baseline"
+  ]
+}

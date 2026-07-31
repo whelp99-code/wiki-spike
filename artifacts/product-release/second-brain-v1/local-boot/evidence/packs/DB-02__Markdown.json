@@ -1,0 +1,12 @@
+{
+  "classification": "local-bootstrap-non-production",
+  "created_at": "2026-07-30T15:09:47Z",
+  "decision_id": "DB-02",
+  "pack_version": "wiki-spike-local-boot-evidence-pack-v1",
+  "refs": {
+    "capture_fixture": "ae4f7eadaeb1df38194c832b6e29e72f32f4d7759ca644ae08bfa0cb678190f3",
+    "consent": "aa24e7e7a93da186164d91685a9c65a90096383266d9d74506c58cf88fd05de6",
+    "fixture_path": "tests/fixtures/second_brain/capture/markdown.json"
+  },
+  "scope_name": "Markdown"
+}

@@ -1,0 +1,12 @@
+{
+  "classification": "local-bootstrap-non-production",
+  "created_at": "2026-07-30T15:09:47Z",
+  "decision_id": "DB-02",
+  "pack_version": "wiki-spike-local-boot-evidence-pack-v1",
+  "refs": {
+    "capture_fixture": "a2ffc4e5290c15bd91ff2e2b1d488cccfb1adf8b44057d0b5a539def7ca55fee",
+    "consent": "6cb213ff98eed55e09a1cd4c61e3b22663809900a1159f5f1b512e6d2cacb50d",
+    "fixture_path": "tests/fixtures/second_brain/capture/codex.json"
+  },
+  "scope_name": "Codex"
+}

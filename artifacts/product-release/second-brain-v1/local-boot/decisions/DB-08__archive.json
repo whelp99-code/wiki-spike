@@ -1,0 +1,36 @@
+{
+  "decided_at": "2026-07-30T15:09:47Z",
+  "decision_id": "DB-08",
+  "decision_version": "second-brain-decision-record-v1",
+  "evidence_digest": "047124c0ec271e980c6971d98a48f9dfae8a3c8b4af49284154eaa9ea660cf87",
+  "evidence_refs": [
+    "artifacts/product-release/second-brain-v1/local-boot/evidence/packs/DB-08__archive.json"
+  ],
+  "expires_at": "2030-12-31T00:00:00Z",
+  "outcome": "NO_GO",
+  "post_interview_reconciliation": {
+    "original_question": "May external archive export be enabled?",
+    "reconciliation": "NO_GO for archive; internal managed projections only."
+  },
+  "reason": "Disable external archive export destination.",
+  "record_revision": "1",
+  "scope_kind": "export_destination",
+  "scope_name": "archive",
+  "signatures": [
+    {
+      "key_id": "approver",
+      "public_key_b64": "qqjshbOlaEeE5umj4jBVJPYqOqFypULm4nX9FSxIMNQ=",
+      "role": "approver",
+      "signature_b64": "AhFr01V7EaeAGThlRNPsFuNsfmgOlQsIUZI0mYzyM5DUL1Fu24K7Je+DqkbzBxMWhsSTaghYpcb6X/c4fEnsDQ==",
+      "signature_version": "second-brain-decision-signature-v1"
+    },
+    {
+      "key_id": "owner",
+      "public_key_b64": "AqkUcin7vP0DSKNKq77+AoG4dLivjs7gBQC+I2U0znQ=",
+      "role": "owner",
+      "signature_b64": "C+e97AMIuRBgMNMBQyH2El6S6/fiItu82XpllCJ4iFXf4OUi5+Nl6mWC0qmNI+6hxf7VbmdKW2wC3mWM3hcHAQ==",
+      "signature_version": "second-brain-decision-signature-v1"
+    }
+  ],
+  "supersedes": null
+}

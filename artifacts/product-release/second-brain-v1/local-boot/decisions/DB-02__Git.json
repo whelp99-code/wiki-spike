@@ -1,0 +1,36 @@
+{
+  "decided_at": "2026-07-30T15:09:47Z",
+  "decision_id": "DB-02",
+  "decision_version": "second-brain-decision-record-v1",
+  "evidence_digest": "9722d586668dc5fc04d48d65fa2382df91ae3e0651ae5cb3e42ea600b3a992fc",
+  "evidence_refs": [
+    "artifacts/product-release/second-brain-v1/local-boot/evidence/packs/DB-02__Git.json"
+  ],
+  "expires_at": "2030-12-31T00:00:00Z",
+  "outcome": "GO",
+  "post_interview_reconciliation": {
+    "original_question": "May Git be an enabled first-release live capture source?",
+    "reconciliation": "Git is GO as source_profile; live capture still requires capability/consent at runtime."
+  },
+  "reason": "Enable Git as intended live source profile after consent/capability gates.",
+  "record_revision": "1",
+  "scope_kind": "source_profile",
+  "scope_name": "Git",
+  "signatures": [
+    {
+      "key_id": "approver",
+      "public_key_b64": "qqjshbOlaEeE5umj4jBVJPYqOqFypULm4nX9FSxIMNQ=",
+      "role": "approver",
+      "signature_b64": "saJwniuedLy7KkoYHRAWZNbH4JBqgSaIX4jS44nXfamZBZxfYzn+SZdLj5t6FlXb68wJWLUjRTIuNz4X9lG3AQ==",
+      "signature_version": "second-brain-decision-signature-v1"
+    },
+    {
+      "key_id": "owner",
+      "public_key_b64": "AqkUcin7vP0DSKNKq77+AoG4dLivjs7gBQC+I2U0znQ=",
+      "role": "owner",
+      "signature_b64": "KgvWUCN2ZHejzyd1Mx8t+uXL0DRBgdp3nXPO/P43OyWzQ6JrfHY+NHJ5/HSHwUuuc44dHm7qXmaDSo3XOUIoCQ==",
+      "signature_version": "second-brain-decision-signature-v1"
+    }
+  ],
+  "supersedes": null
+}

@@ -1,0 +1,36 @@
+{
+  "decided_at": "2026-07-30T15:09:47Z",
+  "decision_id": "DB-02",
+  "decision_version": "second-brain-decision-record-v1",
+  "evidence_digest": "8ff2e6b38af70257b5ba1e15ff264376f544a94d4f22bc12ad4a7b6ee6d80537",
+  "evidence_refs": [
+    "artifacts/product-release/second-brain-v1/local-boot/evidence/packs/DB-02__Markdown.json"
+  ],
+  "expires_at": "2030-12-31T00:00:00Z",
+  "outcome": "GO",
+  "post_interview_reconciliation": {
+    "original_question": "May Markdown be an enabled first-release live capture source?",
+    "reconciliation": "Markdown is GO as source_profile; live capture still requires capability/consent at runtime."
+  },
+  "reason": "Enable Markdown as intended live source profile after consent/capability gates.",
+  "record_revision": "1",
+  "scope_kind": "source_profile",
+  "scope_name": "Markdown",
+  "signatures": [
+    {
+      "key_id": "approver",
+      "public_key_b64": "qqjshbOlaEeE5umj4jBVJPYqOqFypULm4nX9FSxIMNQ=",
+      "role": "approver",
+      "signature_b64": "nK2rb7UTiKCIHla9OTRHFvpf/E5wwt73iViAx/PO5Vczyn58vKYf2Kb40RDUYjsttvNns2oh+iwCqr6VhFd3BQ==",
+      "signature_version": "second-brain-decision-signature-v1"
+    },
+    {
+      "key_id": "owner",
+      "public_key_b64": "AqkUcin7vP0DSKNKq77+AoG4dLivjs7gBQC+I2U0znQ=",
+      "role": "owner",
+      "signature_b64": "VWMGApxYAWiJ569/o9Vs7jYtvQvhJbE95dc0qFUztcFZxBilLxA09UZpdu8DmqGjuZZDBVgF7gwpw2M03ZRcAw==",
+      "signature_version": "second-brain-decision-signature-v1"
+    }
+  ],
+  "supersedes": null
+}

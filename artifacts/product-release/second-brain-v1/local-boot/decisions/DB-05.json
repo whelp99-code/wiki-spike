@@ -1,0 +1,37 @@
+{
+  "decided_at": "2026-07-30T15:09:47Z",
+  "decision_id": "DB-05",
+  "decision_version": "second-brain-decision-record-v1",
+  "evidence_digest": "108707ba9d5f75b4a4ba3ae661f23a9ed001c323315b96ed9f3ad04593d4811f",
+  "evidence_refs": [
+    "artifacts/product-release/second-brain-v1/local-boot/evidence/db05/governance.json",
+    "artifacts/product-release/second-brain-v1/local-boot/evidence/packs/DB-05.json"
+  ],
+  "expires_at": "2030-12-31T00:00:00Z",
+  "outcome": "GO",
+  "post_interview_reconciliation": {
+    "original_question": "May quality/cutover claims use a personal benchmark?",
+    "reconciliation": "Yes under local encrypted benchmark + private holdout with frozen SLOs; Gate8 is not product proof."
+  },
+  "reason": "Freeze local encrypted benchmark/holdout governance and SLO floors before observation.",
+  "record_revision": "1",
+  "scope_kind": "global",
+  "scope_name": null,
+  "signatures": [
+    {
+      "key_id": "approver",
+      "public_key_b64": "qqjshbOlaEeE5umj4jBVJPYqOqFypULm4nX9FSxIMNQ=",
+      "role": "approver",
+      "signature_b64": "oR+htpFkaOknvKflq9X6liYRO/go8/ABd9vodSZlAcuBVYXy8eM7S2cU23yueDu3kYU01jp3Paa6gN2KIKvSBw==",
+      "signature_version": "second-brain-decision-signature-v1"
+    },
+    {
+      "key_id": "owner",
+      "public_key_b64": "AqkUcin7vP0DSKNKq77+AoG4dLivjs7gBQC+I2U0znQ=",
+      "role": "owner",
+      "signature_b64": "SWl55yh2NqoTZVQ0rbD92Wp3/0HeRaaQGFhKxpDLacIH9ox3GUWCWCYePY5bv81J1Wr4X5lIBWALBlKWlwxMAA==",
+      "signature_version": "second-brain-decision-signature-v1"
+    }
+  ],
+  "supersedes": null
+}

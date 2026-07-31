@@ -1,0 +1,12 @@
+{
+  "classification": "local-bootstrap-non-production",
+  "created_at": "2026-07-30T15:09:47Z",
+  "decision_id": "DB-01",
+  "pack_version": "wiki-spike-local-boot-evidence-pack-v1",
+  "refs": {
+    "authz_ux": "8380d63e016175cf0f94736ff75c6ad02fe367cac326c785ea0f36c8c23e59a9",
+    "delegation": "4b36028903c1865f882ac305bb61b490cbe8e3bf6f11c6efdaf5bf442ec977af",
+    "threat_model": "27fcd748b6e41f5386649cf552ddb7cfbfe08fb9173d1d81b8e7c8fa7903d3cc"
+  },
+  "scope_name": null
+}

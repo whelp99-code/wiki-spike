@@ -1,0 +1,36 @@
+{
+  "decided_at": "2026-07-30T15:09:47Z",
+  "decision_id": "DB-01",
+  "decision_version": "second-brain-decision-record-v1",
+  "evidence_digest": "889f719a5a1b69be4786709fdc387ce9e2ae0d14be2dfd0f7bfcfd3587e1f6a0",
+  "evidence_refs": [
+    "artifacts/product-release/second-brain-v1/local-boot/evidence/packs/DB-01.json"
+  ],
+  "expires_at": "2030-12-31T00:00:00Z",
+  "outcome": "GO",
+  "post_interview_reconciliation": {
+    "original_question": "Who may own and operate the first-release workspace?",
+    "reconciliation": "One owning user, multiple trusted devices, action-scoped delegated reviewers only."
+  },
+  "reason": "Single-owner multi-device identity with action-scoped delegation for local boot.",
+  "record_revision": "1",
+  "scope_kind": "global",
+  "scope_name": null,
+  "signatures": [
+    {
+      "key_id": "approver",
+      "public_key_b64": "qqjshbOlaEeE5umj4jBVJPYqOqFypULm4nX9FSxIMNQ=",
+      "role": "approver",
+      "signature_b64": "DQ2KELZeB8vvW1duqxWjj8IzePxLs59m8Q6o24IJUn8inqOak9rQLvmB1SFwdjEruVXebRpXFKrCg0a6IIAhBw==",
+      "signature_version": "second-brain-decision-signature-v1"
+    },
+    {
+      "key_id": "owner",
+      "public_key_b64": "AqkUcin7vP0DSKNKq77+AoG4dLivjs7gBQC+I2U0znQ=",
+      "role": "owner",
+      "signature_b64": "bpd1M3i8+Z9S51l3lzAc7u56O9w/QVCLLlwSAQNYWAnDWDfIG50p+b1KkQ57ZX5FUpdM0xSyecxrQbnUgbPkCg==",
+      "signature_version": "second-brain-decision-signature-v1"
+    }
+  ],
+  "supersedes": null
+}
