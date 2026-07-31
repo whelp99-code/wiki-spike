@@ -1,0 +1,11 @@
+{
+  "benchmark_manifest_digest": "82832e3f6f22673803a0010ab32526a672e58c030a2695b11403ad45e99fb502",
+  "consent_digest": "6dc07bd909aa16ed5bdbdbbb058e12a611e54b0f3f290638f970ae5b9688db08",
+  "encryption_isolation_digest": "c1dfabef0f2dbfef0cc00e2d869d5a0f94078c50f7ac745b90fce323f95c10c2",
+  "governance_digest": "108707ba9d5f75b4a4ba3ae661f23a9ed001c323315b96ed9f3ad04593d4811f",
+  "governance_version": "second-brain-evaluation-governance-v1",
+  "holdout_manifest_digest": "f0a53fe6cd25ffed3354972ed5eb5128574a3bc2ae211d7da4dfc985d68a94b2",
+  "serving_corpus_digest": "f89743a84941d0330b7f1cd3e1cacc3b35fe4537b9416bc9bc131c5fee551123",
+  "slo_digest": "a511af623ac20f648b5f7e29e7a231f2e94e5a13a31e03ed8ad33a7cbe2ff784",
+  "workspace_ref": "workspace:second-brain-local-boot"
+}

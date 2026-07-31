@@ -1,0 +1,36 @@
+{
+  "decided_at": "2026-07-30T15:09:47Z",
+  "decision_id": "DB-03",
+  "decision_version": "second-brain-decision-record-v1",
+  "evidence_digest": "a2eb5895270495dfbb1faaa674b35d90f6a4163d9916ec8b0928025cb732d28f",
+  "evidence_refs": [
+    "artifacts/product-release/second-brain-v1/local-boot/evidence/packs/DB-03__legacy Mem0_RAG.json"
+  ],
+  "expires_at": "2030-12-31T00:00:00Z",
+  "outcome": "GO",
+  "post_interview_reconciliation": {
+    "original_question": "May legacy Mem0/RAG be imported as a read-only migration source?",
+    "reconciliation": "legacy Mem0/RAG is GO for read-only migration registration only; no serving fallback."
+  },
+  "reason": "Register legacy Mem0/RAG as read-only migration source only.",
+  "record_revision": "1",
+  "scope_kind": "migration_source",
+  "scope_name": "legacy Mem0/RAG",
+  "signatures": [
+    {
+      "key_id": "approver",
+      "public_key_b64": "qqjshbOlaEeE5umj4jBVJPYqOqFypULm4nX9FSxIMNQ=",
+      "role": "approver",
+      "signature_b64": "3bCUSxz38Xy6IawRaEl7ufv2yVR6tRlqO/kmsMeiKZUesLNdxCOBZLJxhDZN0/HOUJtWjEo3wNXkvImDpnPqDA==",
+      "signature_version": "second-brain-decision-signature-v1"
+    },
+    {
+      "key_id": "owner",
+      "public_key_b64": "AqkUcin7vP0DSKNKq77+AoG4dLivjs7gBQC+I2U0znQ=",
+      "role": "owner",
+      "signature_b64": "ew/fjousVKjzHJROpISxaFeqZMulahv0Ehx/aSkBzkW1RcdQKx1lmOKAzQx4fObxagDzLIIwNDand18su8M1Ag==",
+      "signature_version": "second-brain-decision-signature-v1"
+    }
+  ],
+  "supersedes": null
+}

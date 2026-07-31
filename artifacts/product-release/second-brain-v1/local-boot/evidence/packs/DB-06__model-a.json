@@ -1,0 +1,10 @@
+{
+  "classification": "local-bootstrap-non-production",
+  "created_at": "2026-07-30T15:09:47Z",
+  "decision_id": "DB-06",
+  "pack_version": "wiki-spike-local-boot-evidence-pack-v1",
+  "refs": {
+    "egress_policy": "e24011cbca6492503e3b21cecc83f16aa35b37d9e1a7847f9d213b5cad1e189d"
+  },
+  "scope_name": "model-a"
+}

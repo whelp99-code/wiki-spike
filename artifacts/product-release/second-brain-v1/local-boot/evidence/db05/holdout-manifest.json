@@ -1,0 +1,13 @@
+{
+  "capability_ref": "capability:local-boot-holdout-read",
+  "holdout_key_ref": "key:local-boot-holdout-2026",
+  "item_digests": [
+    "eba89d071fcaaa1f87ae269a56ff980cc01fa1326f0ce0db80dda55050d7b608",
+    "afa966a5e086ebc6e200a85d40a332a7b2258aeaddc5fba0e9d862e8b70235d5",
+    "9c20691a8afa2bf5f8d0691c11748743b7c6f15735fa5bec766d72530a84cf83"
+  ],
+  "manifest_digest": "f0a53fe6cd25ffed3354972ed5eb5128574a3bc2ae211d7da4dfc985d68a94b2",
+  "manifest_version": "second-brain-holdout-manifest-v1",
+  "separation_digest": "ef304272ac31dd42fc0103780651d78e33eb4bd463fc99d3dd1d47bc36796aa8",
+  "workspace_ref": "workspace:second-brain-local-boot"
+}

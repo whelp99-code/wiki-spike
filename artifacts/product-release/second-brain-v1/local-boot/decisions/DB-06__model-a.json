@@ -1,0 +1,36 @@
+{
+  "decided_at": "2026-07-30T15:09:47Z",
+  "decision_id": "DB-06",
+  "decision_version": "second-brain-decision-record-v1",
+  "evidence_digest": "e469ea006355d21aa7e4f95e53bdba7cc17c8028831b5173bd18955f5ce26c69",
+  "evidence_refs": [
+    "artifacts/product-release/second-brain-v1/local-boot/evidence/packs/DB-06__model-a.json"
+  ],
+  "expires_at": "2030-12-31T00:00:00Z",
+  "outcome": "NO_GO",
+  "post_interview_reconciliation": {
+    "original_question": "May external provider model-a receive product material?",
+    "reconciliation": "NO_GO for model-a; local-first only."
+  },
+  "reason": "Disable external model/reflection egress for first local boot.",
+  "record_revision": "1",
+  "scope_kind": "external_model_route",
+  "scope_name": "model-a",
+  "signatures": [
+    {
+      "key_id": "approver",
+      "public_key_b64": "qqjshbOlaEeE5umj4jBVJPYqOqFypULm4nX9FSxIMNQ=",
+      "role": "approver",
+      "signature_b64": "OUlNqX5b9PkVn4PMZTmrxJ/gLpo3LsWNywkmadMlTdehGmKD7mDtcEs2gyK08Or8fNWE1az9k/V7ihkSzzrrDg==",
+      "signature_version": "second-brain-decision-signature-v1"
+    },
+    {
+      "key_id": "owner",
+      "public_key_b64": "AqkUcin7vP0DSKNKq77+AoG4dLivjs7gBQC+I2U0znQ=",
+      "role": "owner",
+      "signature_b64": "W4vhA6Q2qgUli1eSLQ5GwTFmxs0YdINt4pZY9QhabxjRdwv2kuIYSulTwZRTGLsuhp6QJcE184TZlHKUq/dgAQ==",
+      "signature_version": "second-brain-decision-signature-v1"
+    }
+  ],
+  "supersedes": null
+}

@@ -1,0 +1,36 @@
+{
+  "decided_at": "2026-07-30T15:09:47Z",
+  "decision_id": "DB-02",
+  "decision_version": "second-brain-decision-record-v1",
+  "evidence_digest": "2db6bfe5684c63aeae42530e826dde08cd8aab975658fa791d8a2abe5fe1b71b",
+  "evidence_refs": [
+    "artifacts/product-release/second-brain-v1/local-boot/evidence/packs/DB-02__Claude_Memory Bank.json"
+  ],
+  "expires_at": "2030-12-31T00:00:00Z",
+  "outcome": "GO",
+  "post_interview_reconciliation": {
+    "original_question": "May Claude/Memory Bank be an enabled first-release live capture source?",
+    "reconciliation": "Claude/Memory Bank is GO as source_profile; live capture still requires capability/consent at runtime."
+  },
+  "reason": "Enable Claude/Memory Bank as intended live source profile after consent/capability gates.",
+  "record_revision": "1",
+  "scope_kind": "source_profile",
+  "scope_name": "Claude/Memory Bank",
+  "signatures": [
+    {
+      "key_id": "approver",
+      "public_key_b64": "qqjshbOlaEeE5umj4jBVJPYqOqFypULm4nX9FSxIMNQ=",
+      "role": "approver",
+      "signature_b64": "FQrNpQK40AMb8si79H6/VVkGgeCDnDYAmNPIVZAwOQZT/EefHTGdU2dA3iIOqlAktPsaabgGGXFSg/A6p6ptDQ==",
+      "signature_version": "second-brain-decision-signature-v1"
+    },
+    {
+      "key_id": "owner",
+      "public_key_b64": "AqkUcin7vP0DSKNKq77+AoG4dLivjs7gBQC+I2U0znQ=",
+      "role": "owner",
+      "signature_b64": "L1oSDIH+dRfoeH/UXNCIOplOwbTfgWx6po+7qTBmCthMtkglqcBYzczjPutmqGRva8VxmRPWECGwOqfcvKATAA==",
+      "signature_version": "second-brain-decision-signature-v1"
+    }
+  ],
+  "supersedes": null
+}

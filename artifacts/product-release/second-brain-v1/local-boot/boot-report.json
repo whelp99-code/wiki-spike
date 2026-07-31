@@ -1,0 +1,27 @@
+{
+  "classification": "local-bootstrap-non-production",
+  "created_at": "2026-07-30T15:10:27Z",
+  "contract_resolution": "RESOLVED",
+  "contract_digest": "fae50cacc3de0e891a92f135416a1bdd2d4b0b17d7211b5d0b738f7915a1b5ca",
+  "expected_scope_manifest_digest": "71ad9b501a0442b32752dba79aa0e0525812f3ec0f5927ba6038d54046f8d2ad",
+  "db05_governance_digest": "108707ba9d5f75b4a4ba3ae661f23a9ed001c323315b96ed9f3ad04593d4811f",
+  "wiki_status_rc": 0,
+  "wiki_status": "authenticated V2 product ready",
+  "ledger_smoke": "create_and_approve_ok",
+  "transaction_cut": "3",
+  "recall_type": "SecondBrainRecallAnswerV2",
+  "recall_abstained": false,
+  "recall_results_len": 1,
+  "decision_count": 13,
+  "cli_root": "/private/tmp/wiki-spike-local-runtime-v2/product-root",
+  "data_root": "/private/tmp/wiki-spike-local-runtime-v2/data",
+  "artifacts_root": "artifacts/product-release/second-brain-v1/local-boot",
+  "keys_dir": "/Users/jmpark/keys/wiki-spike-local",
+  "private_keys_in_repo": false,
+  "notes": [
+    "DB-05 binds EvaluationGovernanceV1.governance_digest",
+    "Synthetic corpora only",
+    "Throwaway dual keys; public keys only in repo",
+    "Not production cutover approval"
+  ]
+}

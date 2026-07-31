@@ -1,0 +1,36 @@
+{
+  "decided_at": "2026-07-30T15:09:47Z",
+  "decision_id": "DB-04",
+  "decision_version": "second-brain-decision-record-v1",
+  "evidence_digest": "71711a801c141ccfc6f6bf5f3617443fdeabdcf5075c8090b7e11e9040aaaf62",
+  "evidence_refs": [
+    "artifacts/product-release/second-brain-v1/local-boot/evidence/packs/DB-04.json"
+  ],
+  "expires_at": "2030-12-31T00:00:00Z",
+  "outcome": "GO",
+  "post_interview_reconciliation": {
+    "original_question": "How should conflicting memories be presented?",
+    "reconciliation": "Co-display with citations and optional reviewed winner; no hidden contrary evidence."
+  },
+  "reason": "Co-display conflicts with citations; winner never suppresses contrary evidence.",
+  "record_revision": "1",
+  "scope_kind": "global",
+  "scope_name": null,
+  "signatures": [
+    {
+      "key_id": "approver",
+      "public_key_b64": "qqjshbOlaEeE5umj4jBVJPYqOqFypULm4nX9FSxIMNQ=",
+      "role": "approver",
+      "signature_b64": "kEHOumcoyx1xQxxzcewBA7sbO1FPXoyfllH4eBXD+c0VesFK9PYbi3LFBsyaUkV3h+TTKrYP8tvkYPTscx9IDg==",
+      "signature_version": "second-brain-decision-signature-v1"
+    },
+    {
+      "key_id": "owner",
+      "public_key_b64": "AqkUcin7vP0DSKNKq77+AoG4dLivjs7gBQC+I2U0znQ=",
+      "role": "owner",
+      "signature_b64": "vhq1bGn56iLQxxDeHd7TPzyYRFYW/OR7MQ6zfr1RQtN/gVQLfbOBKzYHpVj2hQg0+kZbtFhM1X5R+4zyC1P+BQ==",
+      "signature_version": "second-brain-decision-signature-v1"
+    }
+  ],
+  "supersedes": null
+}

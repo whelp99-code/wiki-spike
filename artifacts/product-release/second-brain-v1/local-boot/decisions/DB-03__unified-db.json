@@ -1,0 +1,36 @@
+{
+  "decided_at": "2026-07-30T15:09:47Z",
+  "decision_id": "DB-03",
+  "decision_version": "second-brain-decision-record-v1",
+  "evidence_digest": "4666d3eee29ad6a7fdeaa4c3dbb78c751f042f265cff263f051f5846cabb2b3b",
+  "evidence_refs": [
+    "artifacts/product-release/second-brain-v1/local-boot/evidence/packs/DB-03__unified-db.json"
+  ],
+  "expires_at": "2030-12-31T00:00:00Z",
+  "outcome": "GO",
+  "post_interview_reconciliation": {
+    "original_question": "May unified-db be imported as a read-only migration source?",
+    "reconciliation": "unified-db is GO for read-only migration registration only; no serving fallback."
+  },
+  "reason": "Register unified-db as read-only migration source only.",
+  "record_revision": "1",
+  "scope_kind": "migration_source",
+  "scope_name": "unified-db",
+  "signatures": [
+    {
+      "key_id": "approver",
+      "public_key_b64": "qqjshbOlaEeE5umj4jBVJPYqOqFypULm4nX9FSxIMNQ=",
+      "role": "approver",
+      "signature_b64": "Y27O6rv7aQrpm4ORVNQpgbf08oqRtdb3EokeBaiXafHPAhokoBCSCJFOG3Eo18iWE2VaxeogHZdzZxEWN/XsBg==",
+      "signature_version": "second-brain-decision-signature-v1"
+    },
+    {
+      "key_id": "owner",
+      "public_key_b64": "AqkUcin7vP0DSKNKq77+AoG4dLivjs7gBQC+I2U0znQ=",
+      "role": "owner",
+      "signature_b64": "aE0vHVKvbusPLbI0EPl+tp+Zs3bA5nYOQ2P82WYS6xYrtqMyWM+6jWr2hFCb0f9YFoKlJ5lhPA+4NasKqFjLBA==",
+      "signature_version": "second-brain-decision-signature-v1"
+    }
+  ],
+  "supersedes": null
+}

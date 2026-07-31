@@ -1,0 +1,8 @@
+{
+  "classification": "local-bootstrap-non-production",
+  "owner_key_id": "owner",
+  "approver_key_id": "approver",
+  "owner_public_key_b64": "AqkUcin7vP0DSKNKq77+AoG4dLivjs7gBQC+I2U0znQ=",
+  "approver_public_key_b64": "qqjshbOlaEeE5umj4jBVJPYqOqFypULm4nX9FSxIMNQ=",
+  "note": "Private keys are NOT in the repository. See docs/ops/local-ed25519-key-guide.md"
+}

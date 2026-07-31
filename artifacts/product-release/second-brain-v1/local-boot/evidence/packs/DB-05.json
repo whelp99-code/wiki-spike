@@ -1,0 +1,17 @@
+{
+  "classification": "local-bootstrap-non-production",
+  "created_at": "2026-07-30T15:09:47Z",
+  "decision_id": "DB-05",
+  "pack_version": "wiki-spike-local-boot-evidence-pack-v1",
+  "refs": {
+    "benchmark_manifest": "fae5ffd6187ec0d7d7d0857db062f392bdb78a0dd1b3d40d4b782b55e0396a5b",
+    "consent": "6dc07bd909aa16ed5bdbdbbb058e12a611e54b0f3f290638f970ae5b9688db08",
+    "encryption_isolation": "c1dfabef0f2dbfef0cc00e2d869d5a0f94078c50f7ac745b90fce323f95c10c2",
+    "governance": "108707ba9d5f75b4a4ba3ae661f23a9ed001c323315b96ed9f3ad04593d4811f",
+    "holdout_manifest": "7277d178a19cb1fc328b933dc21d62a55d7f41b0a207f62e9f5024aaa11d06c1",
+    "label_review": "466725f4b82c5dfc9c704c17e84aa784b2fe65c009f989b502965ce69f1411ff",
+    "separation": "ef304272ac31dd42fc0103780651d78e33eb4bd463fc99d3dd1d47bc36796aa8",
+    "slo": "ae78d35d0263f943a58edc447b259febffeee6bd9ed6b44fca0a139e79aeda1d"
+  },
+  "scope_name": null
+}

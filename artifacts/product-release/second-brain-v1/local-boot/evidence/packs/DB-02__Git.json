@@ -1,0 +1,12 @@
+{
+  "classification": "local-bootstrap-non-production",
+  "created_at": "2026-07-30T15:09:47Z",
+  "decision_id": "DB-02",
+  "pack_version": "wiki-spike-local-boot-evidence-pack-v1",
+  "refs": {
+    "capture_fixture": "5c95db5feefe35dded91dac390eaf0cf3834d01229bd00cc2b91fb7948826076",
+    "consent": "048d211bc6ca83ac17e41980b8dc8541169eb0bf0911a74cb354a97fe2328669",
+    "fixture_path": "tests/fixtures/second_brain/capture/git.json"
+  },
+  "scope_name": "Git"
+}

@@ -1,0 +1,12 @@
+{
+  "classification": "local-bootstrap-non-production",
+  "created_at": "2026-07-30T15:09:47Z",
+  "decision_id": "DB-02",
+  "pack_version": "wiki-spike-local-boot-evidence-pack-v1",
+  "refs": {
+    "capture_fixture": "806cb3c16e7f9d9e375fb6bf4f14ee6d8d0a231f13b10b97449f8e2319dccf40",
+    "consent": "864215bd9c0057e05e6300e195bcb25a66ab01d94a4fa1ca4eb904d86631612a",
+    "fixture_path": "tests/fixtures/second_brain/capture/claude_memory_bank.json"
+  },
+  "scope_name": "Claude/Memory Bank"
+}
