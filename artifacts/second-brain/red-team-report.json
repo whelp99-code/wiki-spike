@@ -1,0 +1,111 @@
+{
+  "summary": {
+    "total": 17,
+    "passed": 17,
+    "failed": 0
+  },
+  "results": [
+    {
+      "category": "authority",
+      "test": "cas_conflict_stale_revision",
+      "passed": true,
+      "detail": "Correctly rejected: authority CAS conflict: expected revision 0, actual 1"
+    },
+    {
+      "category": "authority",
+      "test": "journal_corruption_truncated",
+      "passed": true,
+      "detail": "Correctly rejected: authority journal frame is malformed"
+    },
+    {
+      "category": "authority",
+      "test": "journal_corruption_garbage",
+      "passed": true,
+      "detail": "Correctly rejected: authority journal frame header is malformed"
+    },
+    {
+      "category": "authority",
+      "test": "key_rotation_rejection",
+      "passed": true,
+      "detail": "Correctly rejected: authority key does not match metadata fingerprint"
+    },
+    {
+      "category": "authority",
+      "test": "metadata_tamper_fingerprint",
+      "passed": true,
+      "detail": "Correctly rejected: authority key does not match metadata fingerprint"
+    },
+    {
+      "category": "authority",
+      "test": "replay_same_nonce",
+      "passed": true,
+      "detail": "Same nonce accepted at adapter level (by design); revisions differ: 1 vs 2"
+    },
+    {
+      "category": "authority",
+      "test": "concurrent_access",
+      "passed": true,
+      "detail": "w1: 10 ok/0 conflict, w2: 10 ok/0 conflict, journal revision=20, integrity=OK"
+    },
+    {
+      "category": "cli",
+      "test": "init_without_checkpoint",
+      "passed": true,
+      "detail": "rc=2, stderr=argument error: init requires --checkpoint"
+    },
+    {
+      "category": "cli",
+      "test": "append_unsigned_sample",
+      "passed": true,
+      "detail": "rc=1, stderr=append error: raw sample fields are invalid"
+    },
+    {
+      "category": "cli",
+      "test": "status_wrong_fingerprint",
+      "passed": true,
+      "detail": "rc=1, stderr=measurement error: measurement public key fingerprint does not match"
+    },
+    {
+      "category": "cli",
+      "test": "endpoint_path_traversal",
+      "passed": true,
+      "detail": "rc=2, stderr=authority error: authority directory does not exist: ../../etc/passwd"
+    },
+    {
+      "category": "cli",
+      "test": "endpoint_non_local_scheme",
+      "passed": true,
+      "detail": "rc=2, stderr=authority error: unsupported authority endpoint scheme; expected retention-authority://local/<path>"
+    },
+    {
+      "category": "cli",
+      "test": "missing_required_args",
+      "passed": true,
+      "detail": "rc=2, stderr=argument error: the following arguments are required: --db, --authority-endpoint, --measurement-public-key, --measuremen"
+    },
+    {
+      "category": "cohort",
+      "test": "status_not_ready",
+      "passed": true,
+      "detail": "outcome=NOT_READY, sample_count=4"
+    },
+    {
+      "category": "cohort",
+      "test": "status_sample_count",
+      "passed": true,
+      "detail": "sample_count=4 is correct (4 source profiles: Codex, Claude/Memory Bank, Git, Markdown; checkpoint is not a sample)"
+    },
+    {
+      "category": "cohort",
+      "test": "authority_journal_events",
+      "passed": true,
+      "detail": "journal has 5 events (expected >= 5 for init + appends)"
+    },
+    {
+      "category": "cohort",
+      "test": "authority_signature_valid",
+      "passed": true,
+      "detail": "Snapshot signature verifies against authority public key"
+    }
+  ]
+}

@@ -12,6 +12,16 @@ remote.git/
 cas/
 .wiki-spike/
 
+# shadow-measurement cohort state: signing keys, growing journals, locks.
+# Archived dead cohorts are retained on disk as signed evidence but are
+# never tracked.
+artifacts/second-brain/operational-cohort/
+artifacts/second-brain/cohort-dead-*/
+
+# agent/tool session state
+.gjc/
+.omo/
+
 # python
 __pycache__/
 *.pyc

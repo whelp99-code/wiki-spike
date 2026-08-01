@@ -40,8 +40,8 @@ def digest(value: str) -> str:
     return sha256(value.encode()).hexdigest()
 AUTHORITY_ENDPOINT = "retention-authority://fixture"
 AUTHORITY_UNAVAILABLE = (
-    "measurement input rejected: standalone CLI cannot adapt an unverified endpoint; "
-    "use a deployment-provided MonotonicAppendAuthority adapter\n"
+    "authority error: unsupported authority endpoint scheme; "
+    "expected retention-authority://local/<path>\n"
 )
 
 
@@ -303,3 +303,95 @@ def test_boundary_checker_scans_explicit_native_file_root(tmp_path):
     )
     assert result.returncode == 1
     assert json.loads(result.stdout)["violations"][0]["imported_module"] == "socket"
+
+def test_cli_end_to_end_init_status_verify(tmp_path):
+    """Provision real authority, init cohort, append sample, verify status."""
+    from wiki_spike.composition.retained_authority import provision_authority, LocalRetainedAuthority
+    # Provision authority FIRST so checkpoint binds to it
+    auth_dir = provision_authority(tmp_path / "authority")
+    authority = LocalRetainedAuthority(auth_dir)
+    endpoint = authority.endpoint
+
+    # Write contracts using the real authority for checkpoint creation
+    source_body = {"manifest_version": "native-source-manifest-v1", "workspace_ref": "workspace:native", "profiles": ["Codex", "Claude/Memory Bank", "Git", "Markdown"]}
+    capability_body = {"manifest_version": "native-capability-manifest-v1", "workspace_ref": "workspace:native", "benchmark_key_ref": "key:native", "holdout_key_ref": "key:holdout", "benchmark_capability_ref": "capability:native", "holdout_capability_ref": "capability:holdout", "capabilities": ["local-authenticated-measurement"], "denied_capabilities": ["serving", "activation", "promotion", "routes", "export", "network"]}
+    source_manifest_digest = sha256(canonical_bytes(source_body)).hexdigest()
+    capability_manifest_digest = sha256(canonical_bytes(capability_body)).hexdigest()
+    scope = {"scope_version":"second-brain-resolved-scope-v1","enabled_source_profiles":["Claude/Memory Bank","Codex","Git","Markdown"],"disabled_source_profiles":{},"enabled_migration_sources":[],"disabled_migration_sources":{},"feature_flags":[],"egress_destinations":[],"enabled_external_model_routes":[],"disabled_external_model_routes":{},"disabled_export_destinations":{},"capability_manifest_digest":capability_manifest_digest,"source_manifest_digest":source_manifest_digest,"mandatory_release_constraints":["signed-release-baseline"]}
+    benchmark_body = {"manifest_version":"second-brain-benchmark-manifest-v1","workspace_ref":"workspace:native","corpus_key_ref":"key:native","capability_ref":"capability:native","item_digests":[digest("benchmark")],"label_review_digest":digest("labels"),"consent_digest":digest("consent")}
+    holdout_body = {"manifest_version":"second-brain-holdout-manifest-v1","workspace_ref":"workspace:native","holdout_key_ref":"key:holdout","capability_ref":"capability:holdout","item_digests":[digest("holdout")],"separation_digest":digest("separation")}
+    slo_body = {"slo_version":"second-brain-recall-slo-v1","parity_min_bps":0,"citation_min_bps":0,"completeness_min_bps":0,"availability_min_bps":0,"max_safety_violations":0,"min_shadow_days":3,"min_parity_cases_per_source":200,"min_cohort_e2e_queries":500,"confidence_method":"one-sided-wilson-95","include_invalid_in_denominator":True,"include_abstained_in_denominator":True,"include_source_unavailable_in_denominator":True}
+    files = {"scope.json": scope, "source.json": source_body | {"source_manifest_digest": source_manifest_digest}, "capability.json": capability_body | {"capability_manifest_digest": capability_manifest_digest}, "benchmark.json": benchmark_body | {"manifest_digest": canonical_ledger_digest("benchmark-manifest-v1", benchmark_body)}, "holdout.json": holdout_body | {"manifest_digest": canonical_ledger_digest("holdout-manifest-v1", holdout_body)}, "contract.json": slo_body | {"slo_digest": canonical_ledger_digest("recall-slo-v1", slo_body)}}
+    for name, body in files.items():
+        (tmp_path / name).write_text(json.dumps(body))
+    key = Ed25519PrivateKey.generate()
+    raw = key.public_key().public_bytes_raw()
+    (tmp_path / "key.pub").write_text(raw.hex())
+    fingerprint = sha256(raw).hexdigest()
+
+    # Create checkpoint bound to the real authority
+    collector = NativeShadowMeasurementCollector(
+        path=tmp_path / "cohort.json", authority=authority,
+        scope=ResolvedScopeV1.from_mapping(scope),
+        benchmark=BenchmarkManifestV1.from_mapping(files["benchmark.json"]),
+        holdout=HoldoutManifestV1.from_mapping(files["holdout.json"]),
+        slo=RecallSloV1.from_mapping(files["contract.json"]),
+        measurement_public_key=key.public_key(), measurement_key_id=fingerprint,
+    )
+    root = collector.checkpoint_payload(cohort_id=str(uuid4()), started_at=datetime.now(timezone.utc), anchor_root=digest("anchor"))
+    (tmp_path / "checkpoint.json").write_text(json.dumps({
+        "cohort_id": root["cohort_id"], "started_at": root["started_at"],
+        "anchor_root": root["anchor_root"],
+        "root_signature": key.sign(canonical_ledger_bytes("second-brain-native-shadow-cohort-v1", root)).hex(),
+    }))
+
+    def real_command(operation, *extra):
+        checkpoint = ["--checkpoint", str(tmp_path / "checkpoint.json")] if operation == "init" else []
+        return [sys.executable, str(CLI), operation, "--db", str(tmp_path / "cohort.json"),
+                "--authority-endpoint", endpoint, "--measurement-public-key", str(tmp_path / "key.pub"),
+                "--measurement-key-fingerprint", fingerprint, "--resolved-scope", str(tmp_path / "scope.json"),
+                "--contract", str(tmp_path / "contract.json"), "--source-manifest", str(tmp_path / "source.json"),
+                "--capability-manifest", str(tmp_path / "capability.json"),
+                "--benchmark-manifest", str(tmp_path / "benchmark.json"),
+                "--holdout-manifest", str(tmp_path / "holdout.json"), *checkpoint, *extra]
+
+    # Init succeeds
+    init = run(real_command("init"))
+    assert init.returncode == 0, init.stderr
+    init_body = json.loads(init.stdout)
+    assert init_body["status"] == "initialized"
+    cohort_digest = init_body["cohort_digest"]
+    assert len(cohort_digest) == 64
+
+    # Status reports NOT_READY with zero samples
+    status = run(real_command("status"))
+    assert status.returncode == 0, status.stderr
+    status_body = json.loads(status.stdout)
+    assert status_body["outcome"] == "NOT_READY"
+    assert status_body["sample_count"] == 0
+    assert status_body["cohort_digest"] == cohort_digest
+
+    # Verify also works
+    verify = run(real_command("verify"))
+    assert verify.returncode == 0, verify.stderr
+
+    # Append a properly signed sample
+    sample_payload = {
+        "sample_version": "second-brain-native-shadow-sample-v1",
+        "sample_id": "e2e-test:001", "source_profile": "Codex",
+        "outcome": "valid", "citation": True, "completeness": True,
+        "parity": True, "safety_violation": False,
+        "cohort_digest": cohort_digest, "previous": None, "sequence": 0,
+    }
+    sample_payload["signature"] = key.sign(canonical_ledger_bytes("second-brain-native-shadow-sample-v1", sample_payload)).hex()
+    (tmp_path / "sample.json").write_text(json.dumps(sample_payload))
+    append = run(real_command("append", "--sample", str(tmp_path / "sample.json")))
+    assert append.returncode == 0, append.stderr
+    assert json.loads(append.stdout)["status"] == "appended"
+
+    # Status now shows 1 sample
+    status2 = run(real_command("status"))
+    assert status2.returncode == 0, status2.stderr
+    status2_body = json.loads(status2.stdout)
+    assert status2_body["sample_count"] == 1
+    assert status2_body["outcome"] == "NOT_READY"
