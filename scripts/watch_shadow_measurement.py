@@ -135,11 +135,43 @@ def _notify(title: str, message: str) -> None:
     )
 
 
+def _restart(cohort: Path, status: dict) -> dict:
+    """Archive a dead cohort and provision a fresh one at the same path.
+
+    The path is preserved because the authority endpoint is an absolute path
+    baked into the signed checkpoint root; a cohort cannot be relocated. The
+    dead cohort is archived rather than deleted because its signed journal is
+    evidence of what actually happened.
+
+    This restarts the 72-hour clock from zero. It does not, and must not,
+    carry elapsed time across the break: the break is real.
+    """
+    stamp = _now().strftime("%Y%m%dT%H%M%SZ")
+    archive = cohort.parent / f"cohort-dead-{stamp}"
+    try:
+        cohort.rename(archive)
+    except OSError as exc:
+        return {"ok": False, "error": f"could not archive dead cohort: {exc}"}
+
+    provision = Path(__file__).resolve().parent / "provision_shadow_measurement.py"
+    result = subprocess.run(
+        [sys.executable, str(provision), "--output-dir", str(cohort)],
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        return {"ok": False,
+                "error": f"provisioning failed (rc={result.returncode}): {result.stderr.strip()[:200]}"}
+    eta = (_now() + timedelta(seconds=WINDOW_SECONDS)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return {"ok": True, "archive": str(archive), "eta": eta}
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cohort-dir", required=True)
     parser.add_argument("--notify", action="store_true",
                         help="raise a macOS notification when the state changes")
+    parser.add_argument("--auto-restart", action="store_true",
+                        help="on death, archive the cohort and provision a fresh one "
+                             "at the same path, restarting the 72h clock from zero")
     args = parser.parse_args()
 
     cohort = Path(args.cohort_dir)
@@ -160,8 +192,23 @@ def main() -> int:
         _notify("Shadow measurement complete",
                 f"72h window closed with {status['samples']} samples. Outcome: {status['outcome']}.")
     elif status["state"] == "dead":
-        _notify("Shadow measurement DIED",
-                status.get("detail") or f"No sample for {status['silence_seconds']}s; the cohort must be reset.")
+        if args.auto_restart:
+            restart = _restart(cohort, status)
+            marker.write_text("collecting" if restart["ok"] else "dead")
+            if restart["ok"]:
+                # A cohort that will not open reports no counters, so these
+                # must degrade rather than raise: a restart notification that
+                # crashes is worse than the failure it reports.
+                lost = f"{status.get('samples', '?')} samples, {status.get('percent', '?')}%"
+                _notify("Shadow measurement restarted",
+                        f"Previous cohort died ({lost}) and was archived. "
+                        f"A fresh 72h window started; it now ends {restart['eta']}.")
+            else:
+                _notify("Shadow measurement DIED and could not restart",
+                        f"{restart['error']} — manual reset required.")
+        else:
+            _notify("Shadow measurement DIED",
+                    status.get("detail") or f"No sample for {status['silence_seconds']}s; the cohort must be reset.")
     elif status["state"] == "stalling":
         _notify("Shadow measurement stalling",
                 f"No sample for {status['silence_seconds']}s. The cohort dies at {CLIFF_SECONDS}s — act now.")

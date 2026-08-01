@@ -125,6 +125,27 @@ the machine or reload the collector while the cohort can still be saved.
 Transitions are announced once each, tracked in `.watch-state`, so the agent
 does not repeat itself.
 
+### Surviving a shutdown
+
+A shutdown, or any break longer than the cliff, genuinely ends the cohort.
+There is no honest way to bridge it: the measurement claims 72 *continuous*
+hours, and carrying elapsed time across a real gap would fabricate exactly the
+continuity the window is supposed to prove. The rule is not relaxed.
+
+What can be removed is the dead time *after* the break. With `--auto-restart`
+the watcher archives the dead cohort and provisions a fresh one at the same
+path, restarting the clock from zero and saying so in the notification. Without
+it a cohort can sit dead for days until somebody notices.
+
+```sh
+/usr/local/bin/python3.12 scripts/watch_shadow_measurement.py \
+  --cohort-dir artifacts/second-brain/operational-cohort --notify --auto-restart
+```
+
+Launch agents reload at login, so after a reboot the collector resumes on its
+own and the watcher resets the cohort on its next pass. Planned downtime
+therefore costs one restarted window, not an unbounded stall.
+
 ## What the collector actually measures
 
 `scripts/collect_shadow_samples.py` is a **pipeline canary**, not a
