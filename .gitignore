@@ -24,5 +24,13 @@ dist/
 # local CI/preflight logs
 .ci/
 
+# agent tool state
+.gjc/
+.omo/
+.serena/
+
+# shadow-measurement run outputs
+artifacts/second-brain/
+
 # macOS
 .DS_Store
