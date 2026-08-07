@@ -1357,6 +1357,7 @@
         "candidates",
         "conflicts",
         "citations",
+        "unverified_conflicts",
         "continuation",
         "snapshot_digest"
       ],
@@ -1545,6 +1546,19 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/citation"
+          }
+        },
+        "unverified_conflicts": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {"$ref": "#/$defs/ref"},
+              {"$ref": "#/$defs/ref"}
+            ],
+            "minItems": 2,
+            "maxItems": 2,
+            "items": false
           }
         },
         "continuation": {

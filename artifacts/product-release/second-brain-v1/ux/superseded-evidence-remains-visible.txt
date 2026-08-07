@@ -1,0 +1,22 @@
+RECALL ANSWER
+=============
+
+2 result(s), ordered by support then candidate reference
+
+[1] APPROVED RESULT
+    candidate:      candidate:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    revision:       revision:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    content digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    support count:  1
+    citations:
+      - source:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+[2] APPROVED RESULT
+    candidate:      candidate:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    revision:       revision:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+    content digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    support count:  0
+    citations:
+      - source:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+more pages available: no

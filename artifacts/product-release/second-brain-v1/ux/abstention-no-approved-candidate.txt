@@ -1,0 +1,8 @@
+RECALL ANSWER
+=============
+
+ABSTAINED - no winner was selected and no result is served
+reason: approval_verification
+        no candidate has a reviewed approval; recall will not serve review state
+
+more pages available: no

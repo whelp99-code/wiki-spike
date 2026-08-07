@@ -85,10 +85,15 @@ class RuntimePinnedRecallSnapshotV2:
     incoming_cursor_digest: str | None = None
     incoming_continuation_ref: str | None = None
     continuation: RuntimeContinuationV2 | None = None
+    unverified_conflicts: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         for name in ("candidates", "conflicts", "citations"):
             object.__setattr__(self, name, tuple(getattr(self, name)))
+        markers = tuple(tuple(item) for item in self.unverified_conflicts)
+        if any(len(item) != 2 or not all(isinstance(ref, str) and ref for ref in item) for item in markers) or tuple(sorted(set(markers))) != markers:
+            raise ValueError("unverified conflicts must be sorted and unique reference pairs")
+        object.__setattr__(self, "unverified_conflicts", markers)
         if len({item.candidate_ref for item in self.candidates}) != len(self.candidates):
             raise ValueError("candidate refs must be unique")
         if any(item.state not in {"OPEN", "RESOLVED"} for item in self.conflicts):
@@ -117,6 +122,7 @@ class RuntimeRecallResultV2:
     citations: tuple[RuntimeCitationV2, ...]
     contrary_citations: tuple[RuntimeCitationV2, ...]
     support_count: int
+    unverified_conflicts: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,13 +181,27 @@ class SecondBrainRecallRuntime:
             return RuntimeRecallAnswerV2((), True, "cursor_without_continuation")
         page_state = (snapshot.has_more, snapshot.continuation if snapshot.has_more else None)
         candidates = {item.candidate_ref: item for item in snapshot.candidates if item.state == "APPROVED"}
+        if not candidates:
+            return RuntimeRecallAnswerV2((), True, "approval_verification", *page_state)
         citations = {ref: tuple(sorted((citation for citation in snapshot.citations if citation.candidate_ref == ref), key=lambda item: (item.source_ref, item.citation_digest))) for ref in candidates}
         eligible = {ref: item for ref, item in candidates.items() if citations[ref]}
         if not eligible:
             return RuntimeRecallAnswerV2((), True, "citation_verification", *page_state)
         open_pairs = [pair for pair in snapshot.conflicts if pair.state == "OPEN" and pair.left_candidate_ref in eligible and pair.right_candidate_ref in eligible]
+        # DB-04: an approved counterpart dropped for missing citations must still be
+        # signalled, so a surviving candidate is never served as unopposed.
+        uncited = {ref for ref in candidates if ref not in eligible}
+        unverified: dict[str, set[str]] = {}
+        for near, far in snapshot.unverified_conflicts:
+            unverified.setdefault(near, set()).add(far)
+        for pair in snapshot.conflicts:
+            if pair.state not in {"OPEN", "RESOLVED"}:
+                continue
+            for near, far in ((pair.left_candidate_ref, pair.right_candidate_ref), (pair.right_candidate_ref, pair.left_candidate_ref)):
+                if near in eligible and far in uncited:
+                    unverified.setdefault(near, set()).add(far)
         excluded: set[str] = set()
-        contrary: dict[str, tuple[RuntimeCitationV2, ...]] = {}
+        contrary: dict[str, list[RuntimeCitationV2]] = {}
         for pair in open_pairs:
             left, right = eligible[pair.left_candidate_ref], eligible[pair.right_candidate_ref]
             left_score, right_score = len(left.support_refs), len(right.support_refs)
@@ -189,10 +209,14 @@ class SecondBrainRecallRuntime:
                 excluded.update((left.candidate_ref, right.candidate_ref))
             else:
                 winner, loser = (left, right) if left_score > right_score else (right, left)
-                contrary[winner.candidate_ref] = citations[loser.candidate_ref]
+                contrary.setdefault(winner.candidate_ref, []).extend(citations[loser.candidate_ref])
                 excluded.add(loser.candidate_ref)
+        contrary = {
+            ref: sorted(set(items), key=lambda item: (item.candidate_ref, item.source_ref, item.citation_digest))
+            for ref, items in contrary.items()
+        }
         ranked = sorted((item for ref, item in eligible.items() if ref not in excluded), key=lambda item: (-len(item.support_refs), item.candidate_ref, item.revision_ref))
-        results = tuple(RuntimeRecallResultV2(item.candidate_ref, item.revision_ref, item.content_digest, citations[item.candidate_ref], contrary.get(item.candidate_ref, ()), len(item.support_refs)) for item in ranked)
+        results = tuple(RuntimeRecallResultV2(item.candidate_ref, item.revision_ref, item.content_digest, citations[item.candidate_ref], tuple(contrary.get(item.candidate_ref, ())), len(item.support_refs), tuple(sorted(unverified.get(item.candidate_ref, ())))) for item in ranked)
         return RuntimeRecallAnswerV2(results, not results, "conflict" if not results else None, *page_state)
 
 

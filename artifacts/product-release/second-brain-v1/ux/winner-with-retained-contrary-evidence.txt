@@ -1,0 +1,16 @@
+RECALL ANSWER
+=============
+
+1 result(s), ordered by support then candidate reference
+
+[1] WINNER OF AN OPEN CONFLICT
+    candidate:      candidate:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    revision:       revision:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    content digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    support count:  2
+    citations:
+      - source:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    contrary evidence it was ranked above (retained, not erased):
+      - candidate:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  source:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+more pages available: no
