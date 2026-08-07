@@ -1,0 +1,8 @@
+RECALL ANSWER
+=============
+
+ABSTAINED - no winner was selected and no result is served
+reason: conflict
+        conflicting approved candidates hold equal support; no winner may be invented
+
+more pages available: no

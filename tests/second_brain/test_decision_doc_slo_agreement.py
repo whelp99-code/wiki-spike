@@ -1,9 +1,9 @@
 """Pin the DB-05 decision record against the SLO floors the code enforces.
 
-The three-day cutover decision lowered the shadow window from 14 days to 3 and
-updated ADR-0028, DB-07 and RecallSloV1, but left DB-05 stating 14. DB-05 is a
-globally fatal decision, so a signed record frozen against the stale number
-would have contradicted the code that validates it.
+The one-day cutover decision lowered the shadow window from 3 days to 1 and
+updated ADR-0028, DB-07 and RecallSloV1 in lockstep with DB-05. DB-05 is a
+globally fatal decision, so a signed record frozen against a stale number
+would contradict the code that validates it.
 
 These tests read the numbers out of the prose and assert the code accepts a
 record at exactly those floors and rejects one below them, so the document and
@@ -58,7 +58,7 @@ def slo_mapping(**overrides) -> dict[str, object]:
         "completeness_min_bps": 9000,
         "availability_min_bps": 9000,
         "max_safety_violations": 0,
-        "min_shadow_days": 3,
+        "min_shadow_days": 1,
         "min_parity_cases_per_source": 200,
         "min_cohort_e2e_queries": 500,
         "confidence_method": "one-sided-wilson-95",
@@ -92,8 +92,9 @@ def test_documented_confidence_method_is_the_only_one_accepted():
         RecallSloV1.from_mapping(slo_mapping(confidence_method="two-sided-wilson-95"))
 
 
-def test_db05_no_longer_states_the_superseded_fourteen_day_window():
+def test_db05_no_longer_states_the_superseded_multi_day_windows():
     text = DB05.read_text(encoding="utf-8")
     assert "at least 14 full shadow days" not in text
-    # The prose may explain the reduction; it must not restate 14 as a requirement.
-    assert "14 days to 3" in text
+    assert "at least 3 full shadow days" not in text
+    # The prose may explain the reduction; it must not restate older floors as requirements.
+    assert "3 days to 1" in text

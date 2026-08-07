@@ -198,7 +198,7 @@ def test_reusing_a_corpus_digest_as_the_serving_corpus_is_refused(tmp_path, bund
 
 def test_slo_below_the_enforced_floor_is_refused(tmp_path):
     with pytest.raises(AssertionError):
-        build_slo(tmp_path, **{"--min-shadow-days": "2"})
+        build_slo(tmp_path, **{"--min-shadow-days": "0"})
 
 
 def test_an_empty_or_duplicate_corpus_is_refused(tmp_path):
