@@ -141,6 +141,7 @@ def _validate_payload(lane: str, payload: dict, implementation_commit: str, expe
         "original_workflow_run_id": expected["workflow_run_id"],
         "current_workflow_run_id": expected["workflow_run_id"],
         "current_workflow_run_attempt": expected["workflow_run_attempt"],
+        "workflow_run_attempt": expected["workflow_run_attempt"],
         "implementation_commit": expected["producer_commit"],
         "platform": expected["platform"],
         "workflow_file_digest": expected["workflow_file_digest"],
