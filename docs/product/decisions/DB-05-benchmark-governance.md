@@ -15,9 +15,9 @@ May the first-release product make quality and cutover claims from a personal be
 
 Use an encrypted, local personal benchmark corpus. Labels require owner review. Keep a separate private, encrypted, non-public holdout with separate keys, capabilities, and access controls from the serving corpus and benchmark-development set. Evaluation governance is not serving-memory authority: benchmark material must never become recall candidates, generation input, or serving projections. Release evidence is aggregate and body-free.
 
-The signed record must freeze numerical SLOs, denominators, confidence method, and the benchmark/holdout manifests before observation. For cutover, the plan requires at least 3 full shadow days, at least 200 independently labeled parity cases per active source, at least 500 cohort E2E queries, one-sided 95% Wilson bounds satisfying the signed minima, and zero safety violations; invalid, abstained, and source-unavailable cases remain in denominators.
+The signed record must freeze numerical SLOs, denominators, confidence method, and the benchmark/holdout manifests before observation. For cutover, the plan requires at least 1 full shadow days, at least 200 independently labeled parity cases per active source, at least 500 cohort E2E queries, one-sided 95% Wilson bounds satisfying the signed minima, and zero safety violations; invalid, abstained, and source-unavailable cases remain in denominators.
 
-These four floors are the ones `RecallSloV1` enforces; a signed record may raise them but never lower them. The shadow window was reduced from 14 days to 3 by the three-day cutover decision, which updated ADR-0028, DB-07, and the enforcing code but left this record stating 14.
+These four floors are the ones `RecallSloV1` enforces; a signed record may raise them but never lower them. The shadow window was reduced from 3 days to 1 by the one-day cutover decision, which updated ADR-0028, DB-07, and the enforcing code (earlier reduction: 14 days to 3).
 
 ## Required evidence and signatures
 

@@ -392,7 +392,7 @@ def test_g016_a3_holdout_is_exact_subset_of_benchmark_still_refuses() -> None:
 @pytest.mark.parametrize(
     "field,value,match",
     [
-        ("min_shadow_days", 2, "out of required range"),
+        ("min_shadow_days", 0, "out of required range"),
         ("min_parity_cases_per_source", 199, "out of required range"),
         ("min_cohort_e2e_queries", 499, "out of required range"),
         ("max_safety_violations", 1, "out of required range"),
@@ -410,12 +410,12 @@ def test_g016_a4_slo_below_plan_minima_refuses_construction(
 
 def test_g016_a4_slo_at_exact_plan_minima_constructs() -> None:
     slo = _slo(
-        min_shadow_days=3,
+        min_shadow_days=1,
         min_parity_cases_per_source=200,
         min_cohort_e2e_queries=500,
         max_safety_violations=0,
     )
-    assert slo.min_shadow_days == 3
+    assert slo.min_shadow_days == 1
     assert slo.min_parity_cases_per_source == 200
     assert slo.min_cohort_e2e_queries == 500
     assert slo.max_safety_violations == 0

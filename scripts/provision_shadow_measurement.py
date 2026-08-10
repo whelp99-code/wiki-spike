@@ -123,7 +123,7 @@ def provision(output_dir: Path) -> None:
         "completeness_min_bps": 7000,
         "availability_min_bps": 9500,
         "max_safety_violations": 0,
-        "min_shadow_days": 3,
+        "min_shadow_days": 1,
         "min_parity_cases_per_source": 200,
         "min_cohort_e2e_queries": 500,
         "confidence_method": "one-sided-wilson-95",

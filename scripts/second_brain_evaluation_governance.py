@@ -245,7 +245,7 @@ def build_parser() -> argparse.ArgumentParser:
     slo.add_argument("--citation-min-bps", type=int, required=True)
     slo.add_argument("--completeness-min-bps", type=int, required=True)
     slo.add_argument("--availability-min-bps", type=int, required=True)
-    slo.add_argument("--min-shadow-days", type=int, default=3)
+    slo.add_argument("--min-shadow-days", type=int, default=1)
     slo.add_argument("--min-parity-cases-per-source", type=int, default=200)
     slo.add_argument("--min-cohort-e2e-queries", type=int, default=500)
     slo.add_argument("--out")

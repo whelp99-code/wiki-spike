@@ -37,7 +37,7 @@ from wiki_spike.composition.second_brain_shadow_measurement import (
 # _MAX_INTERVAL_SECONDS apart. Warn well before that so the cohort is saveable.
 CLIFF_SECONDS = 3600
 STALL_WARN_SECONDS = 2400
-WINDOW_SECONDS = 72 * 3600
+_DEFAULT_WINDOW_SECONDS = 24 * 3600
 
 
 def _now() -> datetime:
@@ -46,6 +46,27 @@ def _now() -> datetime:
 
 def _instant(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _window_seconds(cohort: Path) -> int:
+    """Read the measurement window from the cohort contract when present."""
+    path = cohort / "contract.json"
+    if not path.exists():
+        return _DEFAULT_WINDOW_SECONDS
+    try:
+        days = int(json.loads(path.read_text(encoding="utf-8"))["min_shadow_days"])
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return _DEFAULT_WINDOW_SECONDS
+    if days < 1:
+        return _DEFAULT_WINDOW_SECONDS
+    return days * 86400
+
+
+def _window_label(seconds: int) -> str:
+    days = seconds / 86400
+    if days == int(days):
+        return f"{int(days)}d"
+    return f"{seconds // 3600}h"
 
 
 def _fingerprint(cohort: Path) -> str:
@@ -86,6 +107,7 @@ def inspect(cohort: Path) -> dict:
     last = _last_sample_at(cohort)
     first = _first_sample_at(cohort)
     silence = (_now() - last).total_seconds() if last else None
+    window = _window_seconds(cohort)
 
     try:
         collector = open_measurement(
@@ -103,7 +125,7 @@ def inspect(cohort: Path) -> dict:
         report = report_measurement(collector)
     except Exception as exc:  # cohort no longer opens at all
         return {"state": "dead", "detail": f"cohort will not open: {exc}",
-                "silence_seconds": silence}
+                "silence_seconds": silence, "window_seconds": window}
 
     if report["outcome"] == "EVIDENCE_COMPLETE_NON_SERVING":
         state = "complete"
@@ -114,14 +136,14 @@ def inspect(cohort: Path) -> dict:
     else:
         state = "collecting"
 
-    eta = (first + timedelta(seconds=WINDOW_SECONDS)).isoformat().replace("+00:00", "Z") if first else None
+    eta = (first + timedelta(seconds=window)).isoformat().replace("+00:00", "Z") if first else None
     return {
         "state": state,
         "outcome": report["outcome"],
         "samples": report["sample_count"],
         "elapsed_seconds": report["continuous_seconds"],
-        "window_seconds": WINDOW_SECONDS,
-        "percent": round(100 * report["continuous_seconds"] / WINDOW_SECONDS, 2),
+        "window_seconds": window,
+        "percent": round(100 * report["continuous_seconds"] / window, 2) if window else 0.0,
         "silence_seconds": round(silence) if silence is not None else None,
         "eta": eta,
         "reasons": report["reasons"],
@@ -143,7 +165,7 @@ def _restart(cohort: Path, status: dict) -> dict:
     dead cohort is archived rather than deleted because its signed journal is
     evidence of what actually happened.
 
-    This restarts the 72-hour clock from zero. It does not, and must not,
+    This restarts the measurement clock from zero. It does not, and must not,
     carry elapsed time across the break: the break is real.
     """
     stamp = _now().strftime("%Y%m%dT%H%M%SZ")
@@ -161,8 +183,9 @@ def _restart(cohort: Path, status: dict) -> dict:
     if result.returncode != 0:
         return {"ok": False,
                 "error": f"provisioning failed (rc={result.returncode}): {result.stderr.strip()[:200]}"}
-    eta = (_now() + timedelta(seconds=WINDOW_SECONDS)).isoformat(timespec="seconds").replace("+00:00", "Z")
-    return {"ok": True, "archive": str(archive), "eta": eta}
+    window = _window_seconds(cohort)
+    eta = (_now() + timedelta(seconds=window)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return {"ok": True, "archive": str(archive), "eta": eta, "window_seconds": window}
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -171,7 +194,7 @@ def main() -> int:
                         help="raise a macOS notification when the state changes")
     parser.add_argument("--auto-restart", action="store_true",
                         help="on death, archive the cohort and provision a fresh one "
-                             "at the same path, restarting the 72h clock from zero")
+                             "at the same path, restarting the measurement clock from zero")
     args = parser.parse_args()
 
     cohort = Path(args.cohort_dir)
@@ -188,9 +211,12 @@ def main() -> int:
         return 0
     marker.write_text(status["state"])
 
+    window = int(status.get("window_seconds") or _window_seconds(cohort))
+    label = _window_label(window)
+
     if status["state"] == "complete":
         _notify("Shadow measurement complete",
-                f"72h window closed with {status['samples']} samples. Outcome: {status['outcome']}.")
+                f"{label} window closed with {status['samples']} samples. Outcome: {status['outcome']}.")
     elif status["state"] == "dead":
         if args.auto_restart:
             restart = _restart(cohort, status)
@@ -200,9 +226,10 @@ def main() -> int:
                 # must degrade rather than raise: a restart notification that
                 # crashes is worse than the failure it reports.
                 lost = f"{status.get('samples', '?')} samples, {status.get('percent', '?')}%"
+                restart_label = _window_label(int(restart.get("window_seconds") or window))
                 _notify("Shadow measurement restarted",
                         f"Previous cohort died ({lost}) and was archived. "
-                        f"A fresh 72h window started; it now ends {restart['eta']}.")
+                        f"A fresh {restart_label} window started; it now ends {restart['eta']}.")
             else:
                 _notify("Shadow measurement DIED and could not restart",
                         f"{restart['error']} — manual reset required.")
