@@ -1,9 +1,9 @@
-"""Pin the DB-05 decision record against the SLO floors the code enforces.
+"""Pin the proposed DB-05 decision record against the SLO floors the code enforces.
 
-The one-day cutover decision lowered the shadow window from 3 days to 1 and
-updated ADR-0028, DB-07 and RecallSloV1 in lockstep with DB-05. DB-05 is a
-globally fatal decision, so a signed record frozen against a stale number
-would contradict the code that validates it.
+The 3-day shadow floor is a proposal pending signed superseding
+reconciliation of DB-05 and DB-07. DB-05 is a globally fatal decision, so a
+signed record frozen against a stale number would contradict the code that
+validates it.
 
 These tests read the numbers out of the prose and assert the code accepts a
 record at exactly those floors and rejects one below them, so the document and
@@ -32,7 +32,7 @@ DB05 = (
 )
 
 CLAIM = re.compile(
-    r"at least (?P<days>\d+) full shadow days, "
+    r"at least (?P<days>\d+) full shadow days(?: \(72 hours\))?, "
     r"at least (?P<parity>\d+) independently labeled parity cases per active source, "
     r"at least (?P<e2e>\d+) cohort E2E queries, "
     r"(?P<confidence>one-sided 95% Wilson) bounds"
@@ -58,7 +58,7 @@ def slo_mapping(**overrides) -> dict[str, object]:
         "completeness_min_bps": 9000,
         "availability_min_bps": 9000,
         "max_safety_violations": 0,
-        "min_shadow_days": 1,
+        "min_shadow_days": 3,
         "min_parity_cases_per_source": 200,
         "min_cohort_e2e_queries": 500,
         "confidence_method": "one-sided-wilson-95",
@@ -92,9 +92,10 @@ def test_documented_confidence_method_is_the_only_one_accepted():
         RecallSloV1.from_mapping(slo_mapping(confidence_method="two-sided-wilson-95"))
 
 
-def test_db05_no_longer_states_the_superseded_multi_day_windows():
+def test_db05_states_the_proposed_3_day_floor_without_stale_current_assertions():
     text = DB05.read_text(encoding="utf-8")
+    assert "at least 3 full shadow days" in text
     assert "at least 14 full shadow days" not in text
-    assert "at least 3 full shadow days" not in text
-    # The prose may explain the reduction; it must not restate older floors as requirements.
-    assert "3 days to 1" in text
+    assert "3 days to 1" not in text
+    assert "14 days to 3" not in text
+    assert "signed superseding reconciliation" in text

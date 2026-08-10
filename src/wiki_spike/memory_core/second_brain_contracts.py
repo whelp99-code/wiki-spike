@@ -22,6 +22,18 @@ CONTRACT_DIGEST_VERSION = "second-brain-contract-digest-v1"
 CONTRACT_ENVELOPE_VERSION = "second-brain-contract-envelope-v1"
 DECISION_SIGNATURE_VERSION = "second-brain-decision-signature-v1"
 CONTRACT_SIGNATURE_VERSION = "second-brain-contract-signature-v1"
+SOURCE_ITEM_DISPOSITION_VERSION = "second-brain-source-item-disposition-v1"
+SOURCE_ITEM_VERSION = "second-brain-source-item-v1"
+SOURCE_PAGE_VERSION = "second-brain-source-page-v1"
+SOURCE_CHECKPOINT_VERSION = "second-brain-source-checkpoint-v1"
+CUTOVER_RUNBOOK_VERSION = "second-brain-cutover-runbook-v1"
+PRE_MUTATION_ROLLBACK_RECEIPT_VERSION = "second-brain-pre-mutation-rollback-receipt-v1"
+ROUTE_SWITCH_RECEIPT_VERSION = "second-brain-route-switch-receipt-v1"
+ROUTE_AUTHORITY_STATE_VERSION = "second-brain-route-authority-state-v1"
+ACTIVATION_RECEIPT_V1 = "second-brain-activation-receipt-v1"
+CONSENT_TRANSFER_RECEIPT_V1 = "second-brain-consent-transfer-receipt-v1"
+DECOMMISSION_CERTIFICATE_REQUEST_V1 = "second-brain-decommission-certificate-request-v1"
+DECOMMISSION_CERTIFICATE_V1 = "second-brain-decommission-certificate-v1"
 DECISION_SIGNING_DOMAIN = b"wiki-spike.second-brain.decision.v1\x00"
 CONTRACT_SIGNING_DOMAIN = b"wiki-spike.second-brain.contract.v1\x00"
 DECISION_IDS = frozenset({f"DB-{number:02d}" for number in range(1, 9)})
@@ -64,6 +76,190 @@ def _digest(value: Any, field: str) -> str:
     value = _text(value, field)
     if not _DIGEST_RE.fullmatch(value): raise InvalidContractValue(f"{field} must be a lowercase SHA-256 digest")
     return value
+
+
+def _nullable_text(value: Any, field: str) -> str | None:
+    if value is None:
+        return None
+    return _text(value, field)
+
+
+def _source_cursor(value: Any, field: str) -> str | None:
+    value = _nullable_text(value, field)
+    if value is not None and (len(value) > 512 or "\x00" in value):
+        raise InvalidContractValue(f"{field} must be a bounded opaque cursor")
+    return value
+
+
+def _native_identifier(value: Any, field: str) -> str:
+    value = _text(value, field)
+    if len(value) > 512 or "\x00" in value:
+        raise InvalidContractValue(f"{field} must be a bounded opaque identifier")
+    return value
+
+
+def route_switch_digest(domain: str, body: Mapping[str, Any]) -> str:
+    """Domain-separate immutable route-control DTO digests.
+
+    Stage-0's generic contract digest intentionally has no route-control
+    dependencies.  Keeping this tiny helper here avoids an import cycle with
+    the Stage-3 ledger while retaining an explicit, canonical digest domain.
+    """
+    if not isinstance(domain, str) or not domain:
+        raise InvalidContractValue("route switch digest domain must be non-empty")
+    try:
+        return sha256(canonical_bytes({"domain": domain, "body": dict(body)})).hexdigest()
+    except (TypeError, ValueError) as exc:
+        raise InvalidContractValue("route switch digest body must be canonical") from exc
+
+
+@dataclass(frozen=True)
+class SourceItemDispositionV1:
+    """A content-free, retry-safe outcome for one pinned native revision."""
+
+    disposition_version: str; native_id: str; revision: str; disposition: str; reason_code: str; retryable: bool
+    FIELDS: ClassVar[set[str]] = {"disposition_version", "native_id", "revision", "disposition", "reason_code", "retryable"}
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "SourceItemDispositionV1":
+        v = _strict(data, cls.FIELDS)
+        if v["disposition_version"] != SOURCE_ITEM_DISPOSITION_VERSION:
+            raise UnsupportedContractVersion("unsupported disposition_version")
+        disposition = _text(v["disposition"], "disposition")
+        if disposition not in {"ACCEPTED", "DUPLICATE", "TOMBSTONE", "SKIPPED", "QUARANTINED", "TRANSIENT_FAILURE"}:
+            raise InvalidContractValue("unsupported source item disposition")
+        reason_code = _text(v["reason_code"], "reason_code")
+        if re.fullmatch(r"[a-z][a-z0-9-]{0,63}", reason_code) is None:
+            raise InvalidContractValue("reason_code must be a bounded non-secret code")
+        if not isinstance(v["retryable"], bool) or v["retryable"] != (disposition == "TRANSIENT_FAILURE"):
+            raise InvalidContractValue("only transient failures may be retryable")
+        return cls(SOURCE_ITEM_DISPOSITION_VERSION, _native_identifier(v["native_id"], "native_id"), _native_identifier(v["revision"], "revision"), disposition, reason_code, v["retryable"])
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {"disposition_version": self.disposition_version, "native_id": self.native_id, "revision": self.revision, "disposition": self.disposition, "reason_code": self.reason_code, "retryable": self.retryable}
+
+
+@dataclass(frozen=True)
+class SourceItemV1:
+    """One read-only native item. Raw content and credentials never cross this DTO."""
+
+    item_version: str; native_id: str; revision: str; observed_cursor: str | None; observed_watermark: str | None; tombstone: bool; content_digest: str | None; disposition: SourceItemDispositionV1
+    FIELDS: ClassVar[set[str]] = {"item_version", "native_id", "revision", "observed_cursor", "observed_watermark", "tombstone", "content_digest", "disposition"}
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "SourceItemV1":
+        v = _strict(data, cls.FIELDS)
+        if v["item_version"] != SOURCE_ITEM_VERSION:
+            raise UnsupportedContractVersion("unsupported item_version")
+        if not isinstance(v["tombstone"], bool) or not isinstance(v["disposition"], Mapping):
+            raise InvalidContractValue("source item tombstone and disposition are required")
+        disposition = SourceItemDispositionV1.from_mapping(v["disposition"])
+        native_id, revision = _native_identifier(v["native_id"], "native_id"), _native_identifier(v["revision"], "revision")
+        if (disposition.native_id, disposition.revision) != (native_id, revision):
+            raise InvalidContractValue("source item disposition must bind its native identity and revision")
+        digest = v["content_digest"]
+        if v["tombstone"]:
+            if disposition.disposition != "TOMBSTONE" or digest is not None:
+                raise InvalidContractValue("tombstones require TOMBSTONE disposition and no content digest")
+        elif disposition.disposition == "TOMBSTONE" or not isinstance(digest, str):
+            raise InvalidContractValue("non-tombstone source items require a non-tombstone disposition and digest")
+        if digest is not None:
+            digest = _digest(digest, "content_digest")
+        return cls(SOURCE_ITEM_VERSION, native_id, revision, _source_cursor(v["observed_cursor"], "observed_cursor"), _source_cursor(v["observed_watermark"], "observed_watermark"), v["tombstone"], digest, disposition)
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {"item_version": self.item_version, "native_id": self.native_id, "revision": self.revision, "observed_cursor": self.observed_cursor, "observed_watermark": self.observed_watermark, "tombstone": self.tombstone, "content_digest": self.content_digest, "disposition": self.disposition.to_mapping()}
+
+
+@dataclass(frozen=True)
+class SourcePageV1:
+    """A bounded, pinned and explicitly non-authorizing source read page."""
+
+    page_version: str; source_profile: str; source_scope: str; cursor: str | None; watermark: str | None; next_cursor: str | None; next_watermark: str | None; complete_snapshot: bool; items: tuple[SourceItemV1, ...]; live_operation_authorized: bool
+    FIELDS: ClassVar[set[str]] = {"page_version", "source_profile", "source_scope", "cursor", "watermark", "next_cursor", "next_watermark", "complete_snapshot", "items", "live_operation_authorized"}
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "SourcePageV1":
+        v = _strict(data, cls.FIELDS)
+        if v["page_version"] != SOURCE_PAGE_VERSION:
+            raise UnsupportedContractVersion("unsupported page_version")
+        source_profile = _text(v["source_profile"], "source_profile")
+        if source_profile not in {"Codex", "Claude/Memory Bank", "Git", "Markdown"}:
+            raise InvalidContractValue("source page must bind one approved source profile")
+        if not isinstance(v["complete_snapshot"], bool) or v["live_operation_authorized"] is not False or not isinstance(v["items"], list):
+            raise InvalidContractValue("source page must be complete-state typed and never authorize a live operation")
+        cursor, watermark = _source_cursor(v["cursor"], "cursor"), _source_cursor(v["watermark"], "watermark")
+        next_cursor, next_watermark = _source_cursor(v["next_cursor"], "next_cursor"), _source_cursor(v["next_watermark"], "next_watermark")
+        if (cursor is None) != (watermark is None):
+            raise InvalidContractValue("current cursor and watermark must be pinned as a pair")
+        if (next_cursor is None) != (next_watermark is None):
+            raise InvalidContractValue("next cursor and watermark must be pinned as a pair")
+        items = tuple(SourceItemV1.from_mapping(item) for item in v["items"] if isinstance(item, Mapping))
+        if len(items) != len(v["items"]) or len(items) > 1000:
+            raise InvalidContractValue("source page items must be bounded objects")
+        identities = tuple((item.native_id, item.revision) for item in items)
+        if identities != tuple(sorted(identities)) or len(set(identities)) != len(identities):
+            raise InvalidContractValue("source page items must be sorted and unique by native revision")
+        if any((item.observed_cursor, item.observed_watermark) != (next_cursor, next_watermark) for item in items):
+            raise InvalidContractValue("each source item must pin the returned cursor and watermark")
+        if any(item.tombstone for item in items) and not v["complete_snapshot"]:
+            raise InvalidContractValue("tombstones require an explicit complete snapshot")
+        return cls(SOURCE_PAGE_VERSION, source_profile, _native_identifier(v["source_scope"], "source_scope"), cursor, watermark, next_cursor, next_watermark, v["complete_snapshot"], items, False)
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {"page_version": self.page_version, "source_profile": self.source_profile, "source_scope": self.source_scope, "cursor": self.cursor, "watermark": self.watermark, "next_cursor": self.next_cursor, "next_watermark": self.next_watermark, "complete_snapshot": self.complete_snapshot, "items": [item.to_mapping() for item in self.items], "live_operation_authorized": False}
+
+    @property
+    def digest(self) -> str:
+        """Canonical page-body binding; raw source content never enters this digest."""
+        return sha256(canonical_bytes(self.to_mapping())).hexdigest()
+
+
+@dataclass(frozen=True)
+class SourceCheckpointV1:
+    """A compare-and-swap checkpoint; dispositions are durable before advancement."""
+
+    checkpoint_version: str; source_profile: str; source_scope: str; observed_page_digest: str; prior_checkpoint_digest: str | None; cursor: str | None; watermark: str | None; dispositions: tuple[SourceItemDispositionV1, ...]; tombstones: tuple[tuple[str, str], ...]; checkpoint_digest: str; live_operation_authorized: bool
+    FIELDS: ClassVar[set[str]] = {"checkpoint_version", "source_profile", "source_scope", "observed_page_digest", "prior_checkpoint_digest", "cursor", "watermark", "dispositions", "tombstones", "checkpoint_digest", "live_operation_authorized"}
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "SourceCheckpointV1":
+        v = _strict(data, cls.FIELDS)
+        if v["checkpoint_version"] != SOURCE_CHECKPOINT_VERSION or v["live_operation_authorized"] is not False:
+            raise InvalidContractValue("source checkpoints are versioned and never authorize live operations")
+        source_profile = _text(v["source_profile"], "source_profile")
+        if source_profile not in {"Codex", "Claude/Memory Bank", "Git", "Markdown"}:
+            raise InvalidContractValue("checkpoint must bind one approved source profile")
+        if not isinstance(v["dispositions"], list) or not isinstance(v["tombstones"], list):
+            raise InvalidContractValue("checkpoint dispositions and tombstones must be arrays")
+        dispositions = tuple(SourceItemDispositionV1.from_mapping(item) for item in v["dispositions"] if isinstance(item, Mapping))
+        if len(dispositions) != len(v["dispositions"]):
+            raise InvalidContractValue("checkpoint dispositions must be objects")
+        identities = tuple((item.native_id, item.revision) for item in dispositions)
+        if identities != tuple(sorted(identities)) or len(set(identities)) != len(identities):
+            raise InvalidContractValue("checkpoint dispositions must be sorted and unique")
+        tombstones: list[tuple[str, str]] = []
+        for entry in v["tombstones"]:
+            if not isinstance(entry, Mapping):
+                raise InvalidContractValue("checkpoint tombstones must be objects")
+            item = _strict(entry, {"native_id", "revision"})
+            tombstones.append((_native_identifier(item["native_id"], "tombstone.native_id"), _native_identifier(item["revision"], "tombstone.revision")))
+        ordered_tombstones = tuple(tombstones)
+        if ordered_tombstones != tuple(sorted(ordered_tombstones)) or len(set(ordered_tombstones)) != len(ordered_tombstones):
+            raise InvalidContractValue("checkpoint tombstones must be sorted and unique")
+        if ordered_tombstones != tuple((d.native_id, d.revision) for d in dispositions if d.disposition == "TOMBSTONE"):
+            raise InvalidContractValue("checkpoint tombstones must exactly match TOMBSTONE dispositions")
+        cursor, watermark = _source_cursor(v["cursor"], "cursor"), _source_cursor(v["watermark"], "watermark")
+        if (cursor is None) != (watermark is None):
+            raise InvalidContractValue("checkpoint cursor and watermark must be pinned as a pair")
+        digest = _digest(v["checkpoint_digest"], "checkpoint_digest")
+        body = {key: value for key, value in v.items() if key != "checkpoint_digest"}
+        if sha256(canonical_bytes(body)).hexdigest() != digest:
+            raise InvalidContractValue("checkpoint_digest does not bind the checkpoint body")
+        return cls(SOURCE_CHECKPOINT_VERSION, source_profile, _native_identifier(v["source_scope"], "source_scope"), _digest(v["observed_page_digest"], "observed_page_digest"), None if v["prior_checkpoint_digest"] is None else _digest(v["prior_checkpoint_digest"], "prior_checkpoint_digest"), cursor, watermark, dispositions, ordered_tombstones, digest, False)
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {"checkpoint_version": self.checkpoint_version, "source_profile": self.source_profile, "source_scope": self.source_scope, "observed_page_digest": self.observed_page_digest, "prior_checkpoint_digest": self.prior_checkpoint_digest, "cursor": self.cursor, "watermark": self.watermark, "dispositions": [item.to_mapping() for item in self.dispositions], "tombstones": [{"native_id": native_id, "revision": revision} for native_id, revision in self.tombstones], "checkpoint_digest": self.checkpoint_digest, "live_operation_authorized": False}
 
 
 def _names(value: Any, field: str, *, nonempty: bool = False) -> tuple[str, ...]:
@@ -357,3 +553,617 @@ def resolve_second_brain_contract(decisions: Sequence[DecisionRecordV1], scope: 
     contract = SecondBrainContractDigestV1.create(decisions, scope, expected_scopes)
     if aggregate is None or aggregate.contract != contract or not aggregate.verify(trusted_keys): raise InvalidContractValue("usable RESOLVED requires a valid aggregate envelope")
     return ContractResolutionV1("RESOLVED", contract, ())
+
+
+_ROUTE_APPROVER_ROLES = ("migration", "product", "quality", "security")
+_ROUTE_RECEIPT_OPERATIONS = frozenset({"REHEARSE", "SWITCH_ATOMIC", "VERIFY"})
+_ROUTE_VISIBILITY_MAXIMUM = 64
+
+
+def _route_text(value: Any, field: str, *, maximum: int = 256) -> str:
+    value = _text(value, field)
+    if len(value) > maximum or "\x00" in value:
+        raise InvalidContractValue(f"{field} must be a bounded opaque value")
+    return value
+
+
+def _route_epoch(value: Any, field: str) -> str:
+    return _positive_decimal(value, field)
+
+
+@dataclass(frozen=True, slots=True)
+class RouteApprovalDigestV1:
+    """One external four-role approval reference; approval payloads stay external."""
+
+    role: str
+    approval_digest: str
+    FIELDS: ClassVar[set[str]] = {"role", "approval_digest"}
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "RouteApprovalDigestV1":
+        values = _strict(data, cls.FIELDS)
+        role = _route_text(values["role"], "approval.role", maximum=32).lower()
+        if role not in _ROUTE_APPROVER_ROLES:
+            raise InvalidContractValue("approval.role is not a required cutover role")
+        return cls(role, _digest(values["approval_digest"], "approval.approval_digest"))
+
+    def to_mapping(self) -> dict[str, str]:
+        return {"role": self.role, "approval_digest": self.approval_digest}
+
+
+@dataclass(frozen=True, slots=True)
+class CutoverRunbookV1:
+    """Closed, hash-bound route runbook; it is evidence, never live authority."""
+
+    runbook_version: str
+    cohort_manifest_digest: str
+    cutover_decision_digest: str
+    route_authority: str
+    target: str
+    generation_digest: str
+    route_version: str
+    capability_epoch: str
+    visibility: str
+    pre_mutation_rollback_target: str
+    pre_mutation_rollback_receipt_digest: str
+    approval_digests: tuple[RouteApprovalDigestV1, ...]
+    postcheck_contract_digest: str
+    runbook_digest: str
+    FIELDS: ClassVar[set[str]] = {
+        "runbook_version", "cohort_manifest_digest", "cutover_decision_digest",
+        "route_authority", "target", "generation_digest", "route_version",
+        "capability_epoch", "visibility", "pre_mutation_rollback_target",
+        "pre_mutation_rollback_receipt_digest", "approval_digests",
+        "postcheck_contract_digest", "runbook_digest",
+    }
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "CutoverRunbookV1":
+        values = _strict(data, cls.FIELDS)
+        if values["runbook_version"] != CUTOVER_RUNBOOK_VERSION:
+            raise UnsupportedContractVersion("unsupported cutover runbook version")
+        raw_approvals = values["approval_digests"]
+        if not isinstance(raw_approvals, list):
+            raise InvalidContractValue("approval_digests must be a canonical array")
+        approvals = tuple(
+            RouteApprovalDigestV1.from_mapping(item)
+            for item in raw_approvals
+            if isinstance(item, Mapping)
+        )
+        if len(approvals) != len(raw_approvals):
+            raise InvalidContractValue("approval_digests entries must be objects")
+        roles = tuple(item.role for item in approvals)
+        if roles != _ROUTE_APPROVER_ROLES or len(set(roles)) != len(_ROUTE_APPROVER_ROLES):
+            raise InvalidContractValue(
+                "approval_digests must be canonically ordered exact migration, product, quality, security"
+            )
+        body = {
+            "runbook_version": CUTOVER_RUNBOOK_VERSION,
+            "cohort_manifest_digest": _digest(values["cohort_manifest_digest"], "cohort_manifest_digest"),
+            "cutover_decision_digest": _digest(values["cutover_decision_digest"], "cutover_decision_digest"),
+            "route_authority": _route_text(values["route_authority"], "route_authority"),
+            "target": _route_text(values["target"], "target"),
+            "generation_digest": _digest(values["generation_digest"], "generation_digest"),
+            "route_version": _route_text(values["route_version"], "route_version", maximum=64),
+            "capability_epoch": _route_epoch(values["capability_epoch"], "capability_epoch"),
+            "visibility": _route_text(values["visibility"], "visibility", maximum=_ROUTE_VISIBILITY_MAXIMUM),
+            "pre_mutation_rollback_target": _route_text(
+                values["pre_mutation_rollback_target"], "pre_mutation_rollback_target"
+            ),
+            "pre_mutation_rollback_receipt_digest": _digest(
+                values["pre_mutation_rollback_receipt_digest"],
+                "pre_mutation_rollback_receipt_digest",
+            ),
+            "approval_digests": [item.to_mapping() for item in approvals],
+            "postcheck_contract_digest": _digest(
+                values["postcheck_contract_digest"], "postcheck_contract_digest"
+            ),
+        }
+        runbook_digest = _digest(values["runbook_digest"], "runbook_digest")
+        if runbook_digest != route_switch_digest(CUTOVER_RUNBOOK_VERSION, body):
+            raise InvalidContractValue("runbook_digest does not bind the cutover runbook")
+        return cls(
+            CUTOVER_RUNBOOK_VERSION,
+            body["cohort_manifest_digest"], body["cutover_decision_digest"],
+            body["route_authority"], body["target"], body["generation_digest"],
+            body["route_version"], body["capability_epoch"], body["visibility"],
+            body["pre_mutation_rollback_target"],
+            body["pre_mutation_rollback_receipt_digest"], approvals,
+            body["postcheck_contract_digest"], runbook_digest,
+        )
+
+    def body(self) -> dict[str, Any]:
+        return {
+            "runbook_version": self.runbook_version,
+            "cohort_manifest_digest": self.cohort_manifest_digest,
+            "cutover_decision_digest": self.cutover_decision_digest,
+            "route_authority": self.route_authority,
+            "target": self.target,
+            "generation_digest": self.generation_digest,
+            "route_version": self.route_version,
+            "capability_epoch": self.capability_epoch,
+            "visibility": self.visibility,
+            "pre_mutation_rollback_target": self.pre_mutation_rollback_target,
+            "pre_mutation_rollback_receipt_digest": self.pre_mutation_rollback_receipt_digest,
+            "approval_digests": [item.to_mapping() for item in self.approval_digests],
+            "postcheck_contract_digest": self.postcheck_contract_digest,
+        }
+
+    def to_mapping(self) -> dict[str, Any]:
+        return self.body() | {"runbook_digest": self.runbook_digest}
+
+
+@dataclass(frozen=True, slots=True)
+class PreMutationRollbackReceiptV1:
+    """A closed proof of the sole allowed rollback window before mutation."""
+
+    rollback_receipt_version: str
+    cohort_manifest_digest: str
+    route_authority: str
+    target: str
+    generation_digest: str
+    route_version: str
+    rollback_target: str
+    state: str
+    live_operation_authorized: bool
+    rollback_receipt_digest: str
+    FIELDS: ClassVar[set[str]] = {
+        "rollback_receipt_version", "cohort_manifest_digest", "route_authority", "target",
+        "generation_digest", "route_version", "rollback_target", "state",
+        "live_operation_authorized", "rollback_receipt_digest",
+    }
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "PreMutationRollbackReceiptV1":
+        values = _strict(data, cls.FIELDS)
+        if values["rollback_receipt_version"] != PRE_MUTATION_ROLLBACK_RECEIPT_VERSION:
+            raise UnsupportedContractVersion("unsupported pre-mutation rollback receipt version")
+        if values["state"] != "ROUTE_SWITCHED_NO_MUTATION" or values["live_operation_authorized"] is not False:
+            raise InvalidContractValue("rollback receipt must prove ROUTE_SWITCHED_NO_MUTATION and remain non-authorizing")
+        body = {
+            "rollback_receipt_version": PRE_MUTATION_ROLLBACK_RECEIPT_VERSION,
+            "cohort_manifest_digest": _digest(values["cohort_manifest_digest"], "cohort_manifest_digest"),
+            "route_authority": _route_text(values["route_authority"], "route_authority"),
+            "target": _route_text(values["target"], "target"),
+            "generation_digest": _digest(values["generation_digest"], "generation_digest"),
+            "route_version": _route_text(values["route_version"], "route_version", maximum=64),
+            "rollback_target": _route_text(values["rollback_target"], "rollback_target"),
+            "state": "ROUTE_SWITCHED_NO_MUTATION",
+            "live_operation_authorized": False,
+        }
+        receipt_digest = _digest(values["rollback_receipt_digest"], "rollback_receipt_digest")
+        if receipt_digest != route_switch_digest(PRE_MUTATION_ROLLBACK_RECEIPT_VERSION, body):
+            raise InvalidContractValue("rollback_receipt_digest does not bind the rollback receipt")
+        return cls(
+            PRE_MUTATION_ROLLBACK_RECEIPT_VERSION, body["cohort_manifest_digest"],
+            body["route_authority"], body["target"], body["generation_digest"],
+            body["route_version"], body["rollback_target"], "ROUTE_SWITCHED_NO_MUTATION",
+            False, receipt_digest,
+        )
+
+    def body(self) -> dict[str, Any]:
+        return {
+            "rollback_receipt_version": self.rollback_receipt_version,
+            "cohort_manifest_digest": self.cohort_manifest_digest,
+            "route_authority": self.route_authority,
+            "target": self.target,
+            "generation_digest": self.generation_digest,
+            "route_version": self.route_version,
+            "rollback_target": self.rollback_target,
+            "state": self.state,
+            "live_operation_authorized": False,
+        }
+
+    def to_mapping(self) -> dict[str, Any]:
+        return self.body() | {"rollback_receipt_digest": self.rollback_receipt_digest}
+
+
+@dataclass(frozen=True, slots=True)
+class RouteAuthorityStateV1:
+    """The full canonical route state; there is no legacy or mixed-cohort form."""
+
+    state_version: str
+    route_authority: str
+    cohort_manifest_digest: str
+    cutover_decision_digest: str
+    target: str
+    resolved_scope_digest: str
+    contract_digest: str
+    source_manifest_digest: str
+    capability_manifest_digest: str
+    benchmark_manifest_digest: str
+    generation_digest: str
+    checkpoint_digest: str
+    route_version: str
+    capability_epoch: str
+    visibility: str
+    pre_mutation_rollback_receipt_digest: str
+    state: str
+    authority_revision: str
+    prior_state_digest: str | None
+    state_digest: str
+    FIELDS: ClassVar[set[str]] = {
+        "state_version", "route_authority", "cohort_manifest_digest", "cutover_decision_digest",
+        "target", "resolved_scope_digest", "contract_digest", "source_manifest_digest",
+        "capability_manifest_digest", "benchmark_manifest_digest", "generation_digest",
+        "checkpoint_digest", "route_version", "capability_epoch", "visibility",
+        "pre_mutation_rollback_receipt_digest", "state", "authority_revision",
+        "prior_state_digest", "state_digest",
+    }
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "RouteAuthorityStateV1":
+        values = _strict(data, cls.FIELDS)
+        if values["state_version"] != ROUTE_AUTHORITY_STATE_VERSION:
+            raise UnsupportedContractVersion("unsupported route authority state version")
+        if values["state"] != "CANONICAL_MUTATED":
+            raise InvalidContractValue("route authority state must be CANONICAL_MUTATED")
+        prior = values["prior_state_digest"]
+        if prior is not None:
+            prior = _digest(prior, "prior_state_digest")
+        body = {
+            "state_version": ROUTE_AUTHORITY_STATE_VERSION,
+            "route_authority": _route_text(values["route_authority"], "route_authority"),
+            "cohort_manifest_digest": _digest(values["cohort_manifest_digest"], "cohort_manifest_digest"),
+            "cutover_decision_digest": _digest(values["cutover_decision_digest"], "cutover_decision_digest"),
+            "target": _route_text(values["target"], "target"),
+            "resolved_scope_digest": _digest(values["resolved_scope_digest"], "resolved_scope_digest"),
+            "contract_digest": _digest(values["contract_digest"], "contract_digest"),
+            "source_manifest_digest": _digest(values["source_manifest_digest"], "source_manifest_digest"),
+            "capability_manifest_digest": _digest(values["capability_manifest_digest"], "capability_manifest_digest"),
+            "benchmark_manifest_digest": _digest(values["benchmark_manifest_digest"], "benchmark_manifest_digest"),
+            "generation_digest": _digest(values["generation_digest"], "generation_digest"),
+            "checkpoint_digest": _digest(values["checkpoint_digest"], "checkpoint_digest"),
+            "route_version": _route_text(values["route_version"], "route_version", maximum=64),
+            "capability_epoch": _route_epoch(values["capability_epoch"], "capability_epoch"),
+            "visibility": _route_text(values["visibility"], "visibility", maximum=_ROUTE_VISIBILITY_MAXIMUM),
+            "pre_mutation_rollback_receipt_digest": _digest(values["pre_mutation_rollback_receipt_digest"], "pre_mutation_rollback_receipt_digest"),
+            "state": "CANONICAL_MUTATED",
+            "authority_revision": _route_epoch(values["authority_revision"], "authority_revision"),
+            "prior_state_digest": prior,
+        }
+        state_digest = _digest(values["state_digest"], "state_digest")
+        if state_digest != route_switch_digest(ROUTE_AUTHORITY_STATE_VERSION, body):
+            raise InvalidContractValue("state_digest does not bind the canonical route state")
+        return cls(
+            ROUTE_AUTHORITY_STATE_VERSION, body["route_authority"], body["cohort_manifest_digest"],
+            body["cutover_decision_digest"], body["target"], body["resolved_scope_digest"],
+            body["contract_digest"], body["source_manifest_digest"],
+            body["capability_manifest_digest"], body["benchmark_manifest_digest"],
+            body["generation_digest"], body["checkpoint_digest"], body["route_version"],
+            body["capability_epoch"], body["visibility"],
+            body["pre_mutation_rollback_receipt_digest"], "CANONICAL_MUTATED",
+            body["authority_revision"], prior, state_digest,
+        )
+
+    def body(self) -> dict[str, Any]:
+        return {
+            "state_version": self.state_version,
+            "route_authority": self.route_authority,
+            "cohort_manifest_digest": self.cohort_manifest_digest,
+            "cutover_decision_digest": self.cutover_decision_digest,
+            "target": self.target,
+            "resolved_scope_digest": self.resolved_scope_digest,
+            "contract_digest": self.contract_digest,
+            "source_manifest_digest": self.source_manifest_digest,
+            "capability_manifest_digest": self.capability_manifest_digest,
+            "benchmark_manifest_digest": self.benchmark_manifest_digest,
+            "generation_digest": self.generation_digest,
+            "checkpoint_digest": self.checkpoint_digest,
+            "route_version": self.route_version,
+            "capability_epoch": self.capability_epoch,
+            "visibility": self.visibility,
+            "pre_mutation_rollback_receipt_digest": self.pre_mutation_rollback_receipt_digest,
+            "state": self.state,
+            "authority_revision": self.authority_revision,
+            "prior_state_digest": self.prior_state_digest,
+        }
+
+    def to_mapping(self) -> dict[str, Any]:
+        return self.body() | {"state_digest": self.state_digest}
+
+
+@dataclass(frozen=True, slots=True)
+class RouteSwitchReceiptV1:
+    """Hash-only switch, rehearsal, or postcheck receipt; never an authorization."""
+
+    receipt_version: str
+    operation: str
+    state: str
+    route_authority: str
+    cohort_manifest_digest: str
+    cutover_decision_digest: str
+    target: str
+    resolved_scope_digest: str
+    contract_digest: str
+    source_manifest_digest: str
+    capability_manifest_digest: str
+    benchmark_manifest_digest: str
+    generation_digest: str
+    checkpoint_digest: str
+    route_version: str
+    capability_epoch: str
+    visibility: str
+    pre_mutation_rollback_receipt_digest: str
+    route_state_digest: str
+    authority_revision: str
+    live_operation_authorized: bool
+    receipt_digest: str
+    FIELDS: ClassVar[set[str]] = {
+        "receipt_version", "operation", "state", "route_authority", "cohort_manifest_digest",
+        "cutover_decision_digest", "target", "resolved_scope_digest", "contract_digest",
+        "source_manifest_digest", "capability_manifest_digest", "benchmark_manifest_digest",
+        "generation_digest", "checkpoint_digest", "route_version", "capability_epoch",
+        "visibility", "pre_mutation_rollback_receipt_digest", "route_state_digest",
+        "authority_revision", "live_operation_authorized", "receipt_digest",
+    }
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "RouteSwitchReceiptV1":
+        values = _strict(data, cls.FIELDS)
+        if values["receipt_version"] != ROUTE_SWITCH_RECEIPT_VERSION:
+            raise UnsupportedContractVersion("unsupported route switch receipt version")
+        operation = _route_text(values["operation"], "operation", maximum=32)
+        if operation not in _ROUTE_RECEIPT_OPERATIONS:
+            raise InvalidContractValue("unsupported route receipt operation")
+        expected_state = "ROUTE_SWITCHED_NO_MUTATION" if operation == "REHEARSE" else "CANONICAL_MUTATED"
+        if values["state"] != expected_state or values["live_operation_authorized"] is not False:
+            raise InvalidContractValue("route receipt state or authorization marker is invalid")
+        body = {
+            "receipt_version": ROUTE_SWITCH_RECEIPT_VERSION,
+            "operation": operation,
+            "state": expected_state,
+            "route_authority": _route_text(values["route_authority"], "route_authority"),
+            "cohort_manifest_digest": _digest(values["cohort_manifest_digest"], "cohort_manifest_digest"),
+            "cutover_decision_digest": _digest(values["cutover_decision_digest"], "cutover_decision_digest"),
+            "target": _route_text(values["target"], "target"),
+            "resolved_scope_digest": _digest(values["resolved_scope_digest"], "resolved_scope_digest"),
+            "contract_digest": _digest(values["contract_digest"], "contract_digest"),
+            "source_manifest_digest": _digest(values["source_manifest_digest"], "source_manifest_digest"),
+            "capability_manifest_digest": _digest(values["capability_manifest_digest"], "capability_manifest_digest"),
+            "benchmark_manifest_digest": _digest(values["benchmark_manifest_digest"], "benchmark_manifest_digest"),
+            "generation_digest": _digest(values["generation_digest"], "generation_digest"),
+            "checkpoint_digest": _digest(values["checkpoint_digest"], "checkpoint_digest"),
+            "route_version": _route_text(values["route_version"], "route_version", maximum=64),
+            "capability_epoch": _route_epoch(values["capability_epoch"], "capability_epoch"),
+            "visibility": _route_text(values["visibility"], "visibility", maximum=_ROUTE_VISIBILITY_MAXIMUM),
+            "pre_mutation_rollback_receipt_digest": _digest(values["pre_mutation_rollback_receipt_digest"], "pre_mutation_rollback_receipt_digest"),
+            "route_state_digest": _digest(values["route_state_digest"], "route_state_digest"),
+            "authority_revision": _route_epoch(values["authority_revision"], "authority_revision"),
+            "live_operation_authorized": False,
+        }
+        receipt_digest = _digest(values["receipt_digest"], "receipt_digest")
+        if receipt_digest != route_switch_digest(ROUTE_SWITCH_RECEIPT_VERSION, body):
+            raise InvalidContractValue("receipt_digest does not bind the route receipt")
+        return cls(
+            ROUTE_SWITCH_RECEIPT_VERSION, operation, expected_state,
+            body["route_authority"], body["cohort_manifest_digest"],
+            body["cutover_decision_digest"], body["target"], body["resolved_scope_digest"],
+            body["contract_digest"], body["source_manifest_digest"],
+            body["capability_manifest_digest"], body["benchmark_manifest_digest"],
+            body["generation_digest"], body["checkpoint_digest"], body["route_version"],
+            body["capability_epoch"], body["visibility"],
+            body["pre_mutation_rollback_receipt_digest"], body["route_state_digest"],
+            body["authority_revision"], False, receipt_digest,
+        )
+
+    @classmethod
+    def create(cls, **values: Any) -> "RouteSwitchReceiptV1":
+        body = dict(values)
+        body["receipt_version"] = ROUTE_SWITCH_RECEIPT_VERSION
+        body["live_operation_authorized"] = False
+        body["receipt_digest"] = route_switch_digest(
+            ROUTE_SWITCH_RECEIPT_VERSION,
+            {key: value for key, value in body.items() if key != "receipt_digest"},
+        )
+        return cls.from_mapping(body)
+
+    def body(self) -> dict[str, Any]:
+        return {
+            "receipt_version": self.receipt_version,
+            "operation": self.operation,
+            "state": self.state,
+            "route_authority": self.route_authority,
+            "cohort_manifest_digest": self.cohort_manifest_digest,
+            "cutover_decision_digest": self.cutover_decision_digest,
+            "target": self.target,
+            "resolved_scope_digest": self.resolved_scope_digest,
+            "contract_digest": self.contract_digest,
+            "source_manifest_digest": self.source_manifest_digest,
+            "capability_manifest_digest": self.capability_manifest_digest,
+            "benchmark_manifest_digest": self.benchmark_manifest_digest,
+            "generation_digest": self.generation_digest,
+            "checkpoint_digest": self.checkpoint_digest,
+            "route_version": self.route_version,
+            "capability_epoch": self.capability_epoch,
+            "visibility": self.visibility,
+            "pre_mutation_rollback_receipt_digest": self.pre_mutation_rollback_receipt_digest,
+            "route_state_digest": self.route_state_digest,
+            "authority_revision": self.authority_revision,
+            "live_operation_authorized": False,
+        }
+
+    def to_mapping(self) -> dict[str, Any]:
+        return self.body() | {"receipt_digest": self.receipt_digest}
+
+
+# CODE-06 deliberately keeps signatures structurally closed here.  Verification
+# is a deployment concern: the public CLI must never learn a key, registry, or
+# trusted clock from argv or a serialized artifact.
+def _decommission_signature(value: Any, field: str) -> str:
+    value = _route_text(value, field, maximum=4096)
+    if any(character.isspace() for character in value):
+        raise InvalidContractValue(f"{field} must be compact signature evidence")
+    try:
+        encoded = b64decode(value, validate=True)
+    except Exception as exc:
+        raise InvalidContractValue(f"{field} must be base64 Ed25519 evidence") from exc
+    if len(encoded) != 64:
+        raise InvalidContractValue(f"{field} must be a 64-byte Ed25519 signature")
+    return value
+
+
+def _decommission_approvals(value: Any, field: str) -> tuple[RouteApprovalDigestV1, ...]:
+    if not isinstance(value, list):
+        raise InvalidContractValue(f"{field} must be a canonical array")
+    approvals = tuple(RouteApprovalDigestV1.from_mapping(item) for item in value if isinstance(item, Mapping))
+    if len(approvals) != len(value) or tuple(item.role for item in approvals) != _ROUTE_APPROVER_ROLES:
+        raise InvalidContractValue(
+            f"{field} must be exact canonically ordered migration, product, quality, security"
+        )
+    return approvals
+
+
+@dataclass(frozen=True, slots=True)
+class ActivationReceiptV1:
+    """Signed, non-live activation evidence; cryptographic trust is injected."""
+
+    activation_receipt_version: str; workspace_ref: str; source_ref: str; route_authority: str
+    route_state_digest: str; route_receipt_digest: str; cutover_decision_digest: str
+    cohort_manifest_digest: str; activated_at: str; approval_digests: tuple[RouteApprovalDigestV1, ...]
+    state: str; live_operation_authorized: bool; signer_ref: str; signer_algorithm: str
+    key_id: str; activation_digest: str; signature: str
+    FIELDS: ClassVar[set[str]] = {
+        "activation_receipt_version", "workspace_ref", "source_ref", "route_authority",
+        "route_state_digest", "route_receipt_digest", "cutover_decision_digest",
+        "cohort_manifest_digest", "activated_at", "approval_digests", "state",
+        "live_operation_authorized", "signer_ref", "signer_algorithm", "key_id",
+        "activation_digest", "signature",
+    }
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "ActivationReceiptV1":
+        values = _strict(data, cls.FIELDS)
+        if values["activation_receipt_version"] != ACTIVATION_RECEIPT_V1:
+            raise UnsupportedContractVersion("unsupported activation receipt version")
+        approvals = _decommission_approvals(values["approval_digests"], "approval_digests")
+        activated_at = values["activated_at"]
+        _canonical_utc_timestamp(activated_at, "activated_at")
+        if values["state"] != "CANONICAL_MUTATED" or values["live_operation_authorized"] is not False:
+            raise InvalidContractValue("activation must be CANONICAL_MUTATED non-live evidence")
+        if values["signer_algorithm"] != "Ed25519":
+            raise InvalidContractValue("activation signer_algorithm must be Ed25519")
+        body = {
+            "activation_receipt_version": ACTIVATION_RECEIPT_V1,
+            "workspace_ref": _route_text(values["workspace_ref"], "workspace_ref"),
+            "source_ref": _route_text(values["source_ref"], "source_ref"),
+            "route_authority": _route_text(values["route_authority"], "route_authority"),
+            "route_state_digest": _digest(values["route_state_digest"], "route_state_digest"),
+            "route_receipt_digest": _digest(values["route_receipt_digest"], "route_receipt_digest"),
+            "cutover_decision_digest": _digest(values["cutover_decision_digest"], "cutover_decision_digest"),
+            "cohort_manifest_digest": _digest(values["cohort_manifest_digest"], "cohort_manifest_digest"),
+            "activated_at": activated_at,
+            "approval_digests": [item.to_mapping() for item in approvals],
+            "state": "CANONICAL_MUTATED", "live_operation_authorized": False,
+            "signer_ref": _route_text(values["signer_ref"], "signer_ref"),
+            "signer_algorithm": "Ed25519", "key_id": _route_text(values["key_id"], "key_id"),
+        }
+        digest = _digest(values["activation_digest"], "activation_digest")
+        if digest != sha256(canonical_bytes(body)).hexdigest():
+            raise InvalidContractValue("activation_digest does not bind activation evidence")
+        return cls(ACTIVATION_RECEIPT_V1, body["workspace_ref"], body["source_ref"], body["route_authority"],
+                   body["route_state_digest"], body["route_receipt_digest"], body["cutover_decision_digest"],
+                   body["cohort_manifest_digest"], activated_at, approvals, "CANONICAL_MUTATED", False,
+                   body["signer_ref"], "Ed25519", body["key_id"], digest,
+                   _decommission_signature(values["signature"], "signature"))
+
+    def body(self) -> dict[str, Any]:
+        return {key: value for key, value in self.to_mapping().items() if key not in {"activation_digest", "signature"}}
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {"activation_receipt_version": self.activation_receipt_version, "workspace_ref": self.workspace_ref,
+                "source_ref": self.source_ref, "route_authority": self.route_authority,
+                "route_state_digest": self.route_state_digest, "route_receipt_digest": self.route_receipt_digest,
+                "cutover_decision_digest": self.cutover_decision_digest, "cohort_manifest_digest": self.cohort_manifest_digest,
+                "activated_at": self.activated_at, "approval_digests": [item.to_mapping() for item in self.approval_digests],
+                "state": self.state, "live_operation_authorized": False, "signer_ref": self.signer_ref,
+                "signer_algorithm": self.signer_algorithm, "key_id": self.key_id,
+                "activation_digest": self.activation_digest, "signature": self.signature}
+
+
+@dataclass(frozen=True, slots=True)
+class ConsentTransferReceiptV1:
+    """Signed transfer evidence.  Expiry and signature are verified by the port."""
+
+    consent_transfer_receipt_version: str; workspace_ref: str; source_ref: str; activation_digest: str
+    cutover_decision_digest: str; conservation_receipt_sha256: str; allowlist_digest: str
+    consent_ref: str; retention_revision: str; transfer_state: str; issued_at: str; expires_at: str
+    live_operation_authorized: bool; signer_ref: str; signer_algorithm: str; key_id: str
+    receipt_digest: str; signature: str
+    FIELDS: ClassVar[set[str]] = {
+        "consent_transfer_receipt_version", "workspace_ref", "source_ref", "activation_digest",
+        "cutover_decision_digest", "conservation_receipt_sha256", "allowlist_digest", "consent_ref",
+        "retention_revision", "transfer_state", "issued_at", "expires_at", "live_operation_authorized",
+        "signer_ref", "signer_algorithm", "key_id", "receipt_digest", "signature",
+    }
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "ConsentTransferReceiptV1":
+        values = _strict(data, cls.FIELDS)
+        if values["consent_transfer_receipt_version"] != CONSENT_TRANSFER_RECEIPT_V1:
+            raise UnsupportedContractVersion("unsupported consent transfer receipt version")
+        issued_at, expires_at = values["issued_at"], values["expires_at"]
+        if _canonical_utc_timestamp(issued_at, "issued_at") >= _canonical_utc_timestamp(expires_at, "expires_at"):
+            raise InvalidContractValue("consent transfer expiry must be after issue time")
+        if values["transfer_state"] != "TRANSFERRED" or values["live_operation_authorized"] is not False or values["signer_algorithm"] != "Ed25519":
+            raise InvalidContractValue("consent transfer must be TRANSFERRED non-live Ed25519 evidence")
+        body = {
+            "consent_transfer_receipt_version": CONSENT_TRANSFER_RECEIPT_V1,
+            "workspace_ref": _route_text(values["workspace_ref"], "workspace_ref"), "source_ref": _route_text(values["source_ref"], "source_ref"),
+            "activation_digest": _digest(values["activation_digest"], "activation_digest"), "cutover_decision_digest": _digest(values["cutover_decision_digest"], "cutover_decision_digest"),
+            "conservation_receipt_sha256": _digest(values["conservation_receipt_sha256"], "conservation_receipt_sha256"), "allowlist_digest": _digest(values["allowlist_digest"], "allowlist_digest"),
+            "consent_ref": _route_text(values["consent_ref"], "consent_ref"), "retention_revision": _route_epoch(values["retention_revision"], "retention_revision"),
+            "transfer_state": "TRANSFERRED", "issued_at": issued_at, "expires_at": expires_at, "live_operation_authorized": False,
+            "signer_ref": _route_text(values["signer_ref"], "signer_ref"), "signer_algorithm": "Ed25519", "key_id": _route_text(values["key_id"], "key_id"),
+        }
+        digest = _digest(values["receipt_digest"], "receipt_digest")
+        if digest != sha256(canonical_bytes(body)).hexdigest(): raise InvalidContractValue("receipt_digest does not bind consent transfer evidence")
+        return cls(CONSENT_TRANSFER_RECEIPT_V1, body["workspace_ref"], body["source_ref"], body["activation_digest"], body["cutover_decision_digest"], body["conservation_receipt_sha256"], body["allowlist_digest"], body["consent_ref"], body["retention_revision"], "TRANSFERRED", issued_at, expires_at, False, body["signer_ref"], "Ed25519", body["key_id"], digest, _decommission_signature(values["signature"], "signature"))
+
+    def body(self) -> dict[str, Any]: return {key: value for key, value in self.to_mapping().items() if key not in {"receipt_digest", "signature"}}
+    def to_mapping(self) -> dict[str, Any]:
+        return {"consent_transfer_receipt_version": self.consent_transfer_receipt_version, "workspace_ref": self.workspace_ref, "source_ref": self.source_ref, "activation_digest": self.activation_digest, "cutover_decision_digest": self.cutover_decision_digest, "conservation_receipt_sha256": self.conservation_receipt_sha256, "allowlist_digest": self.allowlist_digest, "consent_ref": self.consent_ref, "retention_revision": self.retention_revision, "transfer_state": self.transfer_state, "issued_at": self.issued_at, "expires_at": self.expires_at, "live_operation_authorized": False, "signer_ref": self.signer_ref, "signer_algorithm": self.signer_algorithm, "key_id": self.key_id, "receipt_digest": self.receipt_digest, "signature": self.signature}
+
+
+@dataclass(frozen=True, slots=True)
+class DecommissionCertificateRequestV1:
+    """Hash-only final rollback-close request; it carries no live-delete grant."""
+
+    decommission_certificate_request_version: str; workspace_ref: str; source_ref: str; activation_digest: str; retention_end: str; cutover_decision_digest: str; conservation_receipt_sha256: str; backup_manifest_digest: str; isolated_restore_target_digest: str; deterministic_recall_digest: str; allowlist_digest: str; consent_transfer_receipt_digest: str; approval_digests: tuple[RouteApprovalDigestV1, ...]; requested_state: str; destructive_action_authorized: bool; request_digest: str
+    FIELDS: ClassVar[set[str]] = {"decommission_certificate_request_version", "workspace_ref", "source_ref", "activation_digest", "retention_end", "cutover_decision_digest", "conservation_receipt_sha256", "backup_manifest_digest", "isolated_restore_target_digest", "deterministic_recall_digest", "allowlist_digest", "consent_transfer_receipt_digest", "approval_digests", "requested_state", "destructive_action_authorized", "request_digest"}
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "DecommissionCertificateRequestV1":
+        values = _strict(data, cls.FIELDS)
+        if values["decommission_certificate_request_version"] != DECOMMISSION_CERTIFICATE_REQUEST_V1 or values["requested_state"] != "ROLLBACK_CLOSED" or values["destructive_action_authorized"] is not False:
+            raise InvalidContractValue("decommission request is closed rollback evidence only")
+        retention_end = values["retention_end"]; _canonical_utc_timestamp(retention_end, "retention_end")
+        approvals = _decommission_approvals(values["approval_digests"], "approval_digests")
+        body = {"decommission_certificate_request_version": DECOMMISSION_CERTIFICATE_REQUEST_V1, "workspace_ref": _route_text(values["workspace_ref"], "workspace_ref"), "source_ref": _route_text(values["source_ref"], "source_ref"), "activation_digest": _digest(values["activation_digest"], "activation_digest"), "retention_end": retention_end, "cutover_decision_digest": _digest(values["cutover_decision_digest"], "cutover_decision_digest"), "conservation_receipt_sha256": _digest(values["conservation_receipt_sha256"], "conservation_receipt_sha256"), "backup_manifest_digest": _digest(values["backup_manifest_digest"], "backup_manifest_digest"), "isolated_restore_target_digest": _digest(values["isolated_restore_target_digest"], "isolated_restore_target_digest"), "deterministic_recall_digest": _digest(values["deterministic_recall_digest"], "deterministic_recall_digest"), "allowlist_digest": _digest(values["allowlist_digest"], "allowlist_digest"), "consent_transfer_receipt_digest": _digest(values["consent_transfer_receipt_digest"], "consent_transfer_receipt_digest"), "approval_digests": [item.to_mapping() for item in approvals], "requested_state": "ROLLBACK_CLOSED", "destructive_action_authorized": False}
+        digest = _digest(values["request_digest"], "request_digest")
+        if digest != sha256(canonical_bytes(body)).hexdigest(): raise InvalidContractValue("request_digest does not bind decommission request")
+        return cls(DECOMMISSION_CERTIFICATE_REQUEST_V1, body["workspace_ref"], body["source_ref"], body["activation_digest"], retention_end, body["cutover_decision_digest"], body["conservation_receipt_sha256"], body["backup_manifest_digest"], body["isolated_restore_target_digest"], body["deterministic_recall_digest"], body["allowlist_digest"], body["consent_transfer_receipt_digest"], approvals, "ROLLBACK_CLOSED", False, digest)
+
+    def body(self) -> dict[str, Any]: return {key: value for key, value in self.to_mapping().items() if key != "request_digest"}
+    def to_mapping(self) -> dict[str, Any]:
+        return {"decommission_certificate_request_version": self.decommission_certificate_request_version, "workspace_ref": self.workspace_ref, "source_ref": self.source_ref, "activation_digest": self.activation_digest, "retention_end": self.retention_end, "cutover_decision_digest": self.cutover_decision_digest, "conservation_receipt_sha256": self.conservation_receipt_sha256, "backup_manifest_digest": self.backup_manifest_digest, "isolated_restore_target_digest": self.isolated_restore_target_digest, "deterministic_recall_digest": self.deterministic_recall_digest, "allowlist_digest": self.allowlist_digest, "consent_transfer_receipt_digest": self.consent_transfer_receipt_digest, "approval_digests": [item.to_mapping() for item in self.approval_digests], "requested_state": self.requested_state, "destructive_action_authorized": False, "request_digest": self.request_digest}
+
+
+@dataclass(frozen=True, slots=True)
+class DecommissionCertificateV1:
+    """Signed evidence that rollback closure was verified; never a delete action."""
+    decommission_certificate_version: str; request: DecommissionCertificateRequestV1; request_digest: str; verified_at: str; retention_seconds: str; state: str; destructive_action_authorized: bool; signer_ref: str; signer_algorithm: str; key_id: str; certificate_digest: str; signature: str
+    FIELDS: ClassVar[set[str]] = {"decommission_certificate_version", "request", "request_digest", "verified_at", "retention_seconds", "state", "destructive_action_authorized", "signer_ref", "signer_algorithm", "key_id", "certificate_digest", "signature"}
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "DecommissionCertificateV1":
+        values = _strict(data, cls.FIELDS)
+        if values["decommission_certificate_version"] != DECOMMISSION_CERTIFICATE_V1 or not isinstance(values["request"], Mapping): raise InvalidContractValue("unsupported or malformed decommission certificate")
+        request = DecommissionCertificateRequestV1.from_mapping(values["request"])
+        verified_at = values["verified_at"]; _canonical_utc_timestamp(verified_at, "verified_at")
+        if values["request_digest"] != request.request_digest or values["retention_seconds"] != "7776000" or values["state"] != "ROLLBACK_CLOSED" or values["destructive_action_authorized"] is not False or values["signer_algorithm"] != "Ed25519": raise InvalidContractValue("decommission certificate fields are not closed")
+        body = {"decommission_certificate_version": DECOMMISSION_CERTIFICATE_V1, "request": request.to_mapping(), "request_digest": request.request_digest, "verified_at": verified_at, "retention_seconds": "7776000", "state": "ROLLBACK_CLOSED", "destructive_action_authorized": False, "signer_ref": _route_text(values["signer_ref"], "signer_ref"), "signer_algorithm": "Ed25519", "key_id": _route_text(values["key_id"], "key_id")}
+        digest = _digest(values["certificate_digest"], "certificate_digest")
+        if digest != sha256(canonical_bytes(body)).hexdigest(): raise InvalidContractValue("certificate_digest does not bind certificate")
+        return cls(DECOMMISSION_CERTIFICATE_V1, request, request.request_digest, verified_at, "7776000", "ROLLBACK_CLOSED", False, body["signer_ref"], "Ed25519", body["key_id"], digest, _decommission_signature(values["signature"], "signature"))
+    def body(self) -> dict[str, Any]: return {key: value for key, value in self.to_mapping().items() if key not in {"certificate_digest", "signature"}}
+    def to_mapping(self) -> dict[str, Any]: return {"decommission_certificate_version": self.decommission_certificate_version, "request": self.request.to_mapping(), "request_digest": self.request_digest, "verified_at": self.verified_at, "retention_seconds": self.retention_seconds, "state": self.state, "destructive_action_authorized": False, "signer_ref": self.signer_ref, "signer_algorithm": self.signer_algorithm, "key_id": self.key_id, "certificate_digest": self.certificate_digest, "signature": self.signature}

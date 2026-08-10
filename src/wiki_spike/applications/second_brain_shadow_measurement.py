@@ -99,10 +99,6 @@ class _HistoryMetrics:
     continuous_seconds: int
     reasons: tuple[str, ...]
 
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
 def _instant(value: datetime | str) -> datetime:
     if isinstance(value, str):
         try:
@@ -116,6 +112,16 @@ def _instant(value: datetime | str) -> datetime:
 
 def _stamp(value: datetime) -> str:
     return _instant(value).isoformat().replace("+00:00", "Z")
+
+
+def _canonical_utc(value: Any, *, field: str) -> datetime:
+    """Accept only the exact UTC text the authority signed into its receipt."""
+    if not isinstance(value, str):
+        raise ShadowMeasurementError(f"{field} timestamp is invalid")
+    instant = _instant(value)
+    if value != _stamp(instant):
+        raise ShadowMeasurementError(f"{field} timestamp is not canonical UTC")
+    return instant
 
 
 def _hex(value: Any, field: str) -> str:
@@ -139,13 +145,11 @@ def _wilson_lower(successes: int, total: int) -> float:
 
 def _evaluate_history_metrics(*, root: Mapping[str, Any],
                               entries: list[Mapping[str, Any]],
-                              slo: RecallSloV1, evaluated_at: datetime) -> _HistoryMetrics:
+                              slo: RecallSloV1, evaluated_at: datetime | None = None) -> _HistoryMetrics:
     """Calculate metrics/reasons only; this seam never creates an outcome."""
     samples = [entry["sample"] for entry in entries]
     reasons: list[str] = []
     duration = 0 if len(entries) < 2 else int((_instant(entries[-1]["recorded_at"]) - _instant(entries[0]["recorded_at"])).total_seconds())
-    if evaluated_at < _instant(root["started_at"]) or int((evaluated_at - _instant(root["started_at"])).total_seconds()) < slo.min_shadow_days * 86400:
-        reasons.append("system wall-clock cohort age is below the required duration")
     if duration < slo.min_shadow_days * 86400:
         reasons.append("continuous measurement is below the required duration")
     if len(samples) < slo.min_cohort_e2e_queries:
@@ -242,7 +246,6 @@ class NativeShadowMeasurementCollector:
         try: UUID(cohort_id)
         except (ValueError, TypeError, AttributeError) as exc: raise ShadowMeasurementError("cohort_id must be a UUID") from exc
         start = _instant(started_at)
-        if start > _now(): raise ShadowMeasurementError("cohort start cannot be in the future")
         return self._base_root | {"cohort_id": cohort_id, "started_at": _stamp(start), "anchor_root": _hex(anchor_root, "anchor_root")}
 
     def establish_checkpoint(self, *, cohort_id: str, started_at: datetime | str, anchor_root: str, root_signature: str) -> None:
@@ -253,8 +256,8 @@ class NativeShadowMeasurementCollector:
             if self._snapshot().events:
                 raise ShadowMeasurementError("cohort checkpoint already exists")
             event = {"kind": "checkpoint", "storage_version": _STORAGE_VERSION, "root": root, "root_signature": root_signature}
-            self._commit(event)
-            self._state = self._state_from_events([event])
+            committed = self._commit(event)
+            self._state = self._state_from_events([committed])
 
     def _require_state(self) -> dict[str, Any]:
         if self._state is None: raise ShadowMeasurementError("measurement cohort requires an authenticated checkpoint")
@@ -343,17 +346,23 @@ class NativeShadowMeasurementCollector:
             )).hexdigest()
             if receipt.root != root:
                 raise ShadowMeasurementError("authority receipt root is invalid")
-            issued, expires, now = _instant(receipt.issued_at), _instant(receipt.expires_at), _now()
-            if expires <= issued or now < issued or now >= expires:
+            issued = _canonical_utc(receipt.issued_at, field="authority receipt issued")
+            expires = _canonical_utc(receipt.expires_at, field="authority receipt expiry")
+            if expires <= issued or (expires - issued).total_seconds() > 300:
                 raise ShadowMeasurementError("authority receipt is stale")
             self._authority_public_key.verify(bytes.fromhex(receipt.signature), canonical_ledger_bytes(_AUTHORITY_DOMAIN, receipt.payload()))
             if previous is not None:
                 if receipt.revision < previous.revision or (receipt.revision == previous.revision and receipt.root != previous.root):
                     raise ShadowMeasurementError("authority receipt rollback detected")
+                if issued < _canonical_utc(previous.issued_at, field="previous authority receipt issued"):
+                    raise ShadowMeasurementError("authority receipt clock rollback detected")
                 if expected_event is not None:
                     if (receipt.revision != previous.revision + 1
-                            or tuple(receipt.events[:-1]) != tuple(previous.events)
-                            or dict(receipt.events[-1]) != dict(expected_event)):
+                            or tuple(receipt.events[:-1]) != tuple(previous.events)):
+                        raise ShadowMeasurementError("external authority failed atomic monotonic advance")
+                    actual = dict(receipt.events[-1])
+                    recorded_at = _canonical_utc(actual.pop("recorded_at", None), field="authority event")
+                    if actual != dict(expected_event):
                         raise ShadowMeasurementError("external authority failed atomic monotonic advance")
             return receipt
         except (InvalidSignature, ValueError, TypeError, AttributeError, IndexError) as exc:
@@ -372,7 +381,7 @@ class NativeShadowMeasurementCollector:
         self._authority_receipt = verified
         return verified
 
-    def _commit(self, event: Mapping[str, Any]) -> None:
+    def _commit(self, event: Mapping[str, Any]) -> Mapping[str, Any]:
         before = self._snapshot()
         self._assert_authority_pins()
         nonce = token_hex(32)
@@ -382,7 +391,8 @@ class NativeShadowMeasurementCollector:
             advanced, nonce=nonce, previous=before, expected_event=event
         )
         self._authority_receipt = verified
-        self._append_segment(verified.revision, event)
+        self._append_segment(verified.revision, verified.events[-1])
+        return verified.events[-1]
 
 
     @property
@@ -450,12 +460,22 @@ class NativeShadowMeasurementCollector:
 
     def _state_from_events(self, events: list[Mapping[str, Any]]) -> dict[str, Any]:
         first = events[0] if events else None
-        if not isinstance(first, Mapping) or set(first) != {"kind", "storage_version", "root", "root_signature"} or first["kind"] != "checkpoint" or first["storage_version"] != _STORAGE_VERSION:
+        if not isinstance(first, Mapping) or set(first) != {"kind", "storage_version", "root", "root_signature", "recorded_at"} or first["kind"] != "checkpoint" or first["storage_version"] != _STORAGE_VERSION:
             raise ShadowMeasurementError("measurement journal checkpoint is invalid")
+        previous_recorded = _canonical_utc(first["recorded_at"], field="authority event")
         samples = []
         for event in events[1:]:
-            if not isinstance(event, Mapping) or set(event) != {"kind", "entry"} or event["kind"] != "append": raise ShadowMeasurementError("measurement journal event schema is invalid")
-            samples.append(event["entry"])
+            if not isinstance(event, Mapping) or set(event) != {"kind", "entry", "recorded_at"} or event["kind"] != "append": raise ShadowMeasurementError("measurement journal event schema is invalid")
+            recorded = _canonical_utc(event["recorded_at"], field="authority event")
+            if not 0 < (recorded - previous_recorded).total_seconds() <= _MAX_INTERVAL_SECONDS:
+                raise ShadowMeasurementError("measurement interval gap or authority clock rollback")
+            entry = event["entry"]
+            if not isinstance(entry, Mapping) or set(entry) != {"sample", "previous"}:
+                raise ShadowMeasurementError("measurement journal event schema is invalid")
+            sample_entry = {"sample": dict(entry["sample"]), "recorded_at": event["recorded_at"], "previous": entry["previous"]}
+            sample_entry["digest"] = sha256(canonical_ledger_bytes(_CHAIN_DOMAIN, sample_entry)).hexdigest()
+            samples.append(sample_entry)
+            previous_recorded = recorded
         return {"storage_version": _STORAGE_VERSION, "root": first["root"], "root_signature": first["root_signature"], "samples": samples, "chain_head": samples[-1]["digest"] if samples else None, "sample_count": len(samples)}
 
     def _verify_state(self, state: Any) -> None:
@@ -465,10 +485,9 @@ class NativeShadowMeasurementCollector:
         if not isinstance(root, Mapping) or set(root) != set(self._base_root) | {"cohort_id", "started_at", "anchor_root"}: raise ShadowMeasurementError("measurement root schema is invalid")
         if {k: root.get(k) for k in self._base_root} != self._base_root: raise ShadowMeasurementError("measurement state roots, contract, or identity do not match")
         try:
-            UUID(root["cohort_id"]); start = _instant(root["started_at"]); _hex(root["anchor_root"], "anchor_root")
+            UUID(root["cohort_id"]); _canonical_utc(root["started_at"], field="cohort start"); _hex(root["anchor_root"], "anchor_root")
             self.public_key.verify(bytes.fromhex(state["root_signature"]), canonical_ledger_bytes(_COHORT_DOMAIN, dict(root)))
         except (InvalidSignature, ValueError, TypeError, KeyError) as exc: raise ShadowMeasurementError("measurement root authentication is invalid") from exc
-        if start > _now(): raise ShadowMeasurementError("measurement root start is in the future")
         if not isinstance(state["samples"], list) or type(state["sample_count"]) is not int or state["sample_count"] != len(state["samples"]): raise ShadowMeasurementError("measurement sample list is invalid")
         self._verify_chain(state)
 
@@ -478,7 +497,7 @@ class NativeShadowMeasurementCollector:
             if not isinstance(entry, Mapping) or set(entry) != {"sample", "recorded_at", "previous", "digest"} or entry["previous"] != previous: raise ShadowMeasurementError("measurement chain is broken")
             if not isinstance(entry["sample"], Mapping): raise ShadowMeasurementError("measurement sample entry is invalid")
             self._validate_sample(entry["sample"], cohort=cohort, previous=previous, sequence=sequence)
-            recorded = _instant(entry["recorded_at"])
+            recorded = _canonical_utc(entry["recorded_at"], field="authority event")
             if last_recorded is not None and not 0 < (recorded-last_recorded).total_seconds() <= _MAX_INTERVAL_SECONDS: raise ShadowMeasurementError("measurement interval gap or clock rollback")
             digest = sha256(canonical_ledger_bytes(_CHAIN_DOMAIN, {"sample": dict(entry["sample"]), "recorded_at": _stamp(recorded), "previous": previous})).hexdigest()
             if entry["digest"] != digest: raise ShadowMeasurementError("measurement chain digest is invalid")
@@ -516,21 +535,15 @@ class NativeShadowMeasurementCollector:
             previous, sequence = state["chain_head"], state["sample_count"]
             self._validate_sample(sample, cohort=sha256(canonical_ledger_bytes(_COHORT_DOMAIN, state["root"])).hexdigest(), previous=previous, sequence=sequence)
             if any(entry["sample"]["sample_id"] == sample["sample_id"] for entry in state["samples"]): raise ShadowMeasurementError("raw sample replay is forbidden")
-            recorded = _now()
-            if state["samples"] and not 0 < (recorded - _instant(state["samples"][-1]["recorded_at"])).total_seconds() <= _MAX_INTERVAL_SECONDS: raise ShadowMeasurementError("measurement interval gap or clock rollback; reset cohort")
-            entry = {"sample": dict(sample), "recorded_at": _stamp(recorded), "previous": previous}
-            entry["digest"] = sha256(canonical_ledger_bytes(_CHAIN_DOMAIN, entry)).hexdigest()
-            self._commit({"kind": "append", "entry": entry})
+            self._commit({"kind": "append", "entry": {"sample": dict(sample), "previous": previous}})
             self._state = self._load_verified(recover=True)
 
     def report(self) -> ShadowMeasurementReport:
         with self._locked():
             state = self._load_verified(recover=True)
             self._state = state
-            # Only the verified collector reads production wall-clock time and mints outcomes.
             metrics = _evaluate_history_metrics(
                 root=state["root"], entries=state["samples"], slo=self.slo,
-                evaluated_at=_now(),
             )
             return ShadowMeasurementReport(
                 "EVIDENCE_COMPLETE_NON_SERVING" if not metrics.reasons else "NOT_READY",

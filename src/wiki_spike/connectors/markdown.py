@@ -1,7 +1,8 @@
-"""Fixture-only connector for the closed Markdown source profile."""
+"""Markdown fixture connector and typed inert filesystem source adapter."""
 from __future__ import annotations
 
 from . import FixtureConnectorReader
+from .codex import _ReadOnlySourceAdapter
 
 
 class MarkdownFixtureConnector(FixtureConnectorReader):
@@ -9,4 +10,12 @@ class MarkdownFixtureConnector(FixtureConnectorReader):
     source_domain = "markdown"
 
 
-__all__ = ["MarkdownFixtureConnector"]
+class MarkdownLiveSourceAdapter(_ReadOnlySourceAdapter):
+    source_profile = "Markdown"
+    uses_filesystem = True
+
+
+MarkdownSourceReader = MarkdownLiveSourceAdapter
+
+
+__all__ = ["MarkdownFixtureConnector", "MarkdownLiveSourceAdapter", "MarkdownSourceReader"]

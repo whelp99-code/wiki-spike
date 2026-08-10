@@ -201,6 +201,7 @@ def _decision(
     [
         ("observation_days", 2),
         ("observation_days", 0),
+        ("observation_days", 1),
         ("parity_cases", 199),
         ("parity_cases", 0),
         ("e2e", 499),

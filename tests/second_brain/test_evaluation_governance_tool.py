@@ -197,8 +197,14 @@ def test_reusing_a_corpus_digest_as_the_serving_corpus_is_refused(tmp_path, bund
 
 
 def test_slo_below_the_enforced_floor_is_refused(tmp_path):
-    with pytest.raises(AssertionError):
-        build_slo(tmp_path, **{"--min-shadow-days": "0"})
+    for days in ("2", "0", "1"):
+        with pytest.raises(AssertionError):
+            build_slo(tmp_path, **{"--min-shadow-days": days})
+
+
+def test_slo_default_is_the_3_day_floor(tmp_path):
+    record = json.loads(build_slo(tmp_path).read_text(encoding="utf-8"))
+    assert record["min_shadow_days"] == 3
 
 
 def test_an_empty_or_duplicate_corpus_is_refused(tmp_path):

@@ -105,6 +105,22 @@ def test_completion_cannot_be_minted_by_a_public_time_or_history_seam():
     assert tuple(inspect.signature(NativeShadowMeasurementCollector.report).parameters) == ("self",)
 
 
+def test_local_clock_step_cannot_synthesize_the_three_day_authority_duration(tmp_path):
+    authority = IndependentMonotonicTestAuthority(
+        trusted_now=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        advance_per_append=timedelta(seconds=1),
+    )
+    value, key = collector(tmp_path, [datetime(2026, 1, 1, tzinfo=timezone.utc)], authority)
+    for index in range(2):
+        value.append(signed_sample(value, key, str(index), ("Codex", "Git")[index]))
+    hostile_local_clock = datetime(2099, 1, 1, tzinfo=timezone.utc)
+    assert hostile_local_clock > datetime(2026, 1, 4, tzinfo=timezone.utc)
+    report = value.report()
+    assert report.outcome == "NOT_READY"
+    assert report.continuous_seconds == 1
+    assert "continuous measurement is below the required duration" in report.reasons
+
+
 
 class _FaultSnapshotAuthority(IndependentMonotonicTestAuthority):
     def __init__(self, mutate):
@@ -324,7 +340,7 @@ class _ResignedFaultAuthority(IndependentMonotonicTestAuthority):
     ("root", lambda a, r: _resign(a, r, root=d("semantic-root")), "root is invalid"),
     ("revision", lambda a, r: _resign(a, r, revision=r.revision + 1), "revision is invalid"),
     ("freshness", lambda a, r: _resign(a, r, issued_at="2020-01-01T00:00:00Z",
-                                        expires_at="2020-01-01T00:01:00Z"), "stale"),
+                                        expires_at="2020-01-01T00:00:00Z"), "stale"),
     ("nonce", lambda a, r: _resign(a, r, request_nonce="semantic-replay"), "nonce is invalid or replayed"),
 ])
 def test_resigned_snapshot_field_faults_fail_for_semantics(tmp_path, name, fault, reason):
@@ -395,11 +411,6 @@ def test_cas_boundary_race_preserves_exact_authoritative_prefix(tmp_path):
         unsigned = dict(sample)
         del unsigned["signature"]
         sample["signature"] = key.sign(canonical_ledger_bytes(measurement.DOMAIN, unsigned)).hex()
-        entry = event["entry"]
-        entry["digest"] = sha256(canonical_ledger_bytes(
-            "second-brain-native-shadow-chain-v1",
-            {field: entry[field] for field in ("sample", "recorded_at", "previous")},
-        )).hexdigest()
         return event
 
     authority = CasBoundaryRaceAuthority(competing_event)

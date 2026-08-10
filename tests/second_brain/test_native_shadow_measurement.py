@@ -21,10 +21,14 @@ def ref(kind: str) -> str: return f"{kind}:native"
 class IndependentMonotonicTestAuthority:
     """Deterministic authenticated stand-in for an operator-bound authority."""
 
-    def __init__(self, identity: str = "test-retained-authority") -> None:
+    def __init__(self, identity: str = "test-retained-authority", *,
+                 trusted_now: datetime | None = None,
+                 advance_per_append: timedelta = timedelta(seconds=1)) -> None:
         self._identity = identity
         self._events = []
         self._key = Ed25519PrivateKey.generate()
+        self._trusted_now = trusted_now or datetime(2026, 1, 1, tzinfo=timezone.utc)
+        self._advance_per_append = advance_per_append
 
     @property
     def identity(self) -> str:
@@ -48,7 +52,7 @@ class IndependentMonotonicTestAuthority:
             "second-brain-native-shadow-authority-v1",
             {"events": [dict(event) for event in events]},
         )).hexdigest()
-        issued = datetime.now(timezone.utc)
+        issued = self._trusted_now
         payload = {
             "identity": self.identity, "endpoint": self.endpoint,
             "policy_id": self.policy_id,
@@ -71,8 +75,17 @@ class IndependentMonotonicTestAuthority:
                             request_nonce: str) -> AuthoritySnapshot:
         if expected_revision != len(self._events):
             raise RuntimeError("stale authority version")
-        self._events.append(deepcopy(event))
-        return self._snapshot(request_nonce)
+        if not isinstance(event, dict) or "recorded_at" in event:
+            raise RuntimeError("authority event timestamp is reserved")
+        self._events.append(deepcopy(event) | {
+            "recorded_at": self._trusted_now.isoformat().replace("+00:00", "Z"),
+        })
+        receipt = self._snapshot(request_nonce)
+        self._trusted_now += self._advance_per_append
+        return receipt
+
+    def advance(self, duration: timedelta) -> None:
+        self._trusted_now += duration
 
 
 def contracts():
@@ -104,12 +117,21 @@ def signed_sample(collector, key, sample_id, source, outcome="valid", **measures
 
 
 def test_signed_samples_require_real_wall_clock_and_raw_denominators(tmp_path):
-    now=[datetime(2026,1,1,tzinfo=timezone.utc)]; value, key = collector(tmp_path, now)
+    # ``now`` is a hostile caller clock.  The fake authority explicitly ticks
+    # its own signed clock by one second for every accepted append.
+    now=[datetime(2026,1,1,tzinfo=timezone.utc)]
+    authority = IndependentMonotonicTestAuthority(
+        trusted_now=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        advance_per_append=timedelta(seconds=1),
+    )
+    value, key = collector(tmp_path, now, authority)
     for index in range(800):
         source=("Codex","Claude/Memory Bank","Git","Markdown")[index % 4]
         value.append(signed_sample(value, key, str(index), source)); now[0] += timedelta(seconds=324)
-    # Fast local appends cannot synthesize the real continuous 72-hour window.
-    assert value.report().outcome == "NOT_READY"
+    # Fast local appends cannot synthesize the required continuous 3-day (72-hour) window.
+    report = value.report()
+    assert report.outcome == "NOT_READY"
+    assert report.continuous_seconds == 799
 
 
 def test_checkpoint_is_required_and_is_signed(tmp_path):
