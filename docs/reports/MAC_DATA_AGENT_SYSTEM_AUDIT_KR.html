@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Mac 데이터·에이전트 시스템 감사 — 2026-08-09</title>
+  <style>
+    :root { --ink:#15212b; --muted:#5d6b76; --line:#d9e1e6; --paper:#fff; --wash:#f5f8fa; --navy:#153b59; --teal:#087c78; --blue:#2878b8; --amber:#a96100; --red:#b42318; --green:#167347; --shadow:0 12px 32px rgba(21,59,89,.08); }
+    * { box-sizing:border-box; }
+    html { background:#eaf0f3; }
+    body { margin:0; color:var(--ink); background:linear-gradient(155deg,#eff6f7 0,#fff 38rem); font:15px/1.62 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",Segoe UI,sans-serif; overflow-wrap:break-word; }
+    .page { width:min(1180px,calc(100% - 40px)); margin:24px auto 48px; background:var(--paper); box-shadow:var(--shadow); }
+    .hero { padding:54px clamp(24px,6vw,72px) 42px; color:#fff; background:radial-gradient(circle at 87% 14%,#2a7e92 0 2%,transparent 22%),linear-gradient(135deg,#0e2f4b,#155f69 68%,#0c4c5b); }
+    .eyebrow { margin:0 0 13px; color:#b8e7e3; font-size:.77rem; font-weight:750; letter-spacing:.14em; text-transform:uppercase; }
+    h1,h2,h3,p { margin-top:0; }
+    h1 { max-width:850px; margin-bottom:13px; font-size:clamp(2rem,5vw,3.55rem); line-height:1.12; letter-spacing:-.045em; }
+    .lead { max-width:780px; margin:0; color:#d8f0ee; font-size:1.05rem; }
+    .stamp { display:inline-flex; gap:.55rem; align-items:center; margin-top:27px; padding:.42rem .75rem; border:1px solid rgba(255,255,255,.35); border-radius:999px; color:#eefdfb; font-size:.82rem; }
+    main { padding:38px clamp(24px,6vw,72px) 62px; }
+    h2 { margin:44px 0 15px; padding-top:10px; border-top:2px solid #dce9e8; color:var(--navy); font-size:1.38rem; letter-spacing:-.02em; }
+    h3 { margin-bottom:8px; color:var(--navy); font-size:1rem; }
+    .intro { font-size:1.05rem; }
+    .status-grid,.metric-grid,.risk-grid,.roadmap { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+    .card { min-width:0; padding:18px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+    .card .num { display:block; color:var(--navy); font-size:1.65rem; font-weight:780; line-height:1.1; letter-spacing:-.04em; }
+    .card p:last-child { margin-bottom:0; color:var(--muted); font-size:.9rem; }
+    .badge { display:inline-block; margin-bottom:8px; padding:.18rem .48rem; border-radius:99px; font-size:.72rem; font-weight:800; letter-spacing:.05em; }
+    .pass { color:#08663f; background:#dff7e8; }.blocked { color:#9a3a00; background:#fff0d7;}.high { color:#971d16; background:#fde8e7;}.proposed { color:#175d99; background:#e5f1fb;}
+    .callout { padding:18px 20px; border-left:4px solid var(--amber); background:#fff9ef; color:#4c3a1a; }
+    .diagram { margin:18px 0 8px; padding:15px; border:1px solid var(--line); border-radius:12px; background:var(--wash); overflow:hidden; }
+    .diagram svg { display:block; width:100%; height:auto; min-width:560px; }
+    .diagram-wrap { overflow-x:auto; margin:-15px; padding:15px; }
+    figcaption { margin-top:10px; color:var(--muted); font-size:.86rem; }
+    .key { display:flex; flex-wrap:wrap; gap:.55rem 1rem; margin:0; color:var(--muted); font-size:.8rem; }
+    .key i { display:inline-block; width:.75rem; height:.75rem; margin-right:.3rem; border-radius:2px; vertical-align:-.08rem; }.key .a{background:#155f69}.key .b{background:#2878b8}.key .c{background:#b42318}.key .d{background:#167347}
+    table { width:100%; border-collapse:collapse; font-size:.9rem; }
+    th,td { padding:10px 11px; border-bottom:1px solid var(--line); vertical-align:top; text-align:left; }
+    th { color:var(--navy); background:#f1f6f7; font-weight:750; } td:first-child { font-weight:650; }
+    .table-scroll { overflow-x:auto; border:1px solid var(--line); border-radius:10px; }
+    .risk-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .risk-card { border-top:4px solid var(--red); }.risk-card h3 { margin-bottom:5px; }.risk-card p { margin-bottom:0; color:var(--muted); }
+    .roadmap { grid-template-columns:repeat(3,minmax(0,1fr)); counter-reset:roadmap; }
+    .roadmap .card { position:relative; padding-top:51px; background:linear-gradient(145deg,#f9fcfc,#fff); }.roadmap .card::before { counter-increment:roadmap; content:counter(roadmap,decimal-leading-zero); position:absolute; top:15px; left:18px; color:var(--teal); font-weight:850; letter-spacing:.1em; }
+    ul { margin:8px 0 0; padding-left:1.15rem; } li+li { margin-top:4px; }
+    .small { color:var(--muted); font-size:.86rem; }.note { margin-top:15px; padding:14px 16px; border:1px solid #cddce3; border-radius:8px; background:#f8fbfc; }
+    .footer { margin-top:44px; padding-top:17px; border-top:1px solid var(--line); color:var(--muted); font-size:.8rem; }
+    code { padding:.08em .3em; border-radius:3px; background:#edf3f5; font: .88em ui-monospace,SFMono-Regular,Menlo,monospace; color:#23485e; }
+    @media (max-width:720px) { .page{width:100%;margin:0;box-shadow:none}.hero{padding:40px 24px 32px}main{padding:28px 20px 44px}.status-grid,.metric-grid,.risk-grid,.roadmap{grid-template-columns:1fr}.diagram svg{min-width:560px}th,td{padding:9px 8px}.table-scroll{font-size:.83rem} }
+    @media print { @page{size:A4;margin:13mm} html,body{background:#fff;font-size:10.2pt}.page{width:auto;margin:0;box-shadow:none}.hero{padding:18mm 0 11mm;background:#fff;color:var(--ink);border-bottom:3px solid var(--navy)}.eyebrow,.lead,.stamp{color:var(--ink)}main{padding:0}.card,.diagram,.table-scroll{break-inside:avoid}h2{break-after:avoid}.diagram{background:#fff}.diagram-wrap{overflow:visible}.diagram svg{min-width:0}.status-grid,.metric-grid,.risk-grid,.roadmap{gap:8px}.card{padding:10px}.footer{margin-top:22px} }
+  </style>
+</head>
+<body>
+  <article class="page">
+    <header class="hero">
+      <p class="eyebrow">macOS data &amp; agent system audit</p>
+      <h1>데이터·에이전트 시스템 감사</h1>
+      <p class="lead">운영 중인 로컬 에이전트, MCP, 저장소, 공개 경계와 회복력의 현황을 한 장의 의사결정 보고서로 정리했습니다.</p>
+      <p class="stamp">스냅샷 · 2026-08-09 약 22:20 KST · 시스템 변경 없음</p>
+    </header>
+    <main>
+      <p class="intro">호스트 인벤토리는 <strong>PASS</strong>입니다. 다만 Docker 제어면은 <strong>BLOCKED</strong>입니다. <code>/_ping</code> 요청은 시간 초과(<code>rc 28</code>)했고 <code>docker ps</code>는 응답하지 않았습니다. 따라서 컨테이너의 정확한 전체 인벤토리는 이 시점에 확정하지 않습니다.</p>
+
+      <section aria-labelledby="summary-title">
+        <h2 id="summary-title">핵심 판단</h2>
+        <div class="status-grid">
+          <div class="card"><span class="badge pass">PASS</span><span class="num">호스트 인벤토리</span><p>프로세스·포트·로컬 저장소·설치 제품을 기준으로 활성 표면을 확인했습니다.</p></div>
+          <div class="card"><span class="badge blocked">BLOCKED</span><span class="num">Docker 제어면</span><p>컨테이너 목록을 신뢰성 있게 열람할 수 없으며, 복구 전 변경·중지는 판단 근거가 부족합니다.</p></div>
+          <div class="card"><span class="badge high">우선 조치</span><span class="num">공개 쓰기 경계</span><p>공개 터널 뒤 로컬 7979 서비스의 full-write 프리셋과 인증 상태를 먼저 확인해야 합니다.</p></div>
+        </div>
+        <div class="callout" role="note"><strong>운영 원칙:</strong> Canary/runner 및 활성 PID는 증거와 허용목록을 확보한 뒤에만 다룹니다. 멈출 수 있는 대상은 “오래됨”이 아니라 <em>명백히 stale임이 입증된</em> cron 또는 MCP에 한정합니다.</div>
+      </section>
+
+      <section aria-labelledby="current-title">
+        <h2 id="current-title">현재 토폴로지 — 반복 fanout과 노출 경계</h2>
+        <figure class="diagram">
+          <div class="diagram-wrap">
+            <svg viewBox="0 0 1040 470" role="img" aria-labelledby="current-svg-title current-svg-desc">
+              <title id="current-svg-title">현재 데이터 및 에이전트 연결 구조</title><desc id="current-svg-desc">여러 에이전트가 개별 MCP를 반복적으로 거쳐 Docker PostgreSQL, 로컬 저장소와 외부 서비스에 연결된다. 공개 터널과 와일드카드 포트는 위험으로 표시한다.</desc>
+              <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8z" fill="#708491"/></marker><marker id="danger" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8z" fill="#b42318"/></marker></defs>
+              <style>.t{font:600 14px -apple-system,BlinkMacSystemFont,sans-serif;fill:#15212b}.s{font:12px -apple-system,BlinkMacSystemFont,sans-serif;fill:#52636f}.tiny{font:11px -apple-system,BlinkMacSystemFont,sans-serif;fill:#52636f}.box{stroke-width:1.5;rx:9}.line{stroke:#708491;stroke-width:1.5;fill:none;marker-end:url(#arrow)}.risk{stroke:#b42318;stroke-width:2;stroke-dasharray:5 4;fill:none;marker-end:url(#danger)}</style>
+              <text x="24" y="28" class="t">에이전트 · 도구</text><text x="348" y="28" class="t">반복 실행되는 MCP fanout</text><text x="700" y="28" class="t">저장소 · 서비스 · 외부 경계</text>
+              <rect x="24" y="52" width="240" height="60" class="box" fill="#dff4f2" stroke="#087c78"/><text x="40" y="77" class="t">Codex · Claude · 기타 에이전트</text><text x="40" y="98" class="s">승인/권한 우회 모드 다수 관측</text>
+              <rect x="24" y="137" width="240" height="56" class="box" fill="#e8f2fa" stroke="#2878b8"/><text x="40" y="161" class="t">Orca 1.4.177</text><text x="40" y="180" class="s">daemon Unix socket · *:6768 · Tailscale</text>
+              <rect x="24" y="218" width="240" height="56" class="box" fill="#e8f2fa" stroke="#2878b8"/><text x="40" y="242" class="t">ChatGPT-to-Codex 로컬 7979</text><text x="40" y="261" class="s">full-write preset</text>
+              <rect x="24" y="299" width="240" height="75" class="box" fill="#f3f6f8" stroke="#708491"/><text x="40" y="323" class="t">OpenCode · Action Hub · 로컬 AI</text><text x="40" y="342" class="s">4096/55445 · 8787 · Ollama 11434</text><text x="40" y="360" class="s">Rapid-MLX 8000 · Serena 242xx–243xx</text>
+              <rect x="348" y="50" width="268" height="68" class="box" fill="#e5f1fb" stroke="#2878b8"/><text x="365" y="75" class="t">memory-router · 172 proc / 911.5 MiB</text><text x="365" y="96" class="s">cloud execution · 정확한 outbound endpoint UNKNOWN</text>
+              <rect x="348" y="137" width="268" height="55" class="box" fill="#e5f1fb" stroke="#2878b8"/><text x="365" y="161" class="t">codebase-memory-mcp · 173 / 292.4 MiB</text><text x="365" y="180" class="s">Ouroboros MCP · 72 / 1290.6 MiB</text>
+              <rect x="348" y="211" width="268" height="55" class="box" fill="#e5f1fb" stroke="#2878b8"/><text x="365" y="235" class="t">Serena · 31 / 274.4 MiB</text><text x="365" y="254" class="s">project MCP · 326 / 2160.2 MiB</text>
+              <rect x="348" y="285" width="268" height="54" class="box" fill="#fff0d7" stroke="#a96100"/><text x="365" y="309" class="t">총 MCP 프로세스 774 · 약 4.8 GiB</text><text x="365" y="328" class="s">세션 수명·공유 풀 관리 부재</text>
+              <rect x="700" y="50" width="300" height="72" class="box" fill="#eaf7ee" stroke="#167347"/><text x="716" y="74" class="t">Docker PostgreSQL · localhost:5433/unified</text><text x="716" y="94" class="s">~/unified-db/data · pg_isready 성공</text><text x="716" y="112" class="s">journal · memory-bank · hermes · git · wiki 등</text>
+              <rect x="700" y="143" width="300" height="62" class="box" fill="#fde8e7" stroke="#b42318"/><text x="716" y="167" class="t">Sangfor Docker 서비스</text><text x="716" y="186" class="s">PG *:5434 · web *:80 / *:443 · pg_isready 성공</text>
+              <rect x="700" y="226" width="300" height="61" class="box" fill="#f3f6f8" stroke="#708491"/><text x="716" y="250" class="t">로컬 저장소·동기화</text><text x="716" y="269" class="s">Application Support/orca · OneDrive 실행 중 · 로컬 AI</text>
+              <rect x="700" y="308" width="300" height="58" class="box" fill="#fde8e7" stroke="#b42318"/><text x="716" y="332" class="t">공개 브리지</text><text x="716" y="351" class="s">cloudflared → 7979 · 인증 UNKNOWN</text>
+              <rect x="700" y="387" width="300" height="55" class="box" fill="#fff0d7" stroke="#a96100"/><text x="716" y="411" class="t">GitHub Actions runner · Gate8 Canary</text><text x="716" y="430" class="s">run 31314519580 · PID 94446 · 완료 여부 미확인</text>
+              <path d="M264 82H348" class="line"/><path d="M264 165H348" class="line"/><path d="M264 246H348" class="line"/><path d="M264 336H348" class="line"/>
+              <path d="M616 84H700" class="line"/><path d="M616 164H700" class="line"/><path d="M616 238H700" class="line"/><path d="M616 312H700" class="line"/>
+              <path d="M264 246C470 246,520 337,700 337" class="risk"/><text x="489" y="365" class="tiny" fill="#b42318">full-write + public tunnel</text>
+              <path d="M850 205V226" class="risk"/><text x="860" y="218" class="tiny" fill="#b42318">wildcard bind</text>
+            </svg>
+          </div>
+          <figcaption>실선은 관측된 연결·의존성을, 빨간 점선은 공개 쓰기 경계 또는 와일드카드 포트의 우선 위험을 나타냅니다.</figcaption>
+        </figure>
+        <p class="key"><span><i class="a"></i>에이전트</span><span><i class="b"></i>MCP·제어</span><span><i class="c"></i>노출 위험</span><span><i class="d"></i>로컬 데이터 저장소</span></p>
+      </section>
+
+      <section aria-labelledby="inventory-title">
+        <h2 id="inventory-title">용량·프로세스 스냅샷</h2>
+        <div class="metric-grid">
+          <div class="card"><span class="num">359 GiB</span><p>System Data 사용량 · 91% 사용 · 여유 40 GiB</p></div>
+          <div class="card"><span class="num">62 GB / 460 GB</span><p>Docker.raw 물리 크기 / 논리 크기</p></div>
+          <div class="card"><span class="num">774 / 약 4.8 GiB</span><p>활성 MCP 프로세스 / 메모리 합계</p></div>
+        </div>
+        <div class="table-scroll" style="margin-top:16px">
+          <table>
+            <caption class="small" style="caption-side:top;text-align:left;padding:0 0 8px">주요 로컬 데이터 발자국 (스냅샷 관측값)</caption>
+            <thead><tr><th scope="col">대상</th><th scope="col">크기</th><th scope="col">대상</th><th scope="col">크기</th></tr></thead>
+            <tbody>
+              <tr><td>Application Support/orca</td><td>23 GB</td><td>HF cache</td><td>6.8 GB</td></tr>
+              <tr><td>~/.codex</td><td>6.3 GB</td><td>~/.grok</td><td>3.2 GB</td></tr>
+              <tr><td>~/.claude</td><td>2.4 GB</td><td>~/.gjc · ~/.gemini</td><td>각 1.2 GB</td></tr>
+              <tr><td>unified-db</td><td>756 MB</td><td>codebase-memory cache</td><td>685 MB</td></tr>
+              <tr><td>runner</td><td>617 MB</td><td>Aside · OneDrive app support</td><td>427 MB · 376 MB</td></tr>
+              <tr><td>Ollama · Ouroboros · OMP</td><td>262 MB · 221 MB · 104 MB</td><td>관측되지 않음</td><td>Redis, Mongo, Elastic, Qdrant, Weaviate, Milvus, MinIO, restic, rclone, borg</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">설치 제품: Docker 4.81, OneDrive 26.078, Parallels 26.4, Obsidian 1.8.4, Notion 7.27, PostgreSQL 14, SQLite, SQLCipher, Mountain Duck. Homebrew PostgreSQL 서비스는 실행 중이 아닙니다.</p>
+      </section>
+
+      <section aria-labelledby="risk-title">
+        <h2 id="risk-title">우선순위 위험</h2>
+        <div class="risk-grid">
+          <article class="card risk-card"><h3>1. Docker 제어면 실패 + stale secret-probe cron</h3><p>Docker API가 응답하지 않습니다. Sangfor 관련 cron/docker exec 4개는 약 7시간 동안 redacted JWT keyring 환경 변수를 질의하며 정체되어 있습니다. 값은 읽지 않았습니다.</p></article>
+          <article class="card risk-card"><h3>2. 공개 full-write 터널</h3><p>cloudflared가 로컬 7979을 공개 경계로 연결하며 full-write 프리셋이 설정되어 있습니다. 인증이 확인되지 않았습니다.</p></article>
+          <article class="card risk-card"><h3>3. MCP fanout·수명 관리</h3><p>774개 MCP 프로세스가 약 4.8 GiB를 사용합니다. 반복 기동, 세션 TTL 부재, 고아 프로세스 가능성이 비용과 장애 범위를 키웁니다.</p></article>
+          <article class="card risk-card"><h3>4. 와일드카드 포트와 권한 경계</h3><p>Sangfor PG/web와 unified-db가 와일드카드로 게시되어 있습니다. 여러 Codex/Claude 프로세스는 승인 또는 권한 우회 모드이며, ~/.codex·~/.claude·~/.gjc는 0755입니다(Orca 루트는 0700).</p></article>
+          <article class="card risk-card"><h3>5. 백업·정비 실패</h3><p>백업 에이전트의 최근 종료 코드는 70, memory-router maintenance의 최근 종료 코드는 1입니다. Time Machine 대상도 관측되지 않았습니다.</p></article>
+          <article class="card risk-card"><h3>6. 저장소 압박</h3><p>System Data가 91% 사용 중입니다. Docker.raw의 논리 크기와 다수의 에이전트 캐시가 회복·업데이트·로그 보존의 여유를 제한할 수 있습니다.</p></article>
+        </div>
+      </section>
+
+      <section aria-labelledby="target-title">
+        <h2 id="target-title">개선 목표 토폴로지 — 공유 풀·폐쇄 기본값·복구 가능성</h2>
+        <figure class="diagram">
+          <div class="diagram-wrap">
+            <svg viewBox="0 0 1040 430" role="img" aria-labelledby="target-svg-title target-svg-desc">
+              <title id="target-svg-title">개선 목표 데이터 및 에이전트 연결 구조</title><desc id="target-svg-desc">에이전트는 인증된 게이트웨이를 통해 수명 관리되는 공유 MCP 풀에 접속한다. 데이터베이스는 localhost에만 바인딩하고 격리된 Canary runner, 백업, 모니터링과 보존 정책을 둔다.</desc>
+              <defs><marker id="arr2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8z" fill="#167347"/></marker></defs>
+              <style>.t{font:600 14px -apple-system,BlinkMacSystemFont,sans-serif;fill:#15212b}.s{font:12px -apple-system,BlinkMacSystemFont,sans-serif;fill:#52636f}.box{stroke-width:1.5;rx:9}.l{stroke:#167347;stroke-width:1.7;fill:none;marker-end:url(#arr2)}.d{stroke:#2878b8;stroke-width:1.5;stroke-dasharray:5 4;fill:none;marker-end:url(#arr2)}</style>
+              <text x="42" y="33" class="t">사용자·에이전트</text><text x="335" y="33" class="t">인증·수명 관리 계층</text><text x="696" y="33" class="t">격리된 데이터·운영 계층</text>
+              <rect x="42" y="64" width="208" height="68" class="box" fill="#dff4f2" stroke="#087c78"/><text x="58" y="90" class="t">Codex · Claude · Orca</text><text x="58" y="111" class="s">최소 권한 프로필 · 명시적 승인</text>
+              <rect x="42" y="162" width="208" height="59" class="box" fill="#e5f1fb" stroke="#2878b8"/><text x="58" y="187" class="t">원격 접근</text><text x="58" y="207" class="s">인증된 gateway / tunnel만 허용</text>
+              <rect x="335" y="64" width="280" height="79" class="box" fill="#eaf7ee" stroke="#167347"/><text x="352" y="90" class="t">공유 MCP pool · supervisor</text><text x="352" y="111" class="s">세션 TTL · PID allowlist · health check</text><text x="352" y="130" class="s">재사용·종료·알림을 한 곳에서 관리</text>
+              <rect x="335" y="173" width="280" height="67" class="box" fill="#e5f1fb" stroke="#2878b8"/><text x="352" y="198" class="t">정책 게이트</text><text x="352" y="218" class="s">secret probe 금지 · 내부 API/마운트 자격증명</text>
+              <rect x="335" y="270" width="280" height="61" class="box" fill="#f3f6f8" stroke="#708491"/><text x="352" y="295" class="t">관측성</text><text x="352" y="315" class="s">상태·자원·백업 결과·경보</text>
+              <rect x="696" y="64" width="300" height="76" class="box" fill="#eaf7ee" stroke="#167347"/><text x="713" y="90" class="t">PostgreSQL · localhost-only binding</text><text x="713" y="111" class="s">네트워크 세분화 · 필요한 서비스만 노출</text><text x="713" y="130" class="s">unified data + 검증된 접근 경로</text>
+              <rect x="696" y="170" width="300" height="65" class="box" fill="#eaf7ee" stroke="#167347"/><text x="713" y="196" class="t">격리 Canary runner</text><text x="713" y="216" class="s">제한된 권한 · 독립 상태 · 실행 증거 보존</text>
+              <rect x="696" y="265" width="300" height="66" class="box" fill="#eaf7ee" stroke="#167347"/><text x="713" y="290" class="t">백업 · 보존 · 복구</text><text x="713" y="311" class="s">검증된 백업 · 로그 순환 · quota · restore drill</text>
+              <path d="M250 98H335" class="l"/><path d="M250 192C290 192 295 120 335 120" class="l"/><path d="M615 102H696" class="l"/><path d="M615 206H696" class="l"/><path d="M615 300H696" class="l"/><path d="M475 143V173" class="d"/><path d="M475 240V270" class="d"/>
+              <text x="58" y="249" class="s">기본값: 로컬 경계, 인증, 최소 권한</text><text x="352" y="358" class="s">운영 지표와 실패를 경보·검토 대상으로 전환</text><text x="713" y="358" class="s">보존 정책은 저장소 압박과 함께 관리</text>
+            </svg>
+          </div>
+          <figcaption>목표 상태입니다. 아래 수치는 제안 목표이며, 이 감사 시점에 달성되었다는 의미가 아닙니다.</figcaption>
+        </figure>
+      </section>
+
+      <section aria-labelledby="roadmap-title">
+        <h2 id="roadmap-title">개선 로드맵</h2>
+        <div class="roadmap">
+          <article class="card"><h3>0–1일 · 안전한 사실 확정</h3><ul><li>Canary/runner를 포함한 활성 PID 증거와 허용목록을 작성</li><li>입증된 stale cron/MCP만 중지</li><li>Docker 제어면을 안전하게 복구하고 터널 인증을 감사</li><li>DB 포트를 localhost 바인딩으로 전환</li></ul></article>
+          <article class="card"><h3>1–7일 · 실행 수명과 회복성</h3><ul><li>MCP supervisor·공유 pool·세션 TTL 도입</li><li><code>printenv</code> 기반 secret probe를 제거하고 마운트 자격증명 또는 내부 API 사용</li><li>health check·경보·백업 검증 추가</li></ul></article>
+          <article class="card"><h3>8–30일 · 정책과 복구 훈련</h3><ul><li>중앙 저장소 정책, 보존 quota, 로그 회전 적용</li><li>최소 권한 에이전트 프로필과 네트워크 세분화</li><li>정기 restore drill로 복구 가능성을 검증</li></ul></article>
+        </div>
+      </section>
+
+      <section aria-labelledby="metrics-title">
+        <h2 id="metrics-title">Before / After 지표</h2>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th scope="col">측정 항목</th><th scope="col">현재 관측</th><th scope="col">제안 목표 <span class="badge proposed">PROPOSED</span></th><th scope="col">의미</th></tr></thead>
+            <tbody>
+              <tr><td>Docker 제어면</td><td>/_ping rc 28, docker ps hang</td><td>건강 확인 가능한 제어면과 목록 수집</td><td>정확한 인벤토리와 안전한 변경의 전제</td></tr>
+              <tr><td>MCP 실행</td><td>774 프로세스 · 약 4.8 GiB</td><td>공유 pool + TTL + 고아 프로세스 0</td><td>fanout과 누적 자원 사용을 제한</td></tr>
+              <tr><td>DB 노출</td><td>*:5433, *:5434 관측</td><td>localhost-only 기본, 필요한 경로만 명시</td><td>불필요한 네트워크 노출 축소</td></tr>
+              <tr><td>공개 접근</td><td>7979 공개 터널, 인증 UNKNOWN</td><td>인증된 gateway/tunnel + 최소 권한</td><td>full-write 원격 경계의 통제</td></tr>
+              <tr><td>백업·복구</td><td>최근 backup exit 70, Time Machine 대상 없음</td><td>성공 증적 + 정기 restore drill</td><td>실패 알림을 실제 복구 가능성으로 전환</td></tr>
+              <tr><td>저장소</td><td>System Data 91%, 여유 40 GiB</td><td>quota·보존·회전으로 경고 여유 확보</td><td>캐시·로그·Docker 성장의 예측 가능성</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section aria-labelledby="evidence-title">
+        <h2 id="evidence-title">증거 명령 요약과 한계</h2>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th scope="col">점검 범주</th><th scope="col">스냅샷에서의 결과</th><th scope="col">해석</th></tr></thead>
+            <tbody>
+              <tr><td>호스트 프로세스·포트·파일 사용량</td><td>인벤토리 PASS</td><td>활성 서비스와 저장소 발자국은 호스트 수준에서 확인</td></tr>
+              <tr><td><code>/_ping</code> · <code>docker ps</code></td><td>/_ping 시간 초과 rc 28 · docker ps hang</td><td>Docker 컨테이너 정확한 인벤토리는 BLOCKED</td></tr>
+              <tr><td><code>pg_isready</code> 5433 / 5434</td><td>각 성공</td><td>두 PostgreSQL 리스너의 준비 응답만 확인; 데이터 내용은 미검사</td></tr>
+              <tr><td>runner·Canary 상태</td><td>runner 활성, Gate8 Canary run 31314519580 / PID 94446, durable state 3.1 MB</td><td>실행 중 관측일 뿐 완료·성공을 뜻하지 않음</td></tr>
+              <tr><td>주기 작업</td><td>shadow collector 60초 주기</td><td>주기적 수집 존재만 기록</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note"><strong>한계:</strong> 이 문서는 point-in-time 호스트 스냅샷입니다. macOS TCC/SIP 제약이 있을 수 있으며, 개인 콘텐츠·키체인·DB 행은 검사하지 않았습니다. Docker 제어면 불응답으로 인한 컨테이너 가시성 공백을 호스트 관측으로 대체하지 않습니다.</p>
+      </section>
+      <footer class="footer">범위: macOS 데이터·에이전트 운영 표면. 본 문서에는 원격 IP, 계정 UUID, 자격증명, 토큰 경로, 공개 호스트명 또는 개인 프로젝트명(설명에 필요한 Sangfor/wiki-spike 제외)을 포함하지 않습니다.</footer>
+    </main>
+  </article>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "availability_min_bps": 9900,
+  "citation_min_bps": 9000,
+  "completeness_min_bps": 9000,
+  "confidence_method": "one-sided-wilson-95",
+  "include_abstained_in_denominator": true,
+  "include_invalid_in_denominator": true,
+  "include_source_unavailable_in_denominator": true,
+  "max_safety_violations": 0,
+  "min_cohort_e2e_queries": 500,
+  "min_parity_cases_per_source": 200,
+  "min_shadow_days": 1,
+  "parity_min_bps": 9000,
+  "slo_digest": "566d09b8873ab214876c5ddc391468ba7b150d0414a4f29759c15a7f4089e49f",
+  "slo_version": "second-brain-recall-slo-v1"
+}

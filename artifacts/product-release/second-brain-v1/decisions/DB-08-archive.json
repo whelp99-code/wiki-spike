@@ -1,0 +1,36 @@
+{
+  "decided_at": "2026-08-06T14:45:22Z",
+  "decision_id": "DB-08",
+  "decision_version": "second-brain-decision-record-v1",
+  "evidence_digest": "7d12d8c425620f208646bd5612a44446dacab1f37028fbd3bb302f534f870193",
+  "evidence_refs": [
+    "artifacts/product-release/second-brain-v1/evidence/db-08-archive-no-go-bundle-v1.json"
+  ],
+  "expires_at": "2027-08-06T00:00:00Z",
+  "outcome": "NO_GO",
+  "post_interview_reconciliation": {
+    "original_question": "What publication is permitted in the first release?",
+    "reconciliation": "First-release publication is limited to wiki-spike managed internal projections, which are rebuildable and withholdable and are not competing memory authority. The archive external export destination is disabled and external export is deferred. A future destination requires its own destination-specific signed decision binding destination terms, delete-receipt fixtures, and encrypted payloads; a generic publication flag cannot enable it."
+  },
+  "reason": "No external destination approval, delete receipt, or publication evidence exists. ADR-0028 limits first-release publication to managed internal projections, so the archive export destination is disabled by explicit decision rather than left unresolved.",
+  "record_revision": "1",
+  "scope_kind": "export_destination",
+  "scope_name": "archive",
+  "signatures": [
+    {
+      "key_id": "wiki-spike-local-approver-2026",
+      "public_key_b64": "qqjshbOlaEeE5umj4jBVJPYqOqFypULm4nX9FSxIMNQ=",
+      "role": "approver",
+      "signature_b64": "+byIFHRfLKO8LCkrdResre4jGijDtxOKpg1tjPExbx82I1fn9YnTacnS+w6uB6X0v2h7HrVdpz+JUhSH0RjQAg==",
+      "signature_version": "second-brain-decision-signature-v1"
+    },
+    {
+      "key_id": "wiki-spike-local-owner-2026",
+      "public_key_b64": "AqkUcin7vP0DSKNKq77+AoG4dLivjs7gBQC+I2U0znQ=",
+      "role": "owner",
+      "signature_b64": "DKC3QgzNCglyDgAFrMDy198R2Q2wCTgXP2jvjky8ZRDWUtMkFwKZIW2eUAMNB7Avu+MJpK/76DYaWaDSIAVUCA==",
+      "signature_version": "second-brain-decision-signature-v1"
+    }
+  ],
+  "supersedes": null
+}

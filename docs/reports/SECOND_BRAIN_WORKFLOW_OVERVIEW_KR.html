@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Second Brain 제품 경계, 신뢰 경계, 릴리스 게이트와 현재 확인 상태를 설명하는 한국어 개요">
+  <title>Second Brain · 워크플로 개요</title>
+  <style>
+    :root { --ink:#17243a; --muted:#5d6b7d; --paper:#f6f8fc; --white:#fff; --line:#d9e1ec; --teal:#087c82; --teal-soft:#e5f5f4; --indigo:#3f4db8; --indigo-soft:#eceefd; --amber:#a65b00; --amber-soft:#fff3df; --red:#a33232; --shadow:0 16px 42px rgba(27,46,77,.10); }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { margin:0; color:var(--ink); background:var(--paper); font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    a { color:var(--indigo); text-underline-offset:3px; }
+    a:focus-visible, button:focus-visible { outline:3px solid #f2a43c; outline-offset:3px; border-radius:3px; }
+    .shell { max-width:1180px; margin:auto; padding:0 28px; }
+    .eyebrow { margin:0 0 12px; color:var(--teal); font-size:.76rem; font-weight:800; letter-spacing:.13em; text-transform:uppercase; }
+    h1,h2,h3 { line-height:1.18; letter-spacing:-.035em; }
+    h1 { max-width:850px; margin:0; font-size:clamp(2.45rem,6vw,5.15rem); }
+    h2 { margin:0 0 14px; font-size:clamp(1.55rem,3vw,2.35rem); }
+    h3 { margin:0 0 9px; font-size:1.08rem; }
+    p { margin:0 0 14px; }
+    .lede { max-width:690px; margin:22px 0 0; color:#40516a; font-size:clamp(1.08rem,2vw,1.32rem); }
+    .hero { padding:74px 0 48px; background:radial-gradient(circle at 86% 20%,#d6f2ee 0,transparent 29%),linear-gradient(120deg,#fff 0,#f3f5ff 100%); border-bottom:1px solid var(--line); }
+    .hero-grid { display:grid; grid-template-columns:1.4fr .7fr; gap:44px; align-items:end; }
+    .snapshot { padding:18px 20px; border-left:5px solid var(--teal); background:rgba(255,255,255,.82); box-shadow:var(--shadow); }
+    .snapshot b { display:block; margin-bottom:4px; font-size:.85rem; }
+    .snapshot span { color:var(--muted); font-size:.88rem; }
+    .status-strip { background:#17243a; color:#e9f5f5; }
+    .status-grid { display:grid; grid-template-columns:repeat(4,1fr); }
+    .status { min-height:106px; padding:19px 20px; border-right:1px solid rgba(255,255,255,.16); }
+    .status:last-child { border:0; }
+    .status small { display:block; color:#b4c3d1; font-weight:700; letter-spacing:.04em; }
+    .status strong { display:block; margin-top:8px; font-size:1rem; }
+    .done { color:#7be1cf; } .current { color:#aeb9ff; } .next { color:#ffcb78; }
+    .nav-wrap { position:sticky; top:0; z-index:10; background:rgba(246,248,252,.94); backdrop-filter:blur(12px); border-bottom:1px solid var(--line); }
+    .section-nav { display:flex; gap:4px; overflow:auto; padding:10px 0; scrollbar-width:thin; }
+    .section-nav a { flex:0 0 auto; padding:7px 10px; color:#33435a; font-size:.85rem; font-weight:700; text-decoration:none; }
+    .section-nav a:hover { color:var(--indigo); background:#e9edff; border-radius:99px; }
+    main { padding:56px 0 70px; }
+    section { scroll-margin-top:60px; margin-bottom:72px; }
+    .section-intro { max-width:740px; color:var(--muted); }
+    .meter { max-width:860px; margin-top:24px; padding:19px 20px; background:var(--white); border:1px solid var(--line); box-shadow:0 6px 20px rgba(30,52,86,.05); }
+    .meter-head { display:flex; justify-content:space-between; gap:16px; font-weight:800; }
+    .gate-segments { display:grid; grid-template-columns:repeat(6,1fr); gap:6px; margin:13px 0 9px; }
+    .gate-segment { height:12px; background:#e7ecf3; border-radius:20px; }
+    .gate-segment.done { background:linear-gradient(90deg,var(--teal),#4ebeb4); }
+    .gate-segment.current { background:var(--indigo); box-shadow:0 0 0 3px #dde1ff; }
+    .meter small { color:var(--muted); }
+    .flow { display:grid; grid-template-columns:repeat(5,1fr); gap:0; margin-top:26px; }
+    .flow-step { position:relative; min-height:222px; padding:21px 17px; background:var(--white); border:1px solid var(--line); }
+    .flow-step:not(:last-child)::after { content:"→"; position:absolute; z-index:2; right:-14px; top:91px; display:grid; place-items:center; width:28px; height:28px; color:var(--indigo); background:var(--paper); font-weight:900; font-size:1.35rem; }
+    .flow-num { display:inline-grid; place-items:center; width:29px; height:29px; margin-bottom:18px; color:#fff; background:var(--indigo); border-radius:50%; font-size:.8rem; font-weight:800; }
+    .flow-step:nth-child(2) .flow-num,.flow-step:nth-child(4) .flow-num { background:var(--teal); }
+    .flow-step p { color:var(--muted); font-size:.9rem; }
+    .matrix { width:100%; margin-top:24px; overflow:hidden; border:1px solid var(--line); border-collapse:separate; border-spacing:0; border-radius:12px; background:var(--white); box-shadow:0 6px 20px rgba(30,52,86,.05); }
+    .matrix th,.matrix td { padding:14px 15px; text-align:left; vertical-align:top; border-bottom:1px solid var(--line); }
+    .matrix th { color:#f6f8fc; background:#263755; font-size:.82rem; letter-spacing:.03em; }
+    .matrix tr:last-child td { border-bottom:0; }
+    .matrix td:first-child { width:24%; font-weight:800; }
+    .tag { display:inline-block; padding:3px 8px; border-radius:999px; font-size:.75rem; font-weight:800; white-space:nowrap; }
+    .tag.teal { color:#05656a; background:var(--teal-soft); } .tag.indigo { color:#3341a0; background:var(--indigo-soft); } .tag.amber { color:#8a4b00; background:var(--amber-soft); }
+    .boundary { display:grid; grid-template-columns:1fr 76px 1.2fr; gap:18px; align-items:center; margin-top:26px; }
+    .boundary-box { padding:25px; border-radius:14px; }
+    .outside { color:#354864; background:#edf1f6; border:1px dashed #94a4b8; }
+    .inside { color:#114a50; background:var(--teal-soft); border:1px solid #a6ded9; }
+    .boundary-arrow { color:var(--amber); text-align:center; font-weight:900; font-size:1.75rem; }
+    .boundary-arrow small { display:block; color:#87622c; font-size:.75rem; line-height:1.35; }
+    .trust-notes { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:16px; }
+    .trust-notes article { padding:16px; border-top:4px solid var(--teal); background:#fff; box-shadow:0 4px 12px rgba(30,52,86,.05); }
+    .trust-notes article:nth-child(2) { border-color:var(--indigo); } .trust-notes article:nth-child(3) { border-color:#d68823; }
+    .timeline { position:relative; margin:28px 0 0 8px; padding-left:30px; border-left:2px solid #cdd7e7; }
+    .milestone { position:relative; padding:0 0 28px 16px; }
+    .milestone::before { content:""; position:absolute; left:-39px; top:4px; width:16px; height:16px; border:3px solid var(--paper); background:#7a899d; border-radius:50%; }
+    .milestone.done::before { background:var(--teal); } .milestone.current-step::before { background:var(--indigo); box-shadow:0 0 0 6px #dde1ff; } .milestone.next-step::before { background:#de941f; }
+    .milestone .state { display:block; margin-bottom:4px; font-size:.76rem; font-weight:900; letter-spacing:.1em; }
+    .milestone p { max-width:800px; color:var(--muted); }
+    .run { color:#3341a0; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.9em; font-weight:800; }
+    .alerts { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:26px; }
+    .alert { padding:22px; border-radius:12px; }
+    .alert.pending { background:#eef0ff; border:1px solid #cdd2fa; } .alert.disabled { background:var(--amber-soft); border:1px solid #f1d39c; }
+    .alert ul { margin:12px 0 0; padding-left:20px; }
+    .roadmap { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:25px; }
+    .roadmap article { padding:22px; background:var(--white); border:1px solid var(--line); box-shadow:0 7px 20px rgba(30,52,86,.06); }
+    .roadmap time { display:block; margin-bottom:10px; color:var(--amber); font-size:.8rem; font-weight:900; letter-spacing:.08em; }
+    .source-map { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin-top:24px; }
+    .source-map a { display:block; padding:14px 15px; color:#273b60; background:#fff; border:1px solid var(--line); border-radius:8px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.82rem; text-decoration:none; overflow-wrap:anywhere; }
+    .source-map a:hover { border-color:var(--indigo); background:#f4f5ff; }
+    .note { margin-top:18px; color:var(--muted); font-size:.87rem; }
+    footer { padding:26px 0 38px; color:#516174; background:#e9eef5; font-size:.85rem; }
+    @media (max-width:850px) { .hero-grid,.boundary { grid-template-columns:1fr; } .status-grid { grid-template-columns:1fr 1fr; } .status:nth-child(2) { border-right:0; } .flow { grid-template-columns:1fr; gap:10px; } .flow-step { min-height:0; padding-left:64px; } .flow-num { position:absolute; left:19px; top:21px; } .flow-step:not(:last-child)::after { content:"↓"; right:auto; left:19px; top:auto; bottom:-19px; } .boundary-arrow { transform:rotate(90deg); } .trust-notes,.roadmap { grid-template-columns:1fr; } }
+    @media (max-width:620px) { .shell { padding:0 18px; } .hero { padding:52px 0 35px; } .status-grid { grid-template-columns:1fr; } .status,.status:nth-child(2) { border-right:0; border-bottom:1px solid rgba(255,255,255,.16); } .status:last-child { border-bottom:0; } .matrix,.matrix tbody,.matrix tr,.matrix td { display:block; width:100%; } .matrix { overflow:visible; border:0; background:transparent; box-shadow:none; } .matrix thead { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; } .matrix tr { margin-bottom:12px; padding:16px; background:var(--white); border:1px solid var(--line); border-radius:10px; box-shadow:0 4px 12px rgba(30,52,86,.05); } .matrix td,.matrix td:first-child { min-width:0; padding:7px 0; border:0; } .matrix td:first-child { width:100%; color:var(--ink); font-size:1.05rem; } .matrix td:nth-child(2)::before,.matrix td:nth-child(3)::before { display:block; margin-bottom:3px; color:var(--muted); font-size:.72rem; font-weight:900; letter-spacing:.08em; } .matrix td:nth-child(2)::before { content:"동작"; } .matrix td:nth-child(3)::before { content:"안전장치"; } .alerts,.source-map { grid-template-columns:1fr; } main { padding-top:42px; } }
+    @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } *,*::before,*::after { animation-duration:.01ms!important; animation-iteration-count:1!important; transition-duration:.01ms!important; } }
+    @media print { body { background:#fff; font-size:10pt; } .nav-wrap { position:static; } .hero { padding:26px 0; } section { margin-bottom:32px; break-inside:avoid; } .status-strip { color:#17243a; background:#fff; border-bottom:1px solid #aaa; } .status { min-height:auto; border-color:#aaa; } .status small { color:#526070; } .done,.current,.next { color:#17243a; } .flow-step,.matrix,.roadmap article { box-shadow:none; } a { color:#17243a; text-decoration:none; } }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="shell hero-grid">
+      <div>
+        <p class="eyebrow">Second Brain · Product &amp; Release Snapshot</p>
+        <h1>기억을 모으되, <em>근거 없이</em> 답하지 않는 개인 지식 워크플로</h1>
+        <p class="lede">승인·동의·삭제·시간·인용을 하나의 암호화된 권한 경로로 묶고, 충돌하거나 근거가 부족하면 답변을 보류하는 Second Brain의 현재 확인된 범위입니다.</p>
+      </div>
+      <aside class="snapshot" aria-label="스냅샷 기준">
+        <b>시점 스냅샷 · 2026-08-10 04:23:13 KST</b>
+        <span>라이브 텔레메트리가 아닙니다. 아래 상태는 이 시점에 확인된 구현·실행·결정 증거만 요약하며, 새 권한을 만들지 않습니다.</span>
+      </aside>
+    </div>
+  </header>
+
+  <div class="status-strip" aria-label="현재 상태 요약">
+    <div class="shell status-grid">
+      <div class="status"><small>구현 작업트리</small><strong><span class="done">whelp99-code/trevally</span><br><code>d76359ecffaf8215c5e6ec38c4a977afbdbab6bf</code></strong></div>
+      <div class="status"><small>코드/문서 게이트</small><strong class="done">CODE-01…07 · 3일/72h floor<br>로컬 커밋 · 미푸시 · 비권한 증거</strong></div>
+      <div class="status"><small>현재 Gate 8</small><strong class="current">Canary <code>31314519580</code><br>in_progress</strong></div>
+      <div class="status"><small>전역 제공</small><strong class="next">DB 미해결로 block<br>source disabled</strong></div>
+    </div>
+  </div>
+
+  <div class="nav-wrap"><nav class="shell section-nav" aria-label="페이지 탐색"><a href="#picture">한눈에</a><a href="#flow">제품 흐름</a><a href="#capabilities">가능한 일</a><a href="#trust">신뢰 경계</a><a href="#release">릴리스 게이트</a><a href="#status">대기·제한</a><a href="#next">다음 전환</a><a href="#sources">근거 지도</a></nav></div>
+
+  <main class="shell">
+    <section id="picture">
+      <p class="eyebrow">01 · 현재 확인된 범위</p><h2>코드·문서 바닥은 갖췄지만, Gate 8 Canary와 서명된 DB 결정이 제공 권한을 아직 열지 않습니다.</h2>
+      <p class="section-intro">CODE-01부터 CODE-07까지와 현행 3 full days/72h code/doc floor는 로컬 closure 범위에서 커밋됐지만 미푸시이며 권한을 부여하지 않습니다. 14일/1일 표기는 historical record입니다. Gate 8의 암호화된 수명주기 Canary는 실행 중이고, 전역 제공은 미해결 DB 결정 때문에 차단된 채 source disabled입니다.</p>
+      <div class="meter" aria-label="Gate 8 Canary: 실행 단계 1부터 6까지 성공, strict import와 upload 대기">
+        <div class="meter-head"><span>Gate 8 Canary 실행 위치</span><span>완료율 아님 · 1–6 성공 후 strict import/upload 대기</span></div>
+        <div class="gate-segments" role="img" aria-label="6단계 중 앞의 3단계 완료, 4번째 Evidence Join 단계 진행 중, 이후 2단계 대기">
+          <span class="gate-segment done" aria-hidden="true"></span><span class="gate-segment done" aria-hidden="true"></span><span class="gate-segment done" aria-hidden="true"></span><span class="gate-segment current" aria-hidden="true"></span><span class="gate-segment" aria-hidden="true"></span><span class="gate-segment" aria-hidden="true"></span>
+        </div>
+        <small>실행 <code>31314519580</code> · job <code>93247496969</code> · <b>in_progress</b>. producer는 2026-08-09T12:56:15Z (21:56:15 KST)에 시작했고, 정확한 24시간 최초 완료 가능 시각은 <b>2026-08-10 21:56:15 KST</b>입니다.</small>
+      </div>
+    </section>
+
+    <section id="flow">
+      <p class="eyebrow">02 · 제품 흐름</p><h2>입력은 여러 곳에서 오지만, 답변 권한은 하나의 검증된 경로에만 있습니다.</h2>
+      <div class="flow" aria-label="제품의 왼쪽에서 오른쪽 흐름">
+        <article class="flow-step"><span class="flow-num">01</span><h3>승인된 연결</h3><p>Codex, Claude/Memory Bank, Git, Markdown을 읽기 전용 입력으로 받습니다. 이들은 동등한 답변 서버가 아닙니다.</p></article>
+        <article class="flow-step"><span class="flow-num">02</span><h3>캡처와 동의</h3><p>동의가 유효할 때만 캡처합니다. 요청은 검증되고, 기록·의도·이벤트는 변경 이력으로 남습니다.</p></article>
+        <article class="flow-step"><span class="flow-num">03</span><h3>암호화된 수명주기</h3><p>암호화 저장소와 원장 안에서 검토·승인·수정·삭제 상태를 관리합니다. 프로젝션은 진실의 원본이 아닙니다.</p></article>
+        <article class="flow-step"><span class="flow-num">04</span><h3>검토와 충돌</h3><p>수정·상충 근거·인용 누락을 함께 봅니다. 우세한 답이 있어도 반대 근거를 지우지 않습니다.</p></article>
+        <article class="flow-step"><span class="flow-num">05</span><h3>고정 스냅샷 회상</h3><p>시간·권한·동의·삭제·근거를 고정한 스냅샷으로만 회상합니다. 확신할 수 없으면 인용과 함께 보류합니다.</p></article>
+      </div>
+    </section>
+
+    <section id="capabilities"><p class="eyebrow">03 · 사용자에게 가능한 일</p><h2>단순 저장소가 아니라, 기억의 상태와 근거를 다루는 작업 공간입니다.</h2>
+      <table class="matrix"><thead><tr><th>사용자 목적</th><th>현재 설계의 동작</th><th>안전장치</th></tr></thead><tbody>
+        <tr><td>캡처</td><td>승인된 커넥터에서 기억 후보를 수집하고 검토 흐름에 넣습니다.</td><td><span class="tag teal">동의 검증</span> 현재 동의가 없으면 캡처와 제공을 막습니다.</td></tr>
+        <tr><td>검토·수정</td><td>기억을 승인, 수정, 대체 또는 상충으로 선언합니다.</td><td><span class="tag indigo">변경 이력</span> 명령과 결정은 불변 증거로 다룹니다.</td></tr>
+        <tr><td>인용 회상</td><td>확인 가능한 인용과 함께 결과를 제공합니다.</td><td><span class="tag teal">보류 가능</span> 동점 충돌·인용 부족·권한 불일치에서는 답을 만들지 않습니다.</td></tr>
+        <tr><td>망각</td><td>실제 활성화 뒤 정확히 90일의 읽기 전용 보존을 유지합니다. 지금은 삭제·revocation을 실행할 수 없습니다.</td><td><span class="tag amber">사람 승인 필요</span> 삭제·revocation은 인간 승인 후에만 검토할 수 있으며, 파괴된 키나 이전 본문을 복원하지 않습니다.</td></tr>
+        <tr><td>시간 질의</td><td>기록 시점과 유효 시점을 구분하여 과거 상태를 묻습니다.</td><td><span class="tag indigo">고정 스냅샷</span> 페이지 사이의 임의 재조회로 답을 섞지 않습니다.</td></tr>
+        <tr><td>평가·전환</td><td>평가 거버넌스, 마이그레이션, cutover 절차를 별도 증거로 관리합니다.</td><td><span class="tag amber">별도 권한</span> 제품 증거와 제공 권한은 서로 대체되지 않습니다.</td></tr>
+        <tr><td>도구 연동</td><td>읽기 전용 MCP로 조회 범위를 연결합니다.</td><td><span class="tag amber">닫힌 범위</span> 외부 유출·내보내기는 별도 승인 없이는 꺼져 있습니다.</td></tr>
+      </tbody></table>
+    </section>
+
+    <section id="trust"><p class="eyebrow">04 · 보안과 신뢰 경계</p><h2>“여러 기억을 연결”하는 대신, 무엇이 답변 권한인지 분리합니다.</h2>
+      <div class="boundary" role="img" aria-label="외부 커넥터는 암호화된 단일 권한 경로에 입력만 제공하며 외부 유출은 기본 차단됨">
+        <div class="boundary-box outside"><h3>외부 입력 · 읽기 전용</h3><p>Codex<br>Claude/Memory Bank<br>Git · Markdown<br><br>마이그레이션 원본도 입력이지, 실시간 답변의 대체 경로가 아닙니다.</p></div>
+        <div class="boundary-arrow" aria-hidden="true">→<small>명시적 캡처<br>· 동의</small></div>
+        <div class="boundary-box inside"><h3>Second Brain의 유일한 제공 권한</h3><p>암호화된 CAS + 불변 원장 → 승인된 변경·활성 세대 → 고정 회상 스냅샷 + 인용 → V2 API / read-only MCP / 내부 프로젝션</p></div>
+      </div>
+      <div class="trust-notes"><article><h3>동의·삭제가 우선</h3><p>현재 동의 또는 삭제 의무가 만족되지 않으면 캡처와 회상 모두 실패-폐쇄합니다.</p></article><article><h3>프로젝션은 원본이 아님</h3><p>검색·대시보드 등은 재생성/보류할 수 있는 내부 보기이며 기억의 진실을 독자적으로 결정하지 않습니다.</p></article><article><h3>외부 유출은 기본 비활성</h3><p>공급자·경로·데이터 등급에 대한 별도 유효 opt-in 없이는 외부 egress/export를 하지 않습니다.</p></article></div>
+    </section>
+
+    <section id="release"><p class="eyebrow">05 · 릴리스 게이트</p><h2>현재 흐름은 Gate 8 Canary를 보존하며 기다리는 단계이고, 코드 완료와 DB 결정은 서로 대체할 수 없습니다.</h2>
+      <div class="timeline">
+        <article class="milestone done"><span class="state done">DONE · 로컬 코드/문서 바닥</span><h3>CODE-01…07 및 15-file DRIFT scope</h3><p>구현 작업트리는 <code>/Volumes/DevSpace/orca/workspaces/wiki-spike/trevally</code>, branch <code>whelp99-code/trevally</code>, local commit <code>d76359ecffaf8215c5e6ec38c4a977afbdbab6bf</code>입니다. 현행 code/doc floor는 <b>3 full days / 72h</b>이며 full suite는 <b>2215 passed in 189.13s</b>, rc 0입니다. 14일/1일 및 199-test 표기는 historical record로 보존하지만 현행 주장으로 사용하지 않습니다. 이 commit은 미푸시이며 비권한 증거입니다.</p></article>
+        <article class="milestone current-step"><span class="state current">CURRENT · 실행 보존</span><h3>encrypted-lifecycle-canary 실행 중</h3><p>workflow <code>encrypted-lifecycle-canary</code>의 run <span class="run">31314519580</span>, job <span class="run">93247496969</span>는 <b>in_progress</b>입니다. producer step은 2026-08-09T12:56:15Z / 21:56:15 KST에 시작했습니다.</p></article>
+        <article class="milestone done"><span class="state done">DONE · 실행 단계 1–6</span><h3>앞선 여섯 단계 success</h3><p>현재 실행의 steps 1–6은 success입니다. strict import와 upload는 아직 대기 중이므로, 이 사실은 Canary 전체 성공이나 릴리스 승인으로 해석되지 않습니다.</p></article>
+        <article class="milestone next-step"><span class="state next">WAIT · 정확한 24시간</span><h3>가장 이른 완료 가능 시각</h3><p>정확한 24시간 기준으로 <b>2026-08-10 21:56:15 KST</b> 이전에는 완료될 수 없습니다. 이 실행을 cancel하거나 restart하지 않습니다.</p></article>
+        <article class="milestone next-step"><span class="state next">BLOCKED · DB 결정</span><h3>전역 제공은 source disabled</h3><p>DB-01/02/03/05/07이 미해결이므로 전역 block이 유지됩니다. Gate 8의 관찰 결과나 코드 완료가 이 서명·범위 결정을 대체하지 않습니다.</p></article>
+      </div>
+    </section>
+
+    <section id="status"><p class="eyebrow">06 · 대기 항목과 비활성 범위</p><h2>현재 열려 있는 일과 의도적으로 꺼 둔 범위를 구분합니다.</h2>
+      <div class="alerts"><article class="alert pending"><h3>지금 진행을 막는 항목</h3><ul><li>Gate 8 run <code>31314519580</code>의 정확한 24시간 관찰과 strict import/upload</li><li>DB-01/02/03/05/07의 서명된 결정 및 해소</li><li>DB-04의 trusted identity와 resolved-scope binding</li><li>DB-05/07 supersession의 DRIFT-02 signed 결론 — 현재 <b>NOT_AUTHORIZED</b></li><li>한 long native test는 <b>INCONCLUSIVE</b>이며 PASS가 아닙니다.</li></ul></article>
+        <article class="alert disabled"><h3>검증됐지만 제공 권한은 아닌 범위</h3><ul><li><b>DB-04: embedded signatures GO</b> — verify rc 0 및 evidence digest match. trusted identity/resolved-scope binding은 여전히 대기입니다.</li><li><b>DB-06: model-a scoped NO_GO</b>, <b>DB-08: archive scoped NO_GO</b> — shared root에 존재하고 embedded signature/evidence hash가 검증됐습니다.</li><li>DB-06/08은 copy하거나 binding을 claim할 수 없습니다. 이 조건들과 미해결 DB 결정 때문에 전역 block/source disabled가 유지됩니다.</li><li>실제 활성화 뒤 90일 read-only retention은 정확한 요구사항입니다. 삭제·revocation은 인간 승인 없이는 할 수 없고, 지금은 실행할 수 없습니다.</li></ul></article></div>
+    </section>
+
+    <section id="next"><p class="eyebrow">07 · 다음 통제 전환</p><h2>지금은 가속 단계가 아니라 실행을 보존하고, 권한이 생긴 뒤에만 다음 경계를 검사하는 단계입니다.</h2>
+      <div class="roadmap"><article><time>현재 → 2026-08-10 21:56:15 KST</time><h3>Canary 관찰 유지</h3><p>run <code>31314519580</code>을 관찰합니다. 24시간 창이 끝나기 전에는 완료를 주장하지 않으며 cancel/restart하지 않습니다.</p></article><article><time>24시간 조건 충족 후</time><h3>strict import/upload 확인</h3><p>대기 중인 strict import와 upload의 결과를 해당 실행의 증거로만 판정합니다. steps 1–6 success는 이 후속 경계를 대체하지 않습니다.</p></article><article><time>실제 활성화 후</time><h3>90일 read-only 보존</h3><p>정확히 90일의 읽기 전용 보존을 지킵니다. deletion/revocation은 인간 승인이 있는 별도 절차이며 현재 수행할 수 없습니다.</p></article></div>
+      <p class="note">이 문서는 관찰·제한 상태를 설명할 뿐, GitHub 실행 제어, 서명, binding, 활성화, 삭제, revocation, 병합 또는 배포 권한을 부여하지 않습니다.</p>
+    </section>
+
+    <section id="sources"><p class="eyebrow">08 · 근거 지도</p><h2>이 페이지가 요약한 제품·게이트·구현 경계의 주요 출처</h2>
+      <div class="source-map" aria-label="저장소 근거 파일 목록">
+        <a href="../adr/ADR-0028-second-brain-product-boundary.md">docs/adr/ADR-0028-second-brain-product-boundary.md</a>
+        <a href="../gate8-runbook.md">docs/gate8-runbook.md</a>
+        <a href="../../.github/workflows/encrypted-lifecycle-evidence-join.yml">.github/workflows/encrypted-lifecycle-evidence-join.yml</a>
+        <a href="../../src/wiki_spike/composition/second_brain_product.py">src/wiki_spike/composition/second_brain_product.py</a>
+        <a href="../../src/wiki_spike/composition/api_v2.py">src/wiki_spike/composition/api_v2.py</a>
+        <a href="../../src/wiki_spike/composition/mcp_v2.py">src/wiki_spike/composition/mcp_v2.py</a>
+        <a href="../../src/wiki_spike/applications/encrypted_lifecycle_pipeline.py">src/wiki_spike/applications/encrypted_lifecycle_pipeline.py</a>
+        <a href="../../src/wiki_spike/memory_runtime/second_brain_recall.py">src/wiki_spike/memory_runtime/second_brain_recall.py</a>
+        <a href="../../src/wiki_spike/ui/recall_conflict_view.py">src/wiki_spike/ui/recall_conflict_view.py</a>
+      </div>
+      <p class="note">상태 세부는 지정된 결정/GJC JSON 및 PR 상태의 시점 확인값을 함께 반영했습니다. 이 문서는 운용 현황을 설명하는 페이지이며, 새로운 릴리스 권한이나 증거를 생성하지 않습니다.</p>
+    </section>
+  </main>
+  <footer><div class="shell">Second Brain workflow overview · point-in-time snapshot: 2026-08-10 04:23:13 KST · 외부 자산/네트워크 의존성 없음</div></footer>
+</body>
+</html>

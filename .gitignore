@@ -23,6 +23,7 @@ dist/
 
 # local CI/preflight logs
 .ci/
+test-results/
 
 # agent tool state
 .gjc/

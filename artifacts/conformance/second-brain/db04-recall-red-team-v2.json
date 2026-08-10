@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "kind": "black-box-test-report",
+  "decisionRef": "docs/product/decisions/DB-04-conflict-behavior.md",
+  "sourceHash": "sha256:3bf2c5e64c13a6a99dd052ea7579d4af53ccba0d08f4064e433a12e964ba6384",
+  "surface": "api/package",
+  "invocation": "python3.12 -m pytest tests/second_brain/test_stage3_recall_snapshot.py tests/second_brain/test_db04_recall_conflict_view.py -q",
+  "commands": [
+    "python3.12 -m pytest tests/second_brain/test_stage3_recall_snapshot.py tests/second_brain/test_db04_recall_conflict_view.py -q"
+  ],
+  "observed": "24 passed in 0.11s",
+  "verdict": "passed",
+  "contractCoverage": [
+    {
+      "id": "db04-fix",
+      "contractRef": "DB-04 blocker fixes",
+      "obligation": "All contrary citations accumulate and approved citationless counterparts remain explicitly marked for OPEN, RESOLVED, and SUPERSEDED states",
+      "status": "covered",
+      "surfaceEvidenceRefs": [
+        "db04-api"
+      ],
+      "adversarialCaseRefs": [
+        "multiple-losers",
+        "resolved-uncited"
+      ]
+    }
+  ],
+  "surfaceEvidence": [
+    {
+      "id": "db04-api",
+      "contractRef": "DB-04 blocker fixes",
+      "surface": "api",
+      "invocation": "Focused recall and renderer pytest cohort",
+      "verdict": "passed",
+      "artifactRefs": [
+        "db04-fix-report"
+      ]
+    }
+  ],
+  "adversarialCases": [
+    {
+      "id": "multiple-losers",
+      "contractRef": "DB-04 blocker fixes",
+      "scenario": "One winner conflicts with two supported losers",
+      "expectedBehavior": "Both contrary citations are retained in deterministic order",
+      "verdict": "passed",
+      "artifactRefs": [
+        "db04-fix-report"
+      ]
+    },
+    {
+      "id": "resolved-uncited",
+      "contractRef": "DB-04 blocker fixes",
+      "scenario": "Approved citationless counterpart is in RESOLVED conflict",
+      "expectedBehavior": "Winner carries unverified_conflicts marker",
+      "verdict": "passed",
+      "artifactRefs": [
+        "db04-fix-report"
+      ]
+    },
+    {
+      "id": "resolved-superseded-uncited",
+      "contractRef": "DB-04 blocker fixes",
+      "scenario": "Approved citationless counterpart is represented by the RESOLVED conflict state after supersession",
+      "expectedBehavior": "Winner carries unverified_conflicts marker",
+      "verdict": "passed",
+      "artifactRefs": [
+        "db04-fix-report"
+      ]
+    },
+    {
+      "id": "equal-support",
+      "contractRef": "DB-04 blocker fixes",
+      "scenario": "Equal support in OPEN conflict",
+      "expectedBehavior": "No winner is fabricated",
+      "verdict": "passed",
+      "artifactRefs": [
+        "db04-fix-report"
+      ]
+    },
+    {
+      "id": "approval-citation-gates",
+      "contractRef": "DB-04 blocker fixes",
+      "scenario": "Absent approval and invalid citation evidence",
+      "expectedBehavior": "Distinct abstention reasons remain enforced",
+      "verdict": "passed",
+      "artifactRefs": [
+        "db04-fix-report"
+      ]
+    }
+  ],
+  "artifactRefs": [
+    {
+      "id": "db04-fix-report",
+      "kind": "api-package-test-report",
+      "path": "artifacts/conformance/second-brain/db04-recall-red-team-v2.json",
+      "description": "Current DB-04 blocker-fix QA report"
+    }
+  ],
+  "summary": {
+    "total": 5,
+    "passed": 5,
+    "failed": 0,
+    "noContraryCitationOverwritten": true,
+    "resolvedAndSupersededUncitedMarkersSupported": true
+  }
+}

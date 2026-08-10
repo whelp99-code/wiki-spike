@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "kind": "decision-signing-adversarial-test-report",
+  "sourceHash": "sha256:0190071e7ff2d64ebbd46c5dd191afa94b4f35052561df61fa35127c012a68b8",
+  "ranAt": "2026-08-06T16:50:15Z",
+  "surface": "package/algorithm",
+  "cases": [
+    {
+      "scenario": "tamper-DB-03: flip a character inside the reason field of a copy of the shipped record",
+      "expectedBehavior": "verify exits 1 with signatures_verified=false (record parses; signatures fail)",
+      "observed": "cmd: /usr/local/bin/python3.12 /Volumes/DevSpace/orca/Wiki-spike/wiki-spike/scripts/second_brain_decision.py verify --record /private/tmp/ws-db-signing-2026-08-06/work/tamper-DB-03.json\nexit: 1\nstdout: { \"decision_id\": \"DB-03\", \"evidence_digest\": \"9e7d68ae8df714da7464b908872580ca2f83bd62fd7041bd7bd04239ff122aeb\", \"expires_at\": \"2026-08-20T00:00:00Z\", \"outcome\": \"GO\", \"record\": \"/private/tmp/ws-db-signing-2026-08-06/work/tamper-DB-03.json\", \"record_revision\": \"1\", \"scope_kind\": \"migration_source\", \"scope_name\": \"unified-db\", \"signatures\": [ { \"key_id\": \"wiki-spike-local-approver-2026\", \"role\":...",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "tamper-DB-06: flip a character inside the reason field of a copy of the shipped record",
+      "expectedBehavior": "verify exits 1 with signatures_verified=false (record parses; signatures fail)",
+      "observed": "cmd: /usr/local/bin/python3.12 /Volumes/DevSpace/orca/Wiki-spike/wiki-spike/scripts/second_brain_decision.py verify --record /private/tmp/ws-db-signing-2026-08-06/work/tamper-DB-06.json\nexit: 1\nstdout: { \"decision_id\": \"DB-06\", \"evidence_digest\": \"ca484b77006acf70fca632f964e8b4b9d6b8d90b734f68536f01b5756b044d82\", \"expires_at\": \"2027-08-06T00:00:00Z\", \"outcome\": \"NO_GO\", \"record\": \"/private/tmp/ws-db-signing-2026-08-06/work/tamper-DB-06.json\", \"record_revision\": \"1\", \"scope_kind\": \"external_model_route\", \"scope_name\": \"model-a\", \"signatures\": [ { \"key_id\": \"wiki-spike-local-approver-2026\", \"ro...",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "tamper-DB-08: flip a character inside the reason field of a copy of the shipped record",
+      "expectedBehavior": "verify exits 1 with signatures_verified=false (record parses; signatures fail)",
+      "observed": "cmd: /usr/local/bin/python3.12 /Volumes/DevSpace/orca/Wiki-spike/wiki-spike/scripts/second_brain_decision.py verify --record /private/tmp/ws-db-signing-2026-08-06/work/tamper-DB-08.json\nexit: 1\nstdout: { \"decision_id\": \"DB-08\", \"evidence_digest\": \"7d12d8c425620f208646bd5612a44446dacab1f37028fbd3bb302f534f870193\", \"expires_at\": \"2027-08-06T00:00:00Z\", \"outcome\": \"NO_GO\", \"record\": \"/private/tmp/ws-db-signing-2026-08-06/work/tamper-DB-08.json\", \"record_revision\": \"1\", \"scope_kind\": \"export_destination\", \"scope_name\": \"archive\", \"signatures\": [ { \"key_id\": \"wiki-spike-local-approver-2026\", \"role...",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "reorder-signatures: DB-03 copy with signatures reordered owner-then-approver",
+      "expectedBehavior": "DecisionRecordV1.from_mapping rejects with canonical-ordering error",
+      "observed": "raised InvalidContractValue: signatures must be canonically ordered as approver then owner",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "duplicate-role: DB-03 copy with the approver envelope duplicated in both slots",
+      "expectedBehavior": "DecisionRecordV1.from_mapping rejects the record (ordering/role-composition check)",
+      "observed": "raised InvalidContractValue: signatures must be canonically ordered as approver then owner",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "post-signing-body-edit: sign the original DB-03 body with throwaway keys, then change reason and assemble",
+      "expectedBehavior": "assemble exits 2 reporting signing-bytes digest divergence (signature does not verify over this body)",
+      "observed": "cmd: /usr/local/bin/python3.12 /Volumes/DevSpace/orca/Wiki-spike/wiki-spike/scripts/second_brain_decision.py assemble --body /private/tmp/ws-db-signing-2026-08-06/work/case3-body-edited.json --signature /private/tmp/ws-db-signing-2026-08-06/work/env-approver-approver-throwaway.json --signature /private/tmp/ws-db-signing-2026-08-06/work/env-owner-owner-throwaway.json --out /private/tmp/ws-db-signing-2026-08-06/work/case3-record.json\nexit: 2\nstderr: FAIL: approver signature does not verify over this body (signing bytes sha256 df935148956a1bd5c11093197fa80a1b1b5e829b515dd55ea166be05716aa1a7); the body changed after it was signed, or the wrong key signed it",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "wrong-role-duplicate-key: one throwaway key signs the body and claims both the approver and the owner role",
+      "expectedBehavior": "assemble exits 2 (owner and approver must have distinct key identities and public keys)",
+      "observed": "cmd: /usr/local/bin/python3.12 /Volumes/DevSpace/orca/Wiki-spike/wiki-spike/scripts/second_brain_decision.py assemble --body /private/tmp/ws-db-signing-2026-08-06/work/case4-body.json --signature /private/tmp/ws-db-signing-2026-08-06/work/env-approver-dual-role.json --signature /private/tmp/ws-db-signing-2026-08-06/work/env-owner-dual-role.json --out /private/tmp/ws-db-signing-2026-08-06/work/case4a-record.json\nexit: 2\nstderr: FAIL: InvalidContractValue: owner and approver must have distinct key identities and public keys",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "wrong-role-foreign-signature: approver signature is valid but the owner envelope carries a throwaway signature over a different body",
+      "expectedBehavior": "assemble exits 2 naming the owner signature as not verifying over this body",
+      "observed": "cmd: /usr/local/bin/python3.12 /Volumes/DevSpace/orca/Wiki-spike/wiki-spike/scripts/second_brain_decision.py assemble --body /private/tmp/ws-db-signing-2026-08-06/work/case4b-body.json --signature /private/tmp/ws-db-signing-2026-08-06/work/env-approver-dual-role.json --signature /private/tmp/ws-db-signing-2026-08-06/work/env-owner-foreign.json --out /private/tmp/ws-db-signing-2026-08-06/work/case4b-record.json\nexit: 2\nstderr: FAIL: owner signature does not verify over this body (signing bytes sha256 f1f87dc599650799b3b3949d02096ece1d2f00e77d9f51068b919693c2c0bec5); the body changed after it was signed, or the wrong key signed it",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "expired-record: copy DB-03 body, set expires_at to 2026-01-01, re-sign end to end with throwaway keys",
+      "expectedBehavior": "assemble succeeds (signatures are valid) but DecisionRecordV1.from_mapping(now=utc-now) raises 'decision is expired'",
+      "observed": "assemble: cmd: /usr/local/bin/python3.12 /Volumes/DevSpace/orca/Wiki-spike/wiki-spike/scripts/second_brain_decision.py assemble --body /private/tmp/ws-db-signing-2026-08-06/work/case5-body-expired.json --signature /private/tmp/ws-db-signing-2026-08-06/work/env-approver-approver-throwaway.json --signature /private/tmp/ws-db-signing-2026-08-06/work/env-owner-owner-throwaway.json --out /private/tmp/ws-db-signing-2026-08-06/work/case5-record.json\nexit: 0\nstdout: { \"written_to\": \"/private/tmp/ws-db-signing-2026-08-06/work/case5-record.json\", \"decision_id\": \"DB-03\" }\nfrom_mapping(now=utc-now): raised InvalidContractValue: decision is expired",
+      "verdict": "passed",
+      "notes": "verify (tool) does not take now=; expiry is enforced at contract-parse time per runbook layering"
+    },
+    {
+      "scenario": "scope-mismatch: DB-03 copy with scope_kind changed to external_model_route",
+      "expectedBehavior": "DecisionRecordV1.from_mapping rejects (scope_kind does not match decision_id)",
+      "observed": "raised InvalidContractValue: scope_kind does not match decision_id",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "global-with-scope-name: global decision DB-01 carrying scope_name 'archive'",
+      "expectedBehavior": "DecisionRecordV1.from_mapping rejects (global decisions require null scope_name)",
+      "observed": "raised InvalidContractValue: global decisions require null scope_name; scoped decisions require a scope_name",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "skeleton-scoped-without-name: skeleton --decision-id DB-03 with no --scope-name",
+      "expectedBehavior": "tool exits 2 before emitting a body (scoped decision requires --scope-name)",
+      "observed": "cmd: /usr/local/bin/python3.12 /Volumes/DevSpace/orca/Wiki-spike/wiki-spike/scripts/second_brain_decision.py skeleton --decision-id DB-03\nexit: 2\nstderr: FAIL: DB-03 is migration_source-scoped and requires --scope-name",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "skeleton-global-with-name: skeleton --decision-id DB-01 --scope-name archive",
+      "expectedBehavior": "tool exits 2 before emitting a body (global decision takes no --scope-name)",
+      "observed": "cmd: /usr/local/bin/python3.12 /Volumes/DevSpace/orca/Wiki-spike/wiki-spike/scripts/second_brain_decision.py skeleton --decision-id DB-01 --scope-name archive\nexit: 2\nstderr: FAIL: DB-01 is global and takes no --scope-name",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "duplicate-key-id: two distinct throwaway keys both claim key_id 'shared-key-id'",
+      "expectedBehavior": "assemble exits 2 (owner and approver must have distinct key identities and public keys)",
+      "observed": "cmd: /usr/local/bin/python3.12 /Volumes/DevSpace/orca/Wiki-spike/wiki-spike/scripts/second_brain_decision.py assemble --body /private/tmp/ws-db-signing-2026-08-06/work/case7-body.json --signature /private/tmp/ws-db-signing-2026-08-06/work/env-approver-approver-throwaway.json --signature /private/tmp/ws-db-signing-2026-08-06/work/env-owner-other-party.json --out /private/tmp/ws-db-signing-2026-08-06/work/case7a-record.json\nexit: 2\nstderr: FAIL: InvalidContractValue: owner and approver must have distinct key identities and public keys",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "duplicate-public-key: DB-03 copy where the owner envelope reuses the approver public key",
+      "expectedBehavior": "DecisionRecordV1.from_mapping rejects (distinct public keys required)",
+      "observed": "raised InvalidContractValue: owner and approver must have distinct key identities and public keys",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "evidence-binding-DB-03: sha256(evidence_refs[0]) must equal evidence_digest",
+      "expectedBehavior": "sha256(artifacts/product-release/second-brain-v1/unified-db-inventory-v1.json) == 9e7d68ae8df714da7464b908872580ca2f83bd62fd7041bd7bd04239ff122aeb",
+      "observed": "cmd: sha256(artifacts/product-release/second-brain-v1/unified-db-inventory-v1.json)\nactual: 9e7d68ae8df714da7464b908872580ca2f83bd62fd7041bd7bd04239ff122aeb\nexpected: 9e7d68ae8df714da7464b908872580ca2f83bd62fd7041bd7bd04239ff122aeb",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "evidence-binding-DB-06: sha256(evidence_refs[0]) must equal evidence_digest",
+      "expectedBehavior": "sha256(artifacts/product-release/second-brain-v1/evidence/db-06-model-a-no-go-bundle-v1.json) == ca484b77006acf70fca632f964e8b4b9d6b8d90b734f68536f01b5756b044d82",
+      "observed": "cmd: sha256(artifacts/product-release/second-brain-v1/evidence/db-06-model-a-no-go-bundle-v1.json)\nactual: ca484b77006acf70fca632f964e8b4b9d6b8d90b734f68536f01b5756b044d82\nexpected: ca484b77006acf70fca632f964e8b4b9d6b8d90b734f68536f01b5756b044d82",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "evidence-binding-DB-08: sha256(evidence_refs[0]) must equal evidence_digest",
+      "expectedBehavior": "sha256(artifacts/product-release/second-brain-v1/evidence/db-08-archive-no-go-bundle-v1.json) == 7d12d8c425620f208646bd5612a44446dacab1f37028fbd3bb302f534f870193",
+      "observed": "cmd: sha256(artifacts/product-release/second-brain-v1/evidence/db-08-archive-no-go-bundle-v1.json)\nactual: 7d12d8c425620f208646bd5612a44446dacab1f37028fbd3bb302f534f870193\nexpected: 7d12d8c425620f208646bd5612a44446dacab1f37028fbd3bb302f534f870193",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "evidence-constituents-DB-06: every bundle constituent sha256 must match the live doc",
+      "expectedBehavior": "all 2 constituents of artifacts/product-release/second-brain-v1/evidence/db-06-model-a-no-go-bundle-v1.json hash-match their live files",
+      "observed": "sha256 over live files:\ndocs/adr/ADR-0028-second-brain-product-boundary.md: match (ab0ed44272a979801aef86d19f82eb511e60b3d73b2828ce557fa18799c82887)\ndocs/product/decisions/DB-06-model-egress.md: match (50419001a68204041ca97835ef6c63532c880eede9612ab13bcde7c6f0c77687)",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "evidence-constituents-DB-08: every bundle constituent sha256 must match the live doc",
+      "expectedBehavior": "all 2 constituents of artifacts/product-release/second-brain-v1/evidence/db-08-archive-no-go-bundle-v1.json hash-match their live files",
+      "observed": "sha256 over live files:\ndocs/adr/ADR-0028-second-brain-product-boundary.md: match (ab0ed44272a979801aef86d19f82eb511e60b3d73b2828ce557fa18799c82887)\ndocs/product/decisions/DB-08-publication-scope.md: match (27988c9221c1cc1a7d241c31bbde1ad7c4edafefad78e74c1fa94e7b56965dcf)",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "extra-duplicate-json-key: shipped DB-03 copy with a duplicated top-level JSON key",
+      "expectedBehavior": "verify exits 2 before verification (duplicate JSON key rejected at parse)",
+      "observed": "cmd: /usr/local/bin/python3.12 /Volumes/DevSpace/orca/Wiki-spike/wiki-spike/scripts/second_brain_decision.py verify --record /private/tmp/ws-db-signing-2026-08-06/work/duplicate-json-key.json\nexit: 2\nstderr: FAIL: duplicate JSON key: outcome",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "extra-signature-byte-tamper: flip one base64 character of the approver signature in a DB-03 copy",
+      "expectedBehavior": "verify exits 1 with signatures_verified=false",
+      "observed": "cmd: /usr/local/bin/python3.12 /Volumes/DevSpace/orca/Wiki-spike/wiki-spike/scripts/second_brain_decision.py verify --record /private/tmp/ws-db-signing-2026-08-06/work/signature-tamper.json\nexit: 1\nstdout: { \"decision_id\": \"DB-03\", \"evidence_digest\": \"9e7d68ae8df714da7464b908872580ca2f83bd62fd7041bd7bd04239ff122aeb\", \"expires_at\": \"2026-08-20T00:00:00Z\", \"outcome\": \"GO\", \"record\": \"/private/tmp/ws-db-signing-2026-08-06/work/signature-tamper.json\", \"record_revision\": \"1\", \"scope_kind\": \"migration_source\", \"scope_name\": \"unified-db\", \"signatures\": [ { \"key_id\": \"wiki-spike-local-approver-2026\", \"ro...",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "extra-inspect-appended-bytes: append one byte to a valid signing-bytes file then inspect",
+      "expectedBehavior": "inspect exits 2 (not the canonical encoding of the body it contains)",
+      "observed": "cmd: /usr/local/bin/python3.12 /Volumes/DevSpace/orca/Wiki-spike/wiki-spike/scripts/second_brain_decision.py inspect --signing-bytes /private/tmp/ws-db-signing-2026-08-06/work/case5-signing-bytes-appended.bin\nexit: 2\nstderr: FAIL: /private/tmp/ws-db-signing-2026-08-06/work/case5-signing-bytes-appended.bin is not the canonical encoding of the body it contains; refuse to sign it",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "extra-body-already-signed: assemble with a body file that already contains a signatures field",
+      "expectedBehavior": "assemble exits 2 (sign the body, then assemble; partially-signed input rejected)",
+      "observed": "cmd: /usr/local/bin/python3.12 /Volumes/DevSpace/orca/Wiki-spike/wiki-spike/scripts/second_brain_decision.py assemble --body /private/tmp/ws-db-signing-2026-08-06/work/body-with-signatures.json --signature /private/tmp/ws-db-signing-2026-08-06/work/env-approver-approver-throwaway.json --signature /private/tmp/ws-db-signing-2026-08-06/work/env-owner-owner-throwaway.json --out /private/tmp/ws-db-signing-2026-08-06/work/never-written.json\nexit: 2\nstderr: FAIL: /private/tmp/ws-db-signing-2026-08-06/work/body-with-signatures.json must not carry a signatures field; sign the body, then assemble",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "happy-path-DB-03: shipped record passes verify and parses via from_mapping(now=utc)",
+      "expectedBehavior": "verify exits 0 with signatures_verified=true; DecisionRecordV1.from_mapping(now=utc) accepts",
+      "observed": "cmd: /usr/local/bin/python3.12 /Volumes/DevSpace/orca/Wiki-spike/wiki-spike/scripts/second_brain_decision.py verify --record /Volumes/DevSpace/orca/Wiki-spike/wiki-spike/artifacts/product-release/second-brain-v1/decisions/DB-03-unified-db.json\nexit: 0\nstdout: { \"decision_id\": \"DB-03\", \"evidence_digest\": \"9e7d68ae8df714da7464b908872580ca2f83bd62fd7041bd7bd04239ff122aeb\", \"expires_at\": \"2026-08-20T00:00:00Z\", \"outcome\": \"GO\", \"record\": \"/Volumes/DevSpace/orca/Wiki-spike/wiki-spike/artifacts/product-release/second-brain-v1/decisions/DB-03-unified-db.json\", \"record_revision\": \"1\", \"scope_kind\": \"migration_source\", \"scope_name\": \"unified-db\", \"signatures...\nstderr: NOTE: signatures verify against the keys embedded in the record. Binding those keys to the trusted owner/approver identities is a separate check performed by resolve_second_brain_contract with TrustedDecisionKeyBindingsV1.\nfrom_mapping(now=utc): from_mapping(now=utc) accepted the record",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "happy-path-DB-06: shipped record passes verify and parses via from_mapping(now=utc)",
+      "expectedBehavior": "verify exits 0 with signatures_verified=true; DecisionRecordV1.from_mapping(now=utc) accepts",
+      "observed": "cmd: /usr/local/bin/python3.12 /Volumes/DevSpace/orca/Wiki-spike/wiki-spike/scripts/second_brain_decision.py verify --record /Volumes/DevSpace/orca/Wiki-spike/wiki-spike/artifacts/product-release/second-brain-v1/decisions/DB-06-model-a.json\nexit: 0\nstdout: { \"decision_id\": \"DB-06\", \"evidence_digest\": \"ca484b77006acf70fca632f964e8b4b9d6b8d90b734f68536f01b5756b044d82\", \"expires_at\": \"2027-08-06T00:00:00Z\", \"outcome\": \"NO_GO\", \"record\": \"/Volumes/DevSpace/orca/Wiki-spike/wiki-spike/artifacts/product-release/second-brain-v1/decisions/DB-06-model-a.json\", \"record_revision\": \"1\", \"scope_kind\": \"external_model_route\", \"scope_name\": \"model-a\", \"signature...\nstderr: NOTE: signatures verify against the keys embedded in the record. Binding those keys to the trusted owner/approver identities is a separate check performed by resolve_second_brain_contract with TrustedDecisionKeyBindingsV1.\nfrom_mapping(now=utc): from_mapping(now=utc) accepted the record",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "happy-path-DB-08: shipped record passes verify and parses via from_mapping(now=utc)",
+      "expectedBehavior": "verify exits 0 with signatures_verified=true; DecisionRecordV1.from_mapping(now=utc) accepts",
+      "observed": "cmd: /usr/local/bin/python3.12 /Volumes/DevSpace/orca/Wiki-spike/wiki-spike/scripts/second_brain_decision.py verify --record /Volumes/DevSpace/orca/Wiki-spike/wiki-spike/artifacts/product-release/second-brain-v1/decisions/DB-08-archive.json\nexit: 0\nstdout: { \"decision_id\": \"DB-08\", \"evidence_digest\": \"7d12d8c425620f208646bd5612a44446dacab1f37028fbd3bb302f534f870193\", \"expires_at\": \"2027-08-06T00:00:00Z\", \"outcome\": \"NO_GO\", \"record\": \"/Volumes/DevSpace/orca/Wiki-spike/wiki-spike/artifacts/product-release/second-brain-v1/decisions/DB-08-archive.json\", \"record_revision\": \"1\", \"scope_kind\": \"export_destination\", \"scope_name\": \"archive\", \"signatures\"...\nstderr: NOTE: signatures verify against the keys embedded in the record. Binding those keys to the trusted owner/approver identities is a separate check performed by resolve_second_brain_contract with TrustedDecisionKeyBindingsV1.\nfrom_mapping(now=utc): from_mapping(now=utc) accepted the record",
+      "verdict": "passed"
+    },
+    {
+      "scenario": "regression-pytest: tests/second_brain/test_decision_contracts.py",
+      "expectedBehavior": "pytest exits 0 with all tests passing",
+      "observed": "cmd: python3.12 -m pytest tests/second_brain/test_decision_contracts.py -q\nexit: 0\nsummary: 25 passed in 0.25s",
+      "verdict": "passed"
+    }
+  ],
+  "summary": {
+    "total": 28,
+    "passed": 28,
+    "failed": 0
+  },
+  "regression": {
+    "test_decision_contracts": "25 passed"
+  }
+}
