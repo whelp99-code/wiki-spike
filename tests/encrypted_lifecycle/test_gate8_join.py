@@ -137,6 +137,7 @@ def _payload(lane: str) -> bytes:
                 "original_workflow_run_id": "1",
                 "current_workflow_run_id": "1",
                 "current_workflow_run_attempt": "1",
+                "workflow_run_attempt": "1",
                 "implementation_commit": COMMIT,
                 "platform": "self-hosted/macos-26/arm64/wiki-canary-workstation",
                 "workflow_file_digest": ZERO64,
@@ -292,6 +293,26 @@ def test_join_rejects_noncanonical_duration_schedule_and_provenance(tmp_path: Pa
             producer_commit=COMMIT,
         )
         assert joiner.main(_join_args({**lane_dirs, "canary": bad}, tmp_path / f"joined-{field}")) == 1
+
+
+def test_join_rejects_canary_provenance_attempt_field_variants(tmp_path: Path, lane_dirs: dict[str, Path]):
+    for case, mutate in (
+        ("tampered", lambda provenance: provenance.__setitem__("workflow_run_attempt", "2")),
+        ("missing", lambda provenance: provenance.pop("workflow_run_attempt")),
+        ("extra", lambda provenance: provenance.__setitem__("unexpected_workflow_run_attempt", "1")),
+    ):
+        payload = json.loads(_payload("canary"))
+        mutate(payload["provenance"])
+        root = tmp_path / f"provenance-attempt-{case}"
+        root.mkdir()
+        bad = _build_lane(
+            root, "canary", "CANARY_24H", ("payload/rollout-evidence.json",),
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8"),
+            producer_commit=COMMIT,
+        )
+        assert joiner.main(_join_args({**lane_dirs, "canary": bad}, tmp_path / f"joined-provenance-attempt-{case}")) == 1
+
+
 def test_join_rejects_artifact_tuple_mismatch(tmp_path: Path, lane_dirs: dict[str, Path]):
     args = _join_args(lane_dirs, tmp_path / "wrong-tuple")
     args[args.index("--conformance-artifact-name") + 1] = "wrong-artifact"

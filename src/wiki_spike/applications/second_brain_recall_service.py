@@ -51,6 +51,7 @@ def convert_validated_recall_snapshot(acquisition: ValidatedRecallSnapshotAcquis
         source.has_more,
         source.base_snapshot_digest, source.incoming_cursor_digest, source.incoming_continuation_ref,
         _continuation(source.continuation),
+        source.unverified_conflicts,
     )
     return snapshot, RuntimeRecallRequestV2(
         snapshot.snapshot_digest, request.workspace_ref, request.capability_ref,

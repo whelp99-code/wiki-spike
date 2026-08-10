@@ -1,0 +1,8 @@
+RECALL ANSWER
+=============
+
+ABSTAINED - no winner was selected and no result is served
+reason: citation_verification
+        approved candidates exist but none carries verifiable citation evidence
+
+more pages available: no

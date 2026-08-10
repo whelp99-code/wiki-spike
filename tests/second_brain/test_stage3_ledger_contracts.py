@@ -23,6 +23,7 @@ from wiki_spike.memory_core.second_brain_ledger_contracts import (
     validate_ledger_recall_v2_semantics,
 )
 from wiki_spike.memory_core.second_brain_ledger_ports import ValidatedRecallSnapshotAcquisitionV2
+from wiki_spike.applications.second_brain_recall_service import convert_validated_recall_snapshot
 
 
 def ref(kind: str, n: str = "a") -> str: return f"{kind}:{n * 64}"
@@ -159,6 +160,37 @@ def request_wire(continuation: dict[str, object] | None = None) -> dict[str, obj
 def snapshot_body() -> dict[str, object]:
     gate = {"state":"PASS","epoch":"1","digest":"d"*64}
     return {"snapshot_version":"second-brain-recall-serve-snapshot-v2","snapshot_attestation_version":"second-brain-recall-snapshot-attestation-v2","snapshot_signer_ref":ref("signer"),"snapshot_signer_algorithm":"Ed25519","snapshot_key_id":ref("key"),"snapshot_signature":"signed","provenance_component_labels":["authorization","global_floor","binding","recovery","route","cohort","deletion","consent"],"provenance_component_states":[gate] * 8,"has_more":False,"workspace_ref":ref("workspace"),"capability_ref":ref("capability"),"authority_epoch":"1","subject_ref":ref("subject"),"action":"RECALL","query_digest":"a"*64,"transaction_cut":"1","valid_at":"2026-01-01T00:00:00Z","recorded_at":"2026-01-01T00:00:00Z","scope_digest":"b"*64,"authority_provenance_ref":ref("provenance"),"authority_provenance_digest":"c"*64,"generation_ref":ref("generation"),"generation_digest":"e"*64,"checkpoint_ref":ref("checkpoint"),"checkpoint_digest":"f"*64,"freshness_digest":"0"*64,"authority_checkpoint_digest":"1"*64,"authorization":{"decision":"ALLOW","capability_ref":ref("capability"),"authority_epoch":"1","query_digest":"a"*64,"workspace_ref":ref("workspace"),"scope_digest":"b"*64},"global_floor":gate,"binding":gate,"recovery":gate,"route":gate,"cohort":gate,"deletion":gate,"consent":gate,"projection_digest":"2"*64,"contract_digest":"3"*64,"base_snapshot_digest":None,"cursor_state_digest":None,"incoming_cursor_digest":None,"incoming_continuation_ref":None,"candidates":[],"conflicts":[],"citations":[],"continuation":None}
+def test_service_snapshot_preserves_bound_unverified_conflict_marker() -> None:
+    candidate = ref("candidate")
+    withheld = ref("candidate", "b")
+    revision = ref("revision")
+    evidence_body = {
+        "evidence_version": "second-brain-citation-evidence-v2",
+        "locator_ref": ref("locator"),
+        "locator_digest": "1" * 64,
+        "immutable_source_ref": ref("source"),
+        "revision_ref": revision,
+    }
+    evidence = dict(evidence_body)
+    evidence["evidence_digest"] = canonical_ledger_digest("citation-evidence-v2", evidence_body)
+    citation_body = {
+        "citation_version": "second-brain-recall-citation-v2",
+        "candidate_ref": candidate,
+        "evidence": evidence,
+    }
+    body = snapshot_body() | {
+        "candidates": [{"candidate_ref": candidate, "revision_ref": revision, "state": "APPROVED", "content_digest": "4" * 64, "support_refs": []}],
+        "citations": [{"citation_version": "second-brain-recall-citation-v2", "candidate_ref": candidate, "evidence": evidence, "citation_digest": canonical_ledger_digest("citation-v2", citation_body)}],
+        "unverified_conflicts": [[candidate, withheld]],
+    }
+    result = make_recall_snapshot_v2(body)
+    assert result.unverified_conflicts == ((candidate, withheld),)
+    assert result.to_mapping()["unverified_conflicts"] == [[candidate, withheld]]
+    acquisition = object.__new__(ValidatedRecallSnapshotAcquisitionV2)
+    object.__setattr__(acquisition, "_request", RecallSnapshotRequestV2.from_mapping(request_wire()))
+    object.__setattr__(acquisition, "_snapshot", result)
+    converted, _ = convert_validated_recall_snapshot(acquisition)
+    assert converted.unverified_conflicts == ((candidate, withheld),)
 
 class Verifier:
     def __init__(self, snapshot_ok: bool = True, continuation_ok: bool = True) -> None:

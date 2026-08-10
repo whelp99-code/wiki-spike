@@ -13,7 +13,7 @@ Under what conditions may sources move to wiki-spike, and what happens to the pr
 
 ## Reconciled proposed decision
 
-Migrate one source at a time into final-workspace, non-serving cohorts. Each cohort must complete a source-specific 3-day measured shadow period before cutover. Once the period, quantitative cutover formula, and required external approvals are satisfied, that cohort moves directly to live serving. Prior systems remain read-only for 90 days after that cohort's activation; they are migration inputs, never peer serving gateways or query-time fallback.
+Migrate one source at a time into final-workspace, non-serving cohorts. Each cohort must complete a source-specific 1-day measured shadow period before cutover. Once the period, quantitative cutover formula, and required external approvals are satisfied, that cohort moves directly to live serving. Prior systems remain read-only for 90 days after that cohort's activation; they are migration inputs, never peer serving gateways or query-time fallback.
 
 A signed cutover transaction binds the cohort roster, resolved-scope and contract digests, source/capability and benchmark/holdout manifests, generation/checkpoint, route version, capability epoch, observation period, thresholds, aggregates, formula, and approvers. Before the first canonical mutation, a signed emergency rollback may route the whole cohort to the exact read-only pre-cutover UI/API with a banner and write freeze; wiki-spike stops capture and promotion.
 

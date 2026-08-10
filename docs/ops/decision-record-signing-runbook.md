@@ -275,7 +275,7 @@ quiesce writers -> immutable snapshot -> zero-write proof
         (registers a source)    (freezes the SLOs)
                                       |
                                       v
-                            3-day shadow observation
+                            1-day shadow observation
                             200 parity cases/source
                             500 cohort E2E queries
                             one-sided 95% Wilson
@@ -285,7 +285,7 @@ quiesce writers -> immutable snapshot -> zero-write proof
 ```
 
 DB-05 does not wait on the unified-db snapshot: it freezes SLOs **before**
-observation, so signing it starts the 3-day clock. It is not free of
+observation, so signing it starts the 1-day clock. It is not free of
 prerequisites, though. Its `evidence_digest` binds a benchmark manifest and a
 holdout manifest, so both corpora must exist, be labelled and consented, sit
 under separate keys, and share no item. Build the bundle above first; consent

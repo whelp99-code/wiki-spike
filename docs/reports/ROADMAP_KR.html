@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>wiki-spike 로드맵 · 프로젝트 상태</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --bg-soft: #1e293b;
+    --card: #16213a;
+    --border: #2b3a5c;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --green: #22c55e;
+    --blue: #3b82f6;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --purple: #a855f7;
+    --cyan: #06b6d4;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 20px 80px; }
+
+  /* 헤더 */
+  header {
+    padding: 40px 0 28px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 36px;
+  }
+  header h1 { font-size: 2rem; letter-spacing: -0.02em; }
+  header h1 span { color: var(--cyan); }
+  header .sub { color: var(--muted); margin-top: 8px; font-size: 1.05rem; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .meta .chip {
+    font-size: 0.78rem; padding: 4px 12px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--muted); background: var(--bg-soft);
+  }
+  .meta .chip b { color: var(--text); font-weight: 600; }
+
+  /* 상태 배지 */
+  .badge {
+    display: inline-block; font-size: 0.72rem; font-weight: 700;
+    padding: 2px 10px; border-radius: 999px; letter-spacing: 0.02em;
+    vertical-align: middle;
+  }
+  .b-done { background: rgba(34,197,94,.15); color: var(--green); border: 1px solid rgba(34,197,94,.4); }
+  .b-wip  { background: rgba(59,130,246,.15); color: var(--blue);  border: 1px solid rgba(59,130,246,.4); }
+  .b-block{ background: rgba(239,68,68,.15);  color: var(--red);   border: 1px solid rgba(239,68,68,.4); }
+  .b-plan { background: rgba(148,163,184,.12); color: var(--muted); border: 1px solid var(--border); }
+  .b-part { background: rgba(245,158,11,.15); color: var(--amber); border: 1px solid rgba(245,158,11,.4); }
+
+  h2 {
+    font-size: 1.3rem; margin: 44px 0 18px; padding-bottom: 8px;
+    border-bottom: 2px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  h2 .num {
+    width: 30px; height: 30px; border-radius: 8px; font-size: 0.95rem;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--bg-soft); border: 1px solid var(--border); color: var(--cyan);
+  }
+
+  /* 요약 카드 */
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
+  .stat {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px 16px;
+  }
+  .stat .v { font-size: 1.7rem; font-weight: 700; color: var(--cyan); }
+  .stat .l { font-size: 0.82rem; color: var(--muted); margin-top: 4px; }
+
+  /* 로드맵 타임라인 */
+  .timeline { position: relative; padding-left: 34px; }
+  .timeline::before {
+    content: ""; position: absolute; left: 12px; top: 6px; bottom: 6px;
+    width: 2px; background: linear-gradient(var(--cyan), var(--purple));
+  }
+  .phase { position: relative; margin-bottom: 26px; }
+  .phase::before {
+    content: ""; position: absolute; left: -30px; top: 22px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--bg); border: 3px solid var(--cyan);
+  }
+  .phase.blocked::before { border-color: var(--red); }
+  .phase.next::before { border-color: var(--amber); }
+  .phase .ph-head {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .phase .ph-name { font-weight: 700; font-size: 1.05rem; }
+  .phase .ph-period { font-size: 0.78rem; color: var(--muted); }
+  .phase ul { margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: 0.92rem; }
+  .phase ul li { margin: 3px 0; }
+  .phase ul li b { color: var(--text); font-weight: 600; }
+
+  /* 기능 카드 그리드 */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 16px 18px;
+  }
+  .card h4 { font-size: 0.98rem; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+  .card p { font-size: 0.85rem; color: var(--muted); }
+  .card .tag { font-size: 0.68rem; color: var(--cyan); margin-top: 8px; display: inline-block; }
+
+  /* 다음 계획 목록 */
+  ol.steps { counter-reset: step; list-style: none; }
+  ol.steps > li {
+    counter-increment: step; position: relative; padding: 0 0 16px 44px;
+    border-left: 2px solid var(--border); margin-left: 14px;
+  }
+  ol.steps > li:last-child { border-left-color: transparent; padding-bottom: 0; }
+  ol.steps > li::before {
+    content: counter(step); position: absolute; left: -17px; top: -2px;
+    width: 30px; height: 30px; border-radius: 50%;
+    background: var(--bg-soft); border: 2px solid var(--amber);
+    color: var(--amber); font-weight: 700; font-size: 0.85rem;
+    display: flex; align-items: center; justify-content: center;
+  }
+  ol.steps .t { font-weight: 600; }
+  ol.steps .d { font-size: 0.88rem; color: var(--muted); margin-top: 2px; }
+
+  /* 리스크 */
+  .risk {
+    background: rgba(239,68,68,.07); border: 1px solid rgba(239,68,68,.35);
+    border-radius: 14px; padding: 16px 18px; margin-bottom: 10px;
+  }
+  .risk h4 { color: var(--red); font-size: 0.95rem; margin-bottom: 4px; }
+  .risk p { font-size: 0.86rem; color: var(--muted); }
+
+  .note { font-size: 0.8rem; color: var(--muted); margin-top: 8px; }
+  footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.8rem; }
+  code { background: var(--bg-soft); border: 1px solid var(--border); padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ================= 헤더 ================= -->
+  <header>
+    <h1>wiki-spike <span>·</span> Encrypted Single-Memory Lifecycle</h1>
+    <div class="sub">개인 메모리 / 세컨드 브레인 제품 — 결정·증거·서명 기반 거버넌스를 갖춘 V2 단일 서빙 권위 (Sole Serving Authority)</div>
+    <div class="meta">
+      <span class="chip">브랜치 <b>docs-root-cleanup</b></span>
+      <span class="chip">과거 커밋 <b>1264a1b</b> (3일 → 1일, historical)</span>
+      <span class="chip">현행 local code/doc floor <b>3일 / 72h</b> · <b>d76359e</b> 로컬 커밋·미푸시</span>
+      <span class="chip">ADR <b>28건</b> (0001–0028)</span>
+      <span class="chip">제품 결정 <b>DB-01..08</b></span>
+      <span class="chip">서명 체크포인트 <b>g2 · g3 · g4</b></span>
+      <span class="chip">SLO 동결 <b>566d09b8…</b> (2026-08-06)</span>
+    </div>
+  </header>
+
+  <!-- ================= 현재 상태 요약 ================= -->
+  <h2><span class="num">1</span>현재 상태 요약</h2>
+  <div class="stat-grid">
+    <div class="stat"><div class="v">1,513</div><div class="l">테스트 함수 정의 (107개 파일)</div></div>
+    <div class="stat"><div class="v">623</div><div class="l">second_brain 계열 최근 실행 통과 (2026-08-05)</div></div>
+    <div class="stat"><div class="v">Stage 0–6</div><div class="l">세컨드 브레인 로드맵 (구현 검증 완료)</div></div>
+    <div class="stat"><div class="v">13건</div><div class="l">결정 기록 본문 생성 완료 (스코핑 검증 통과)</div></div>
+    <div class="stat"><div class="v">3건</div><div class="l">서명 진행 중 — DB-03 unified-db GO · DB-06/08 NO_GO</div></div>
+  </div>
+  <p class="note">
+    ADR-0028(제품 경계)은 <b>Stage-0 해결 전까지 구현 차단(blocked)</b> 상태. 이 페이지의 현행 local closure는
+    CODE-01…07 및 3 full days/72h code/doc floor는 local commit <code>d76359ecffaf8215c5e6ec38c4a977afbdbab6bf</code>에 기록됐고, full suite는 2215 passed / 189.13s / rc 0입니다. commit은 미푸시입니다. 1일/14일과 기존 통과 수치는 historical record입니다.
+    V2/API/MCP, E2E/browser, source I/O/import/cutover/live operation은 이 closure에서 완료라고 주장하지 않습니다. 남은 것은 <b>서명·증거·리뷰 거버넌스</b>입니다. 2026-08-06 기준 서명 파이프라인을
+    가동했습니다: <b>SLO 동결 완료</b> · <b>서명 체인 dry-run 검증</b>(skeleton→signing-bytes→inspect→서명→
+    envelope→assemble→verify, signatures_verified: true) · <b>13개 기록 본문 생성</b>. Phase 3 Core · Phase 4
+    Runtime · Encrypted Lifecycle Gate 8까지는 릴리스 태그로 마감된 이력.
+  </p>
+
+  <!-- ================= 로드맵 타임라인 ================= -->
+  <h2><span class="num">2</span>개발 로드맵 (완료 → 차단 → 계획)</h2>
+  <div class="timeline">
+
+    <div class="phase">
+      <div class="ph-head">
+        <span class="ph-name">Phase 1a · Walking Skeleton (disposable spike)</span>
+        <span class="badge b-done">완료</span>
+        <span class="ph-period">53개 테스트 통과</span>
+      </div>
+      <ul>
+        <li><b>CAS write-once</b> · NFC 정규화(raw 숫자 금지) · Merkle 루트 · Ed25519 서명/키 로테이션</li>
+        <li><b>Claim IR</b> (polarity 포함 claim_id, multi-locator evidence) · 결정론 mock 추출기</li>
+        <li>Injection-as-data 검증: 소스 내 지시문은 실행되지 않음</li>
+      </ul>
+    </div>
+
+    <div class="phase">
+      <div class="ph-head">
+        <span class="ph-name">Phase 1b + SUB-07 · 발행/활성화/미러 (real git + sqlite)</span>
+        <span class="badge b-done">완료</span>
+      </div>
+      <ul>
+        <li><b>SUB-05</b>: generation_id = H(descriptor) · retention anchor <code>refs/wiki/generations/&lt;gen&gt;</code> (git gc 안전)</li>
+        <li><b>SUB-06</b>: 단일 <code>BEGIN IMMEDIATE</code> 활성화 (orphan-first, CAS-loser requeue)</li>
+        <li><b>SUB-07</b>: single-publisher lease · remote mirror(파생 미러, idempotent) · staleness post-filter</li>
+      </ul>
+    </div>
+
+    <div class="phase">
+      <div class="ph-head">
+        <span class="ph-name">Phase 3 · Core (provider-neutral)</span>
+        <span class="badge b-done">릴리스</span>
+        <span class="ph-period">phase3-core-v1.0.0 · g3 체크포인트</span>
+      </div>
+      <ul>
+        <li>명령/쿼리 게이트웨이 · 변경셋 발행 · 플러그인 게이트웨이 · 프로젝션 · 복구 조정자</li>
+        <li>ADP-0001~0010, P3-00..P3-12 어드버서리얼 검증 20~50R</li>
+      </ul>
+    </div>
+
+    <div class="phase">
+      <div class="ph-head">
+        <span class="ph-name">Phase 4 · Memory Runtime</span>
+        <span class="badge b-done">릴리스</span>
+        <span class="ph-period">phase4-runtime-v1.0.0 · g4 체크포인트</span>
+      </div>
+      <ul>
+        <li>오케스트레이터 · 의도/시간 해석 · 컨텍스트/이그레스 최소화 · EvidencePack·검증</li>
+        <li>리콜/결정/명확화 엔진 · 사전 주의(Proactive Attention) · ActionIntent/WriteProposal</li>
+        <li>모델 라우팅·계층 비용 캐시 · 열화(Degrade) · 평가 · body-free 텔레메트리</li>
+      </ul>
+    </div>
+
+    <div class="phase">
+      <div class="ph-head">
+        <span class="ph-name">Encrypted Single-Memory Lifecycle (Gate 1–8)</span>
+        <span class="badge b-done">완료</span>
+        <span class="ph-period">Gate 8 컨포먼스 · 캐너리 · 리뷰</span>
+      </div>
+      <ul>
+        <li>암호화 CAS · identity/binding · floor protocol · ARK 삭제 · 복구 · 24h 캐너리</li>
+        <li>ADR-0026(권위·정체성) / ADR-0027(복구·삭제) Gate 1 승인</li>
+        <li>이 증거는 <b>제품 증명으로 재사용 금지</b> (DB-05/ADR-0028 경계)</li>
+      </ul>
+    </div>
+
+    <div class="phase blocked">
+      <div class="ph-head">
+        <span class="ph-name">Stage 0 · 제품 결정 서명 (DB-01..08) + ResolvedScopeV1</span>
+        <span class="badge b-block">차단 (현재 블로커)</span>
+      </div>
+      <ul>
+        <li>8건 결정 레코드는 스펙 완비·<b>UNRESOLVED</b> — 소유자/승인자 서명·증거 다이제스트·만료일 필요</li>
+        <li>DB-01(정체성)·DB-04(충돌)·DB-05(벤치마크)·DB-07(컷오버)은 <b>글로벌 GO</b> 필요</li>
+        <li>DB-02 소스 4종(Codex/Claude Memory Bank/Git/Markdown), DB-03 마이그레이션 3종(unified-db/Mem0/me-wiki)은 소스별 GO</li>
+        <li>완료 시 <code>ResolvedScopeV1</code> + 서명 계약 다이제스트 구체화</li>
+      </ul>
+    </div>
+
+    <div class="phase">
+      <div class="ph-head">
+        <span class="ph-name">Stage 1–6 · 세컨드 브레인 구현 검증</span>
+        <span class="badge b-part">코드 완료</span>
+        <span class="ph-period">거버넌스·서명만 대기</span>
+      </div>
+      <ul>
+        <li><b>Stage 1 보안 토대</b>: capability · consent/retention · credential broker · egress/telemetry · 복구/삭제 매핑 · 소스 샌드박스</li>
+        <li><b>Stage 2 캡처</b>: 캡처 계약/영속화 · connector 4종(codex, claude_memory_bank, git, markdown) · V2 컴포지션</li>
+        <li><b>Stage 3 서빙</b>: V2 API + MCP v2 · 서명 원장 · RecallServeSnapshotV2 · WAL 동시성/삭제 · G013 레드팀</li>
+        <li><b>Stage 4 평가 거버넌스</b>: benchmark/holdout 분리 키 · RecallSloV1 · 현행 3일/72h code/doc floor · 200/500/0.95 Wilson. 1일은 historical record이며 signed DRIFT-02 없이는 운영값이 아님</li>
+        <li><b>Stage 5 제품 릴리스 증거</b>: 증거 DAG · ops 드릴 영수증 · Gate 8 재사용 차단</li>
+        <li><b>Stage 6 컷오버</b>: 코호트 상태머신 · 컷오버 수식 · 인간 승인 없는 라이브 전환 차단</li>
+      </ul>
+    </div>
+
+    <div class="phase next">
+      <div class="ph-head">
+        <span class="ph-name">다음 단계 · 개발 완료 후 (first release)</span>
+        <span class="badge b-plan">계획</span>
+      </div>
+      <ul>
+        <li>LLM 핀 고정(모델 id PENDING) → <b>NarrativeDraft 확률 렌더 경로</b> 구현</li>
+        <li>실측 shadow 관측 · 벤치마크/홀드아웃 증거 · 컷오버 결정 서명 → 라이브 전환</li>
+        <li>외부 내보내기(export)는 DB-08 GO 이후에만</li>
+        <li>다중 사용자 · 자율 프로모션 · 외부 발행 · 영구 페더레이션은 <b>1차 릴리스 범위 외</b></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ================= 현재 사용 가능한 기능 ================= -->
+  <h2><span class="num">3</span>현재 개발 상태에서 사용 가능한 기능</h2>
+  <div class="grid">
+    <div class="card">
+      <h4>🧭 V2 제품 CLI</h4>
+      <p><code>wiki status</code> — 인증된 V2 제품 진입점. 루트 검사 후 V1 핸들러 접근을 원천 차단(legacy fallback 없음).</p>
+      <span class="tag">cli.py · workspace_format.py</span>
+    </div>
+    <div class="card">
+      <h4>🔌 V2 API + MCP v2 전송</h4>
+      <p>V2 API(<code>api_v2.py</code>)와 MCP v2 전송 계층. MCP v1은 호환 레이어로 격리 — 프로덕션 컴포지션에서는 미도달.</p>
+      <span class="tag">composition/api_v2 · mcp_v2 · compat_mcp_v1</span>
+    </div>
+    <div class="card">
+      <h4>📥 캡처 커넥터 4종</h4>
+      <p>Codex / Claude Memory Bank / Git / Markdown 소스 리더·체크포인트 포트 구현. 소스별 GO 전까지는 비활성화 기본.</p>
+      <span class="tag">connectors/{codex,claude_memory_bank,git,markdown}</span>
+    </div>
+    <div class="card">
+      <h4>📒 서명 원장 + 시간 서빙</h4>
+      <p>Ed25519 서명 원장, RecallServeSnapshotV2 스냅샷 원자화, WAL 동시성 제어, 삭제/갱신/freshness epoch 바인딩.</p>
+      <span class="tag">second_brain_ledger · recall_snapshot · wal_concurrency</span>
+    </div>
+    <div class="card">
+      <h4>🧪 평가 거버넌스 도구</h4>
+      <p>benchmark/holdout 별도 키·capability 분리, SLO 서명(SLO 아래값 거부), 평가 증거 번들 빌더, native shadow 측정 수집기.</p>
+      <span class="tag">second_brain_evaluation_governance · shadow_measurement</span>
+    </div>
+    <div class="card">
+      <h4>🔏 결정 기록 도구 + 서명 런북</h4>
+      <p>DB-01..08 오프라인 결정 레코드 생성·서명 바이트 노출·검증. 승인자가 서명할 원문을 그대로 읽는 워크플로.</p>
+      <span class="tag">second_brain_decision · decision-record-signing-runbook</span>
+    </div>
+    <div class="card">
+      <h4>🗄️ 암호화 수명주기 기반</h4>
+      <p>암호화 CAS, identity/binding, floor protocol, ARK 삭제, 복구 조정자, credential broker — Gate 1–8 검증 완료.</p>
+      <span class="tag">encrypted_cas · lifecycle_db · recovery · floor_protocol</span>
+    </div>
+    <div class="card">
+      <h4>🧠 런타임 엔진 세트</h4>
+      <p>리콜·결정·명확화·사전주의·ActionIntent/WriteProposal·모델 라우팅·비용 캐시·열화·평가·텔레메트리.</p>
+      <span class="tag">memory_runtime/* (ADR-0012~0025)</span>
+    </div>
+    <div class="card">
+      <h4>⚙️ 스파이크/러너 CLI (1a–1b)</h4>
+      <p><code>wiki ingest / search / mirror / log</code> — CAS→컴파일→발행→검색( staleness 필터)→미러. 종료코드 0/3/4/5/7/66.</p>
+      <span class="tag">workspace.py · controlplane.py · mirror.py · search.py</span>
+    </div>
+  </div>
+
+  <!-- ================= 개발 완료 후 기능 ================= -->
+  <h2><span class="num">4</span>개발 완료 후 사용 가능한 기능 (목표 제품)</h2>
+  <div class="grid">
+    <div class="card">
+      <h4>🏠 단일 서빙 권위 (sole authority)</h4>
+      <p>모든 소스는 캡처/마이그레이션 입력일 뿐. 페더레이션·쿼리타임 병합·레거시 fallback·dual-write 전면 금지. 삭제·동의·신선도·충돌·인용이 하나의 원자적 진실.</p>
+      <span class="tag">ADR-0028</span>
+    </div>
+    <div class="card">
+      <h4>🕰️ 시간 기반 서빙 (temporal reads)</h4>
+      <p><code>recorded_as_of</code>(트랜잭션 축) + <code>valid_as_of</code>(IANA 시간) 요청. 구간 <code>[from,to)</code>, 만료·승계·철회된 주장은 절대 반환되지 않음.</p>
+      <span class="tag">RecallServeSnapshotV2</span>
+    </div>
+    <div class="card">
+      <h4>🔐 프라이버시 필드 클래스</h4>
+      <p>원문·경로·라벨·벤치마크 본문은 암호화 CAS에만. DB·매니페스트·텔레메트리는 타입화된 키 참조+암호문 다이제스트만 보유(body-free). 숨은 추론은 영속 금지.</p>
+      <span class="tag">ADR-0028 privacy classes</span>
+    </div>
+    <div class="card">
+      <h4>🚚 소스별 마이그레이션 + 3일/72h code/doc floor</h4>
+      <p>현행 code/doc 기준은 3 full days/72h입니다. 실제 cohort 측정, 200 패리티/500 E2E/95% Wilson, 수식·인간 승인·라이브 전환은 signed DRIFT-02와 manual authority가 없어 NOT_AUTHORIZED입니다. 1일은 historical record입니다.</p>
+      <span class="tag">DB-07 · DB-05 · Stage 6</span>
+    </div>
+    <div class="card">
+      <h4>↩️ 사전-변형 롤백 / 사후 fail-closed</h4>
+      <p>첫 정규 변형 전: 코호트 전체를 read-only 사전-컷오버 UI로 롤백(배너+쓰기 동결). 이후: 레거시 복귀·키 부활 금지, 비활성/판독 유보.</p>
+      <span class="tag">DB-07 cutover</span>
+    </div>
+    <div class="card">
+      <h4>🧾 제품 릴리스 증거 DAG</h4>
+      <p>제품 평가·릴리스 증거는 서빙 권위와 분리된 자체 매니페스트·영수증. Gate 8 증거의 재라벨/복사/프로덕트 증명 사용 금지(정확한 다이제스트 참조만).</p>
+      <span class="tag">Stage 5 · DB-05</span>
+    </div>
+    <div class="card">
+      <h4>📤 외부 내보내기 (조건부)</h4>
+      <p>1차 릴리스는 관리 내부 프로젝션 발행만. 외부 내보내기는 목적지별 DB-08 GO 이후에만 — 데이터 클래스/제공자/경로 명시적 opt-in, provider fallback 없음.</p>
+      <span class="tag">DB-08 · DB-06</span>
+    </div>
+    <div class="card">
+      <h4>🤖 LLM 기반 내러티브 생성</h4>
+      <p>모델 id 핀 후 결정론적 NarrativeDraft 렌더 경로. 스파이크의 mock 추출기는 실제 핀 LLM으로 교체 예정.</p>
+      <span class="tag">llm.py · claims.py (PENDING)</span>
+    </div>
+  </div>
+
+  <!-- ================= 다음 계획 ================= -->
+  <h2><span class="num">5</span>다음 계획 (Next Steps)</h2>
+  <ol class="steps">
+    <li>
+      <div class="t">Stage 0 해결 — DB-01..08 서명·증거 완성 <span class="badge b-wip">진행 중</span></div>
+      <div class="d">
+        2026-08-06 진행 상황: 서명 파이프라인 검증 완료 · <b>SLO 동결</b>(slo_digest 566d09b8…) · <b>13개 본문 생성</b>
+        (스코핑 검증 통과) · <b>DB-06/08 NO_GO 결정</b> · <b>DB-03 unified-db GO 진행</b>(실제 인벤토리 증거 바인딩).
+        7개 역할 키 정체성은 기존 로컬 키 1쌍 사용. 남은 블로커: DB-05 벤치마크/홀드아웃 코퍼스(라벨 검토·동의·
+        분리 다이제스트 필요), DB-01/04 위협평가·UX 픽스처, DB-02 소스별 동의/삭제 픽스처, DB-03 me-wiki/Mem0
+        내보내기 픽스처 — 전부 사람(소유자) 증거 작업. 완료 시 ResolvedScopeV1 + 계약 다이제스트 구체화.
+      </div>
+    </li>
+    <li>
+      <div class="t">Same-artifact 리뷰 — ADR-0026A 검토 + ADR-0027 비약화 확인</div>
+      <div class="d">ADR-0028 Follow-up #2. 정체성/바인딩/삭제/floor/복구/freshness 기존 바인딩 유지 확인.</div>
+    </li>
+    <li>
+      <div class="t">V2 계약 정의·검증</div>
+      <div class="d">프라이버시 필드 처리, authority/outbox 의미론, connector 소유권(Composition 단일), 루트 거부, 시간 스냅샷 — 구현 전 정의·검증.</div>
+    </li>
+    <li>
+      <div class="t">LLM 모델 id 핀 고정</div>
+      <div class="d">정확한 모델 id가 아직 PENDING. 핀 후 NarrativeDraft 렌더 경로와 실측 품질 평가.</div>
+    </li>
+    <li>
+      <div class="t">마이그레이션/컷오버 증거 생산</div>
+      <div class="d">별도 평가·제품 릴리스·마이그레이션·컷오버 증거. Gate 8을 제품 증명으로 사용 금지. 실제 shadow 측정 → 컷오버 결정 서명 → 첫 소스 라이브.</div>
+    </li>
+    <li>
+      <div class="t">(범위 외) 다중 사용자 · 자율 프로모션 · 외부 발행 · 영구 페더레이션</div>
+      <div class="d">별도 승인 없이는 1차 릴리스에 포함하지 않음.</div>
+    </li>
+  </ol>
+
+  <!-- ================= 리스크 ================= -->
+  <h2><span class="num">6</span>주요 리스크 / 차단 항목</h2>
+  <div class="risk">
+    <h4>🔴 ADR-0028 = Proposed &amp; 구현 차단</h4>
+    <p>Stage-0(DB 서명) 해결과 same-artifact 리뷰 전까지 어떤 라이브 전환·캡처·릴리스 인증도 ADR 단독으로는 허가되지 않음.</p>
+  </div>
+  <div class="risk">
+    <h4>🔴 DB-01..08 대부분 UNRESOLVED (일부 진행 중)</h4>
+    <p>2026-08-06 현재 3건(DB-03 unified-db GO, DB-06/08 NO_GO) 서명 진행. DB-01/04/05/07은 글로벌 GO 필수 —
+    서명 없는 GO는 무효. DB-05는 벤치마크/홀드아웃 코퍼스(라벨 검토·동의·분리 다이제스트)가 없어 서명 불가.</p>
+  </div>
+  <div class="risk">
+    <h4>🟡 LLM 모델 id 미핀</h4>
+    <p>NarrativeDraft 확률 렌더 경로와 품질 SLO 실측이 모델 핀에 의존. 현재는 결정론 mock으로 검증 완료.</p>
+  </div>
+  <div class="risk">
+    <h4>🟡 증거 혼용 금지</h4>
+    <p>Gate 8 증거(불변 튜플·라벨·영수증)를 제품 증명으로 재라벨/복사/수정/재시작 금지. 어드버서리얼 검증·레드팀이 지속 감시.</p>
+  </div>
+
+  <footer>
+    생성: 2026-08-05 · 갱신: 2026-08-06 (Stage-0 서명 진행 반영) · 기준 커밋 <code>1264a1b</code> (docs-root-cleanup) ·
+    출처: README.md, docs/adr/ADR-0028, docs/product/decisions/DB-01..08, docs/ops/decision-record-signing-runbook.md,
+    docs/releases, tests/second_brain 전 영역, scripts/second_brain_decision.py,
+    scripts/second_brain_evaluation_governance.py. 테스트 수치는 <code>grep -c "def test_"</code> 집계 및
+    second_brain 최근 전체 실행(623 passed) 기준이며, 전체 스위트 재실행 시 증감 가능.
+  </footer>
+</div>
+</body>
+</html>

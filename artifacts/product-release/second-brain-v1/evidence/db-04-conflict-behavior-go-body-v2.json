@@ -1,0 +1,20 @@
+{
+  "decision_version": "second-brain-decision-record-v1",
+  "decision_id": "DB-04",
+  "outcome": "GO",
+  "scope_kind": "global",
+  "scope_name": null,
+  "record_revision": "1",
+  "decided_at": "2026-08-07T10:10:25Z",
+  "supersedes": null,
+  "post_interview_reconciliation": {
+    "original_question": "Recall co-displays conflicting memories and their citations. When an approved current decision exists, it is marked as the winner while superseded/conflicting evidence remains visible.",
+    "reconciliation": "After independent review, recall accumulates every contrary citation for a winner instead of overwriting prior losers. Approved citationless counterparts remain explicitly marked in both OPEN and RESOLVED conflict states, including superseded evidence represented by RESOLVED state. The deterministic CLI/library UX, adversarial fixtures, golden samples, evidence bundle, and signatures are current and SHA-256 bound."
+  },
+  "reason": "GO: all four DB-04 requirements remain satisfied after resolving independent review blockers. The implementation preserves all contrary evidence, explicitly marks unverified citationless counterparts, and has fresh regression, evidence-digest, and owner/approver signature verification.",
+  "evidence_refs": [
+    "artifacts/product-release/second-brain-v1/evidence/db-04-conflict-behavior-go-bundle-v2.json"
+  ],
+  "evidence_digest": "52984b569118b17467648e382731f67bcfe3317163ce3d1ae907c4cf505bc1df",
+  "expires_at": "2027-08-07T00:00:00Z"
+}

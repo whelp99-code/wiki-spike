@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "kind": "api-package-test-report",
+  "decisionRef": "docs/product/decisions/DB-04-conflict-behavior.md",
+  "sourceHash": "sha256:ff67e04e97e7990480471750e4a66464ad940f456c65e67e01b26d4bbce29675",
+  "commands": [
+    "python3.12 -m pytest tests/second_brain/test_stage3_ledger_contracts.py tests/second_brain/test_stage3_recall_snapshot.py tests/second_brain/test_stage3_journey_capture_review_recall.py tests/second_brain/test_stage3_v2_composition.py tests/second_brain/test_stage3_v2_api_mcp.py -q"
+  ],
+  "observed": "54 passed in 1.57s; full DB-04 cohort 192 passed",
+  "contractCoverage": [
+    {
+      "id": "service-marker",
+      "contractRef": "DB-04 service-path blocker",
+      "obligation": "Signed service snapshot can carry marker without displaying uncited candidate",
+      "status": "covered",
+      "surfaceEvidenceRefs": [
+        "service-api"
+      ],
+      "adversarialCaseRefs": [
+        "marker-valid",
+        "superseded-rejected"
+      ]
+    }
+  ],
+  "surfaceEvidence": [
+    {
+      "id": "service-api",
+      "contractRef": "DB-04 service-path blocker",
+      "surface": "api",
+      "invocation": "make_recall_snapshot_v2 plus application conversion test",
+      "verdict": "passed",
+      "artifactRefs": [
+        "service-report"
+      ]
+    }
+  ],
+  "adversarialCases": [
+    {
+      "id": "marker-valid",
+      "contractRef": "DB-04 service-path blocker",
+      "scenario": "One displayed approved cited winner and one withheld approved citationless counterpart",
+      "expectedBehavior": "Marker is selected-digest bound, schema-valid, and reaches RuntimePinnedRecallSnapshotV2",
+      "verdict": "passed",
+      "artifactRefs": [
+        "service-report"
+      ]
+    },
+    {
+      "id": "superseded-rejected",
+      "contractRef": "DB-04 service-path blocker",
+      "scenario": "Attempt to construct SUPERSEDED conflict state",
+      "expectedBehavior": "Contract rejects it; supersession is represented by RESOLVED",
+      "verdict": "passed",
+      "artifactRefs": [
+        "service-report"
+      ]
+    },
+    {
+      "id": "service-citation-invariant",
+      "contractRef": "DB-04 service-path blocker",
+      "scenario": "Displayed candidates retain exactly one citation each",
+      "expectedBehavior": "Marker does not weaken citation invariant",
+      "verdict": "passed",
+      "artifactRefs": [
+        "service-report"
+      ]
+    }
+  ],
+  "artifactRefs": [
+    {
+      "id": "service-report",
+      "kind": "api-package-test-report",
+      "path": "artifacts/product-release/second-brain-v1/evidence/db-04-conflict-behavior-go-bundle-v3.json",
+      "description": "Service-path contract and conversion evidence bundle"
+    }
+  ],
+  "summary": {
+    "status": "passed",
+    "tests": 54,
+    "fullRegression": 192
+  }
+}

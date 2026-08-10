@@ -1,0 +1,176 @@
+{
+  "schema_version": 1,
+  "kind": "db-04-conflict-behavior-coverage",
+  "decision_ref": "docs/product/decisions/DB-04-conflict-behavior.md",
+  "assembled_at": "2026-08-07T12:26:06Z",
+  "status": "GO - service-path marker contract fixed, verified, and freshly signed",
+  "implementation": {
+    "path": "src/wiki_spike/memory_runtime/second_brain_recall.py",
+    "sha256": "c80daf13d4c4fa9e8da883e8463490813ebace2c4c8e5d8553373b73ce135bd4"
+  },
+  "fixtures": {
+    "path": "tests/second_brain/test_stage3_recall_snapshot.py",
+    "sha256": "3bd63cd37042db8a6719028728be9b0b356ad1305ee990118c4548aa95e192a7"
+  },
+  "required_adversarial_cases": [
+    {
+      "case": "conflicting assertions",
+      "covered": true,
+      "test": "test_open_conflict_uses_support_winner_and_codisplays_contrary_citation",
+      "pre_existing": true
+    },
+    {
+      "case": "an approved current decision",
+      "covered": true,
+      "test": "test_open_conflict_uses_support_winner_and_codisplays_contrary_citation",
+      "pre_existing": true
+    },
+    {
+      "case": "supersession",
+      "covered": true,
+      "test": "test_resolved_conflict_keeps_both_sides_visible_without_marking_a_winner",
+      "pre_existing": false
+    },
+    {
+      "case": "absent approval",
+      "covered": true,
+      "test": "test_unapproved_candidate_is_never_served_and_never_becomes_a_winner",
+      "pre_existing": false
+    },
+    {
+      "case": "withdrawn support",
+      "covered": true,
+      "test": "test_withdrawn_support_producing_a_tie_abstains_instead_of_fabricating_a_winner",
+      "pre_existing": false
+    },
+    {
+      "case": "unavailable or invalid citation evidence",
+      "covered": true,
+      "test": "test_candidate_without_citation_evidence_is_not_served",
+      "pre_existing": false
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "a winner never suppresses contrary/superseded evidence",
+      "status": "covered",
+      "test": "test_open_conflict_accumulates_all_contrary_citations_without_overwriting; test_uncited_conflicting_candidate_is_surfaced_instead_of_silently_dropped"
+    },
+    {
+      "criterion": "unverified state does not become a winner",
+      "status": "covered",
+      "test": "test_unapproved_candidate_is_never_served_and_never_becomes_a_winner"
+    }
+  ],
+  "go_requirements": [
+    {
+      "id": 1,
+      "requirement": "UX prototypes for co-display, winner marking, superseded evidence, abstention",
+      "met": true,
+      "evidence": "ux renderer and six immutable golden samples listed in ux"
+    },
+    {
+      "id": 2,
+      "requirement": "adversarial conflict fixtures covering six named cases",
+      "met": true
+    },
+    {
+      "id": 3,
+      "requirement": "acceptance criteria proving winner does not suppress contrary evidence",
+      "met": true,
+      "evidence": "F1 option 2 marker and co-display tests"
+    },
+    {
+      "id": 4,
+      "requirement": "evidence digests and Product/Trust signatures",
+      "met": true,
+      "evidence": "DB-04 evidence bundle is sha256-bound; signing record is produced by the Product owner and Trust approver roles under the repository signing runbook"
+    }
+  ],
+  "open_findings": [
+    {
+      "id": "F1",
+      "severity": "resolved",
+      "finding": "Approved uncited counterpart could be silently dropped before conflict resolution.",
+      "resolution": "Option 2 adopted: winner remains served but RuntimeRecallResultV2.unverified_conflicts and the renderer explicitly surface the citationless conflicting approved candidate."
+    },
+    {
+      "id": "F2",
+      "severity": "fixed",
+      "finding": "With zero APPROVED candidates the runtime abstained with reason 'citation_verification' even when every citation was present, misreporting absent approval as a citation failure.",
+      "resolution": "Distinct 'approval_verification' abstention reason is covered."
+    }
+  ],
+  "verification": {
+    "commands": [
+      "python3.12 -m pytest <DB-04 regression cohort> -q",
+      "python3.12 scripts/check_architecture_boundaries.py",
+      "python3.12 -m json.tool schemas/second-brain/ledger-recall-v2.schema.json"
+    ],
+    "result": "192 DB-04 regression tests passed; architecture boundaries PASS; schema parses",
+    "regression": "Service-path marker contract and runtime conversion are covered"
+  },
+  "ux": {
+    "surface": "CLI and library text output (no GUI exists in this product)",
+    "renderer": {
+      "path": "src/wiki_spike/ui/recall_conflict_view.py",
+      "sha256": "3bf5ed6395ff62fe6d285ec6aac160dc253769f9a58d1bd3867ad47129593faf"
+    },
+    "golden_samples": [
+      {
+        "path": "artifacts/product-release/second-brain-v1/ux/abstention-equal-support-conflict.txt",
+        "sha256": "5c709f829341c2d021811072f73de70d22d87460c949e3735046d256fedd1a93"
+      },
+      {
+        "path": "artifacts/product-release/second-brain-v1/ux/abstention-no-approved-candidate.txt",
+        "sha256": "f557323cb69ecdd88c8618558901e70d64e7622b6991432a48086d14be0b83e0"
+      },
+      {
+        "path": "artifacts/product-release/second-brain-v1/ux/abstention-no-citation-evidence.txt",
+        "sha256": "27b14a1e55d1583297a413dc1ae5970110db43fcf345839bba054c0b6e4188ea"
+      },
+      {
+        "path": "artifacts/product-release/second-brain-v1/ux/contested-result-with-uncited-counterpart.txt",
+        "sha256": "9b06b6a8c43739c58e4494eb64e3d5068e91da03875005e0cb62af64771948fa"
+      },
+      {
+        "path": "artifacts/product-release/second-brain-v1/ux/superseded-evidence-remains-visible.txt",
+        "sha256": "0a9c0d6a688d32fdc1be4e00c1269cb11874c818adeb2c9159033a7dc69b1b04"
+      },
+      {
+        "path": "artifacts/product-release/second-brain-v1/ux/winner-with-retained-contrary-evidence.txt",
+        "sha256": "06e8fa3c2617ea6a0ab329c36dfcff1072b1590e752f30e55184bc7d03bef557"
+      }
+    ],
+    "states": [
+      "co-display conflicting memories with citations",
+      "approved winner marking",
+      "superseded/contrary evidence remains visible",
+      "abstention/no-winner with approval_verification and citation_verification reasons"
+    ],
+    "tests": {
+      "path": "tests/second_brain/test_db04_recall_conflict_view.py",
+      "sha256": "02d02d0962b756e2d085678169d727694cbc71ad269bb02200a57b46370b78c4",
+      "result": "13 passed"
+    }
+  },
+  "evidence_bundle": {
+    "path": "artifacts/product-release/second-brain-v1/evidence/db-04-conflict-behavior-go-bundle-v3.json",
+    "sha256": "ff67e04e97e7990480471750e4a66464ad940f456c65e67e01b26d4bbce29675"
+  },
+  "decision_record": {
+    "path": "artifacts/product-release/second-brain-v1/decisions/DB-04.json",
+    "sha256": "fff3ffe8c400608efd51654e559ca1a6cb162a1a8d912f65094bdd57c2c8db8b",
+    "verify": "signatures_verified: true",
+    "outcome": "GO"
+  },
+  "service_contract": {
+    "core_contract": "src/wiki_spike/memory_core/second_brain_ledger_contracts.py",
+    "application_conversion": "src/wiki_spike/applications/second_brain_recall_service.py",
+    "runtime_field": "src/wiki_spike/memory_runtime/second_brain_recall.py",
+    "schema": "schemas/second-brain/ledger-recall-v2.schema.json",
+    "marker": "unverified_conflicts binds displayed winner to withheld approved citationless counterpart",
+    "supersession_state": "RESOLVED only; SUPERSEDED is rejected by the contract",
+    "test": "test_service_snapshot_preserves_bound_unverified_conflict_marker"
+  }
+}

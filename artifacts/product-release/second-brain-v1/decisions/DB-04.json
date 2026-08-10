@@ -1,0 +1,36 @@
+{
+  "decided_at": "2026-08-07T12:26:06Z",
+  "decision_id": "DB-04",
+  "decision_version": "second-brain-decision-record-v1",
+  "evidence_digest": "ff67e04e97e7990480471750e4a66464ad940f456c65e67e01b26d4bbce29675",
+  "evidence_refs": [
+    "artifacts/product-release/second-brain-v1/evidence/db-04-conflict-behavior-go-bundle-v3.json"
+  ],
+  "expires_at": "2027-08-07T00:00:00Z",
+  "outcome": "GO",
+  "post_interview_reconciliation": {
+    "original_question": "Recall co-displays conflicting memories and their citations. When an approved current decision exists, it is marked as the winner while superseded/conflicting evidence remains visible.",
+    "reconciliation": "The supported conflict state contract is OPEN or RESOLVED; supersession is represented by RESOLVED and SUPERSEDED is rejected. The validated service snapshot now carries a signed unverified_conflicts marker binding a displayed approved winner to a withheld approved citationless counterpart without violating the exactly-one-citation-per-displayed-candidate invariant. Application conversion transfers the marker to the runtime and the CLI/library renderer exposes it. Contrary citations accumulate without overwrite."
+  },
+  "reason": "GO: DB-04 requirements 1 through 4 and the independent service-path blocker are evidenced by the current contract, schema, application conversion, runtime, UX, fixtures, and 192-test regression cohort. Evidence is SHA-256 bound and independently signed by the owner and approver roles.",
+  "record_revision": "1",
+  "scope_kind": "global",
+  "scope_name": null,
+  "signatures": [
+    {
+      "key_id": "wiki-spike-local-approver-2026",
+      "public_key_b64": "qqjshbOlaEeE5umj4jBVJPYqOqFypULm4nX9FSxIMNQ=",
+      "role": "approver",
+      "signature_b64": "5ekimzh9rFWTNdqIm+3qksxYlYckD+WJKsTDQzlQt/5p2iLmtvOPJiImkFGC0NzgFB1YLP9EivnwMOqfGJZHDA==",
+      "signature_version": "second-brain-decision-signature-v1"
+    },
+    {
+      "key_id": "wiki-spike-local-owner-2026",
+      "public_key_b64": "AqkUcin7vP0DSKNKq77+AoG4dLivjs7gBQC+I2U0znQ=",
+      "role": "owner",
+      "signature_b64": "P8SqvPyrzvFtorMMjepX69yuPMIyB/OG5xcJ/iEg5a7b9SzloT2ANgaTfS4ERHYEWCZbUZx2MR2PC2ib+6ZnCg==",
+      "signature_version": "second-brain-decision-signature-v1"
+    }
+  ],
+  "supersedes": null
+}

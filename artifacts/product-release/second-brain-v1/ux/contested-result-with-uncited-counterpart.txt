@@ -1,0 +1,17 @@
+RECALL ANSWER
+=============
+
+1 result(s), ordered by support then candidate reference
+
+[1] APPROVED RESULT
+    candidate:      candidate:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    revision:       revision:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    content digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    support count:  0
+    citations:
+      - source:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    conflicting approved candidates withheld for missing citations:
+      - candidate:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+      this result is contested; it is not an unopposed answer
+
+more pages available: no
