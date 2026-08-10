@@ -1,0 +1,20 @@
+{
+  "assembled_at": "2026-08-06T14:45:22Z",
+  "constituents": [
+    {
+      "path": "docs/adr/ADR-0028-second-brain-product-boundary.md",
+      "sha256": "ab0ed44272a979801aef86d19f82eb511e60b3d73b2828ce557fa18799c82887"
+    },
+    {
+      "path": "docs/product/decisions/DB-06-model-egress.md",
+      "sha256": "50419001a68204041ca97835ef6c63532c880eede9612ab13bcde7c6f0c77687"
+    }
+  ],
+  "decision_id": "DB-06",
+  "kind": "decision-evidence-bundle",
+  "notes": "Evidence for a scoped NO_GO: no provider approval, DPA/egress assessment, consent fixture, deletion evidence, or provider terms exist for the model-a route; ADR-0028 adopts local-first processing and no-provider-fallback for the first release.",
+  "outcome": "NO_GO",
+  "schema_version": 1,
+  "scope_kind": "external_model_route",
+  "scope_name": "model-a"
+}

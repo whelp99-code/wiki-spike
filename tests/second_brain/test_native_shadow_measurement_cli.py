@@ -130,6 +130,13 @@ def test_closed_cli_requires_deployment_authority_adapter(tmp_path):
     assert run(command(tmp_path, fingerprint, "verify")).returncode == 2
 
 
+def test_provisioner_does_not_advertise_a_self_supplied_authority_status_command():
+    provisioner = (ROOT / "scripts" / "provision_shadow_measurement.py").read_text(encoding="utf-8")
+    assert "--authority-endpoint" not in provisioner
+    assert "scripts/second_brain_shadow_measurement.py status" not in provisioner
+    assert "deployment-injected authority composition" in provisioner
+
+
 def test_closed_cli_rejects_roster_drift_unsigned_input_clock_and_legacy_flags(tmp_path):
     _, fingerprint = write_contracts(tmp_path)
     no_checkpoint = command(tmp_path, fingerprint, "init")

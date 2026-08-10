@@ -195,6 +195,9 @@ def report_measurement(collector: NativeShadowMeasurementCollector) -> dict[str,
         "cohort_digest": report.cohort_digest,
         "sample_count": report.sample_count,
         "continuous_seconds": report.continuous_seconds,
+        "effective_seconds": report.effective_seconds,
+        "excluded_gap_seconds": report.excluded_gap_seconds,
+        "excluded_gap_count": report.excluded_gap_count,
         "reasons": list(report.reasons),
     }
 

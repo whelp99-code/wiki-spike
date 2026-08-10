@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "kind": "db-04-conflict-behavior-evidence-bundle",
+  "decision_ref": "docs/product/decisions/DB-04-conflict-behavior.md",
+  "assembled_at": "2026-08-07T07:04:48Z",
+  "policy": {
+    "f1_resolution": "option_2_citationless_conflict_marker",
+    "winner_policy": "serve_supported_approved_winner_but_surface_approved_uncited_counterpart",
+    "abstention_reasons": [
+      "approval_verification",
+      "citation_verification",
+      "conflict"
+    ],
+    "contrary_evidence": "never silently suppressed; resolved and superseded evidence remains co-displayed"
+  },
+  "constituents": [
+    {
+      "path": "docs/product/decisions/DB-04-conflict-behavior.md",
+      "sha256": "cad87428c660a12f51ac06e24f37835d1d89bdb10671fa5129b1fb56a9e2d4cf",
+      "bytes": 3552
+    },
+    {
+      "path": "src/wiki_spike/memory_runtime/second_brain_recall.py",
+      "sha256": "6e8210719c65d43bb8a15d4853a1d68f37f61353983ae9d494f9eb14ebcfc689",
+      "bytes": 9406
+    },
+    {
+      "path": "src/wiki_spike/ui/recall_conflict_view.py",
+      "sha256": "3bf5ed6395ff62fe6d285ec6aac160dc253769f9a58d1bd3867ad47129593faf",
+      "bytes": 3974
+    },
+    {
+      "path": "tests/second_brain/test_stage3_recall_snapshot.py",
+      "sha256": "e4f935eba1cbc78a00f3c91507777c7f8aeea90b374ff862e64c20e39b1ec815",
+      "bytes": 9262
+    },
+    {
+      "path": "tests/second_brain/test_db04_recall_conflict_view.py",
+      "sha256": "02d02d0962b756e2d085678169d727694cbc71ad269bb02200a57b46370b78c4",
+      "bytes": 5845
+    },
+    {
+      "path": "artifacts/product-release/second-brain-v1/ux/abstention-equal-support-conflict.txt",
+      "sha256": "5c709f829341c2d021811072f73de70d22d87460c949e3735046d256fedd1a93",
+      "bytes": 217
+    },
+    {
+      "path": "artifacts/product-release/second-brain-v1/ux/abstention-no-approved-candidate.txt",
+      "sha256": "f557323cb69ecdd88c8618558901e70d64e7622b6991432a48086d14be0b83e0",
+      "bytes": 225
+    },
+    {
+      "path": "artifacts/product-release/second-brain-v1/ux/abstention-no-citation-evidence.txt",
+      "sha256": "27b14a1e55d1583297a413dc1ae5970110db43fcf345839bba054c0b6e4188ea",
+      "bytes": 224
+    },
+    {
+      "path": "artifacts/product-release/second-brain-v1/ux/contested-result-with-uncited-counterpart.txt",
+      "sha256": "9b06b6a8c43739c58e4494eb64e3d5068e91da03875005e0cb62af64771948fa",
+      "bytes": 803
+    },
+    {
+      "path": "artifacts/product-release/second-brain-v1/ux/superseded-evidence-remains-visible.txt",
+      "sha256": "0a9c0d6a688d32fdc1be4e00c1269cb11874c818adeb2c9159033a7dc69b1b04",
+      "bytes": 1068
+    },
+    {
+      "path": "artifacts/product-release/second-brain-v1/ux/winner-with-retained-contrary-evidence.txt",
+      "sha256": "06e8fa3c2617ea6a0ab329c36dfcff1072b1590e752f30e55184bc7d03bef557",
+      "bytes": 889
+    }
+  ],
+  "verification": {
+    "commands": [
+      "python3.12 -m pytest tests/second_brain/test_stage3_recall_snapshot.py tests/second_brain/test_db04_recall_conflict_view.py tests/second_brain/test_stage3_recall_hardening.py tests/second_brain/test_stage3_journey_capture_review_recall.py tests/second_brain/test_stage3_v2_composition.py tests/second_brain/test_stage3_v2_api_mcp.py tests/second_brain/test_stage3_g013_red_team.py tests/second_brain/test_stage3_ledger_contracts.py tests/second_brain/test_stage3_journey_correction_forget.py tests/second_brain/test_stage3_journey_governance_projection_route.py tests/second_brain/test_stage3_ledger_persistence.py tests/second_brain/test_stage3_wal_concurrency_deletion.py tests/second_brain/test_decision_contracts.py tests/second_brain/test_decision_record_tool.py -q",
+      "python3.12 scripts/check_architecture_boundaries.py"
+    ],
+    "result": "190 passed; architecture boundaries PASS"
+  }
+}

@@ -118,7 +118,7 @@ def test_local_clock_step_cannot_synthesize_the_three_day_authority_duration(tmp
     report = value.report()
     assert report.outcome == "NOT_READY"
     assert report.continuous_seconds == 1
-    assert "continuous measurement is below the required duration" in report.reasons
+    assert "effective measurement is below the required duration" in report.reasons
 
 
 
@@ -242,10 +242,43 @@ def _evaluated(*, count=800, duration_hours=72, slo=None, mutate=None):
 
 @pytest.mark.parametrize(("hours", "reason"), [
     (72, None),
-    (71, "continuous measurement is below the required duration"),
+    (71, "effective measurement is below the required duration"),
 ])
-def test_exact_continuous_72_hour_boundary(hours, reason):
+def test_exact_effective_72_hour_boundary(hours, reason):
     metrics = _evaluated(duration_hours=hours)
+    assert (reason in metrics.reasons) if reason else not metrics.reasons
+
+
+def _history_with_excluded_gaps(*, effective_hours: int):
+    root, entries, start = _history(count=800, duration_hours=0)
+    effective_seconds = effective_hours * 3600
+    normal_intervals = len(entries) - 3  # two long gaps do not count.
+    quotient, remainder = divmod(effective_seconds, normal_intervals)
+    current = start
+    normal_seen = 0
+    for index, entry in enumerate(entries):
+        if index:
+            if index in (250, 500):
+                current += timedelta(hours=6)
+            else:
+                normal_seen += 1
+                current += timedelta(seconds=quotient + (normal_seen <= remainder))
+        entry["recorded_at"] = current.isoformat().replace("+00:00", "Z")
+    return root, entries, start
+
+
+@pytest.mark.parametrize(("effective_hours", "reason"), [
+    (72, None),
+    (71, "effective measurement is below the required duration"),
+])
+def test_effective_duration_boundary_across_multiple_excluded_gaps(effective_hours, reason):
+    root, entries, start = _history_with_excluded_gaps(effective_hours=effective_hours)
+    metrics = measurement._evaluate_history_metrics(
+        root=root, entries=entries, slo=contracts()[3], evaluated_at=start,
+    )
+    assert metrics.effective_seconds == effective_hours * 3600
+    assert metrics.excluded_gap_count == 2
+    assert metrics.excluded_gap_seconds > 0
     assert (reason in metrics.reasons) if reason else not metrics.reasons
 
 

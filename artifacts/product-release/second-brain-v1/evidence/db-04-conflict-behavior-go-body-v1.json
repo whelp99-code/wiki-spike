@@ -1,0 +1,20 @@
+{
+  "decision_version": "second-brain-decision-record-v1",
+  "decision_id": "DB-04",
+  "outcome": "GO",
+  "scope_kind": "global",
+  "scope_name": null,
+  "record_revision": "1",
+  "decided_at": "2026-08-07T07:04:48Z",
+  "supersedes": null,
+  "post_interview_reconciliation": {
+    "original_question": "Recall co-displays conflicting memories and their citations. When an approved current decision exists, it is marked as the winner while superseded/conflicting evidence remains visible.",
+    "reconciliation": "The CLI and library recall surface now co-displays conflicting approved memories with citations. An approved winner is marked by support, while contrary and superseded evidence remains visible. A citationless approved counterpart is not silently discarded: the served winner carries an explicit unverified_conflicts marker and the renderer says the result is contested. No approved candidate abstains with approval_verification; missing citation evidence abstains with citation_verification; equal supported open conflicts abstain with conflict. The implementation, adversarial fixtures, deterministic text renderer, and immutable golden samples are SHA-256 bound in the evidence bundle."
+  },
+  "reason": "GO: all four DB-04 requirements are evidenced. The F1 option-2 policy prevents silent suppression without allowing an uncited injected candidate to suppress every supported answer. Requirement 1 is satisfied by the deterministic CLI/library renderer and six golden samples; requirements 2 and 3 are covered by the adversarial and acceptance tests; requirement 4 is satisfied by the SHA-256 evidence bundle and the independent Product owner and Trust approver signatures required by the decision contract.",
+  "evidence_refs": [
+    "artifacts/product-release/second-brain-v1/evidence/db-04-conflict-behavior-go-bundle-v1.json"
+  ],
+  "evidence_digest": "8589e5f9c649c0b6cbce9f21c62020f27b3ae711dac89463c253fa0d45317bd5",
+  "expires_at": "2027-08-07T00:00:00Z"
+}

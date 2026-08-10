@@ -116,7 +116,7 @@ def signed_sample(collector, key, sample_id, source, outcome="valid", **measures
     return raw
 
 
-def test_signed_samples_require_real_wall_clock_and_raw_denominators(tmp_path):
+def test_fast_signed_samples_cannot_synthesize_effective_observation_or_denominators(tmp_path):
     # ``now`` is a hostile caller clock.  The fake authority explicitly ticks
     # its own signed clock by one second for every accepted append.
     now=[datetime(2026,1,1,tzinfo=timezone.utc)]
@@ -128,10 +128,46 @@ def test_signed_samples_require_real_wall_clock_and_raw_denominators(tmp_path):
     for index in range(800):
         source=("Codex","Claude/Memory Bank","Git","Markdown")[index % 4]
         value.append(signed_sample(value, key, str(index), source)); now[0] += timedelta(seconds=324)
-    # Fast local appends cannot synthesize the required continuous 3-day (72-hour) window.
+    # Fast local appends cannot synthesize 72 effective hours or raw denominators.
     report = value.report()
     assert report.outcome == "NOT_READY"
     assert report.continuous_seconds == 799
+    assert report.effective_seconds == 799
+
+
+def test_long_authority_gap_is_excluded_and_reopen_preserves_prior_effective_time(tmp_path):
+    authority = IndependentMonotonicTestAuthority()
+    value, key = collector(tmp_path, [datetime(2026, 1, 1, tzinfo=timezone.utc)], authority)
+    value.append(signed_sample(value, key, "one", "Codex"))
+    authority.advance(timedelta(minutes=30) - timedelta(seconds=1))
+    value.append(signed_sample(value, key, "two", "Git"))
+    authority.advance(timedelta(hours=8) - timedelta(seconds=1))
+    value.append(signed_sample(value, key, "three", "Markdown"))
+    authority.advance(timedelta(minutes=15) - timedelta(seconds=1))
+    value.append(signed_sample(value, key, "four", "Claude/Memory Bank"))
+
+    report = value.report()
+    assert report.effective_seconds == 45 * 60
+    assert report.continuous_seconds == 15 * 60
+    assert report.excluded_gap_seconds == 8 * 3600
+    assert report.excluded_gap_count == 1
+
+    reopened = NativeShadowMeasurementCollector(
+        path=value.path, authority=value.authority, scope=value.scope,
+        benchmark=value.benchmark, holdout=value.holdout, slo=value.slo,
+        measurement_public_key=key.public_key(), measurement_key_id="measurement-1",
+    )
+    assert reopened.report().effective_seconds == 45 * 60
+    assert reopened.report().excluded_gap_seconds == 8 * 3600
+
+
+def test_authority_clock_rollback_remains_rejected(tmp_path):
+    authority = IndependentMonotonicTestAuthority()
+    value, key = collector(tmp_path, [datetime(2026, 1, 1, tzinfo=timezone.utc)], authority)
+    value.append(signed_sample(value, key, "one", "Codex"))
+    authority.advance(timedelta(seconds=-2))
+    with pytest.raises(ShadowMeasurementError, match="clock rollback"):
+        value.append(signed_sample(value, key, "two", "Git"))
 
 
 def test_checkpoint_is_required_and_is_signed(tmp_path):

@@ -1,0 +1,36 @@
+{
+  "decided_at": "2026-08-06T14:45:22Z",
+  "decision_id": "DB-03",
+  "decision_version": "second-brain-decision-record-v1",
+  "evidence_digest": "9e7d68ae8df714da7464b908872580ca2f83bd62fd7041bd7bd04239ff122aeb",
+  "evidence_refs": [
+    "artifacts/product-release/second-brain-v1/unified-db-inventory-v1.json"
+  ],
+  "expires_at": "2026-08-20T00:00:00Z",
+  "outcome": "GO",
+  "post_interview_reconciliation": {
+    "original_question": "unified-db, legacy Mem0/RAG, and me-wiki are all intended read-only migration sources. Each must independently satisfy export, identity, revision, watermark, deletion-history, and fixture requirements; no runtime fallback is allowed.",
+    "reconciliation": "unified-db is admitted only as a read-only migration input; it is never a serving authority or a runtime fallback path. This record binds the read-only metadata inventory as partial evidence and carries a short expiry. Entering a migration cohort still requires the owner-produced immutable snapshot, zero-write proof, per-source uniqueness diff, and deletion/history treatment that the inventory names as next required evidence."
+  },
+  "reason": "The bound inventory records a postgres transaction read-only observation of unified-db with no source mutation attempted: schema, table statistics, watermark, revision, and deletion-history semantics were captured, and the live store cannot yet yield an immutable package. Evidence is partial; this GO admits unified-db as a read-only migration input only and expires before the snapshot/diff evidence step completes.",
+  "record_revision": "1",
+  "scope_kind": "migration_source",
+  "scope_name": "unified-db",
+  "signatures": [
+    {
+      "key_id": "wiki-spike-local-approver-2026",
+      "public_key_b64": "qqjshbOlaEeE5umj4jBVJPYqOqFypULm4nX9FSxIMNQ=",
+      "role": "approver",
+      "signature_b64": "uS6pTLno9E8v245/kFhbZrGyEDc+osd5mIn2HTJA8KL/scwlZOYI13SUeAdjhHvnLNlHVE4Kvh8ghH08/Es9Bw==",
+      "signature_version": "second-brain-decision-signature-v1"
+    },
+    {
+      "key_id": "wiki-spike-local-owner-2026",
+      "public_key_b64": "AqkUcin7vP0DSKNKq77+AoG4dLivjs7gBQC+I2U0znQ=",
+      "role": "owner",
+      "signature_b64": "+8TPslqdA5EvezkFiuiKG0B+AyNtqbs7mRc2YdMzwR8LEke+8l5SH58OqUCML7ycroQqWvrVAJALVyStuF90Dg==",
+      "signature_version": "second-brain-decision-signature-v1"
+    }
+  ],
+  "supersedes": null
+}

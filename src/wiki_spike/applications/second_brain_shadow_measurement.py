@@ -86,7 +86,12 @@ class ShadowMeasurementReport:
     outcome: str
     cohort_digest: str
     sample_count: int
+    # Compatibility-only trailing uninterrupted active run. It never spans an
+    # excluded gap and is not the readiness authority.
     continuous_seconds: int
+    effective_seconds: int
+    excluded_gap_seconds: int
+    excluded_gap_count: int
     reasons: tuple[str, ...]
 
 
@@ -97,6 +102,9 @@ class _HistoryMetrics:
     cohort_digest: str
     sample_count: int
     continuous_seconds: int
+    effective_seconds: int
+    excluded_gap_seconds: int
+    excluded_gap_count: int
     reasons: tuple[str, ...]
 
 def _instant(value: datetime | str) -> datetime:
@@ -149,9 +157,27 @@ def _evaluate_history_metrics(*, root: Mapping[str, Any],
     """Calculate metrics/reasons only; this seam never creates an outcome."""
     samples = [entry["sample"] for entry in entries]
     reasons: list[str] = []
-    duration = 0 if len(entries) < 2 else int((_instant(entries[-1]["recorded_at"]) - _instant(entries[0]["recorded_at"])).total_seconds())
-    if duration < slo.min_shadow_days * 86400:
-        reasons.append("continuous measurement is below the required duration")
+    effective_seconds = 0.0
+    excluded_gap_seconds = 0.0
+    excluded_gap_count = 0
+    continuous_seconds = 0.0
+    previous_recorded: datetime | None = None
+    for entry in entries:
+        recorded = _instant(entry["recorded_at"])
+        if previous_recorded is not None:
+            delta = (recorded - previous_recorded).total_seconds()
+            if delta <= 0:
+                raise ShadowMeasurementError("measurement authority clock rollback or non-positive interval")
+            if delta <= _MAX_INTERVAL_SECONDS:
+                effective_seconds += delta
+                continuous_seconds += delta
+            else:
+                excluded_gap_seconds += delta
+                excluded_gap_count += 1
+                continuous_seconds = 0.0
+        previous_recorded = recorded
+    if effective_seconds < slo.min_shadow_days * 86400:
+        reasons.append("effective measurement is below the required duration")
     if len(samples) < slo.min_cohort_e2e_queries:
         reasons.append("cohort E2E denominator is below its floor")
     if sum(sample["safety_violation"] for sample in samples) > slo.max_safety_violations:
@@ -167,7 +193,10 @@ def _evaluate_history_metrics(*, root: Mapping[str, Any],
         if _wilson_lower(sum(valid(s) and predicate(s) for s in samples), len(samples)) * 10000 < threshold:
             reasons.append(f"{name} lower bound failed")
     cohort = sha256(canonical_ledger_bytes(_COHORT_DOMAIN, root)).hexdigest()
-    return _HistoryMetrics(cohort, len(samples), duration, tuple(reasons))
+    return _HistoryMetrics(
+        cohort, len(samples), int(continuous_seconds), int(effective_seconds),
+        int(excluded_gap_seconds), excluded_gap_count, tuple(reasons),
+    )
 
 
 class NativeShadowMeasurementCollector:
@@ -467,8 +496,8 @@ class NativeShadowMeasurementCollector:
         for event in events[1:]:
             if not isinstance(event, Mapping) or set(event) != {"kind", "entry", "recorded_at"} or event["kind"] != "append": raise ShadowMeasurementError("measurement journal event schema is invalid")
             recorded = _canonical_utc(event["recorded_at"], field="authority event")
-            if not 0 < (recorded - previous_recorded).total_seconds() <= _MAX_INTERVAL_SECONDS:
-                raise ShadowMeasurementError("measurement interval gap or authority clock rollback")
+            if (recorded - previous_recorded).total_seconds() <= 0:
+                raise ShadowMeasurementError("measurement authority clock rollback or non-positive interval")
             entry = event["entry"]
             if not isinstance(entry, Mapping) or set(entry) != {"sample", "previous"}:
                 raise ShadowMeasurementError("measurement journal event schema is invalid")
@@ -498,7 +527,7 @@ class NativeShadowMeasurementCollector:
             if not isinstance(entry["sample"], Mapping): raise ShadowMeasurementError("measurement sample entry is invalid")
             self._validate_sample(entry["sample"], cohort=cohort, previous=previous, sequence=sequence)
             recorded = _canonical_utc(entry["recorded_at"], field="authority event")
-            if last_recorded is not None and not 0 < (recorded-last_recorded).total_seconds() <= _MAX_INTERVAL_SECONDS: raise ShadowMeasurementError("measurement interval gap or clock rollback")
+            if last_recorded is not None and (recorded-last_recorded).total_seconds() <= 0: raise ShadowMeasurementError("measurement authority clock rollback or non-positive interval")
             digest = sha256(canonical_ledger_bytes(_CHAIN_DOMAIN, {"sample": dict(entry["sample"]), "recorded_at": _stamp(recorded), "previous": previous})).hexdigest()
             if entry["digest"] != digest: raise ShadowMeasurementError("measurement chain digest is invalid")
             previous, last_recorded = digest, recorded
@@ -548,7 +577,9 @@ class NativeShadowMeasurementCollector:
             return ShadowMeasurementReport(
                 "EVIDENCE_COMPLETE_NON_SERVING" if not metrics.reasons else "NOT_READY",
                 metrics.cohort_digest, metrics.sample_count,
-                metrics.continuous_seconds, metrics.reasons,
+                metrics.continuous_seconds, metrics.effective_seconds,
+                metrics.excluded_gap_seconds, metrics.excluded_gap_count,
+                metrics.reasons,
             )
 
 

@@ -1,0 +1,165 @@
+{
+  "schemaVersion": 1,
+  "kind": "black-box-test-report",
+  "decisionRef": "docs/product/decisions/DB-04-conflict-behavior.md",
+  "sourceHash": "sha256:8589e5f9c649c0b6cbce9f21c62020f27b3ae711dac89463c253fa0d45317bd5",
+  "surface": "api/package",
+  "invocation": "python3.12 -m pytest tests/second_brain/test_stage3_recall_snapshot.py tests/second_brain/test_db04_recall_conflict_view.py -q",
+  "commands": [
+    "python3.12 -m pytest tests/second_brain/test_stage3_recall_snapshot.py tests/second_brain/test_db04_recall_conflict_view.py -q"
+  ],
+  "observed": "23 passed in 0.11s",
+  "verdict": "passed",
+  "contractCoverage": [
+    {
+      "id": "co-display",
+      "contractRef": "DB-04 requirement 1",
+      "obligation": "Conflicting memories and citations are co-displayed",
+      "status": "covered",
+      "surfaceEvidenceRefs": [
+        "recall-api"
+      ],
+      "adversarialCaseRefs": [
+        "equal-support",
+        "resolved-conflict"
+      ]
+    },
+    {
+      "id": "winner-marking",
+      "contractRef": "DB-04 requirement 1",
+      "obligation": "Approved supported winner is marked without erasing contrary evidence",
+      "status": "covered",
+      "surfaceEvidenceRefs": [
+        "recall-api"
+      ],
+      "adversarialCaseRefs": [
+        "conflicting-assertions"
+      ]
+    },
+    {
+      "id": "superseded-retention",
+      "contractRef": "DB-04 requirement 3",
+      "obligation": "Superseded/contrary evidence remains visible",
+      "status": "covered",
+      "surfaceEvidenceRefs": [
+        "recall-api"
+      ],
+      "adversarialCaseRefs": [
+        "resolved-conflict"
+      ]
+    },
+    {
+      "id": "abstention",
+      "contractRef": "DB-04 requirement 1",
+      "obligation": "No-winner states are explicit and reasoned",
+      "status": "covered",
+      "surfaceEvidenceRefs": [
+        "recall-api"
+      ],
+      "adversarialCaseRefs": [
+        "absent-approval",
+        "missing-citation",
+        "equal-support"
+      ]
+    }
+  ],
+  "surfaceEvidence": [
+    {
+      "id": "recall-api",
+      "contractRef": "DB-04 conflict recall and renderer",
+      "surface": "api",
+      "invocation": "Focused pytest cohort and deterministic golden renderer",
+      "verdict": "passed",
+      "artifactRefs": [
+        "db04-bundle"
+      ]
+    }
+  ],
+  "adversarialCases": [
+    {
+      "id": "conflicting-assertions",
+      "contractRef": "DB-04 requirement 2",
+      "scenario": "Open conflict with competing assertions and citations",
+      "expectedBehavior": "Supported approved winner is marked and contrary citation remains visible",
+      "verdict": "passed",
+      "artifactRefs": [
+        "db04-bundle"
+      ]
+    },
+    {
+      "id": "approved-current",
+      "contractRef": "DB-04 requirement 2",
+      "scenario": "Approved current decision participates in an open conflict",
+      "expectedBehavior": "Only approved candidates are eligible for a winner",
+      "verdict": "passed",
+      "artifactRefs": [
+        "db04-bundle"
+      ]
+    },
+    {
+      "id": "resolved-conflict",
+      "contractRef": "DB-04 requirement 2",
+      "scenario": "Conflict is resolved/superseded",
+      "expectedBehavior": "Both sides remain visible and no winner is fabricated",
+      "verdict": "passed",
+      "artifactRefs": [
+        "db04-bundle"
+      ]
+    },
+    {
+      "id": "absent-approval",
+      "contractRef": "DB-04 requirement 2",
+      "scenario": "No candidate is approved",
+      "expectedBehavior": "Abstain with approval_verification",
+      "verdict": "passed",
+      "artifactRefs": [
+        "db04-bundle"
+      ]
+    },
+    {
+      "id": "withdrawn-support",
+      "contractRef": "DB-04 requirement 2",
+      "scenario": "Withdrawn support creates equal/insufficient support",
+      "expectedBehavior": "Abstain rather than fabricate a winner",
+      "verdict": "passed",
+      "artifactRefs": [
+        "db04-bundle"
+      ]
+    },
+    {
+      "id": "invalid-citation",
+      "contractRef": "DB-04 requirement 2",
+      "scenario": "Candidate lacks valid citation evidence",
+      "expectedBehavior": "Candidate is not served; abstain with citation_verification where applicable",
+      "verdict": "passed",
+      "artifactRefs": [
+        "db04-bundle"
+      ]
+    },
+    {
+      "id": "uncited-approved-counterpart",
+      "contractRef": "DB-04 requirement 3",
+      "scenario": "Approved conflicting counterpart has no citation",
+      "expectedBehavior": "Winner may be served only with explicit unverified_conflicts/contested marker; no silent suppression",
+      "verdict": "passed",
+      "artifactRefs": [
+        "db04-bundle"
+      ]
+    }
+  ],
+  "artifactRefs": [
+    {
+      "id": "db04-bundle",
+      "kind": "api-package-test-report",
+      "path": "artifacts/product-release/second-brain-v1/evidence/db-04-conflict-behavior-go-bundle-v1.json",
+      "description": "SHA-256-bound DB-04 implementation, fixtures, renderer, and UX golden samples"
+    }
+  ],
+  "summary": {
+    "totalAdversarialCases": 7,
+    "passed": 7,
+    "failed": 0,
+    "noHiddenFallbackWinnerFabricated": true,
+    "uncitedCounterpartContestedMarkerEmitted": true
+  }
+}

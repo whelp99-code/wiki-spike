@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "kind": "decision-signing-adversarial-test-report",
+  "generation": 2,
+  "sourceHash": "sha256:2c70366918beab4cddd21da18f184d91574a92f8ea705e0218028a96fbe3dc4d",
+  "ranAt": "2026-08-06T23:04:49Z",
+  "surface": "package/algorithm",
+  "cases": [
+    {
+      "id": "case1-decisions-dir-contains-only-db06-db08",
+      "scenario": "list artifacts/product-release/second-brain-v1/decisions/ and confirm it contains exactly DB-06-model-a.json and DB-08-archive.json, no DB-03 record",
+      "expectedBehavior": "directory listing is exactly {DB-06-model-a.json, DB-08-archive.json}",
+      "observed": "cmd: ls artifacts/product-release/second-brain-v1/decisions/\nstdout: DB-06-model-a.json\nDB-08-archive.json\ncount: 2 (no DB-03-unified-db.json present)",
+      "verdict": "passed"
+    },
+    {
+      "id": "case2-db06-verify-and-parse",
+      "scenario": "shipped DB-06-model-a.json passes CLI verify and DecisionRecordV1.from_mapping(now=utc)",
+      "expectedBehavior": "verify exits 0 with signatures_verified true; from_mapping(now=utc) accepts without raising",
+      "observed": "cmd: python3.12 scripts/second_brain_decision.py verify --record artifacts/product-release/second-brain-v1/decisions/DB-06-model-a.json\nexit: 0\nsignatures_verified: true\nfrom_mapping(now=utc): parsed OK, decision_id=DB-06, outcome=NO_GO",
+      "verdict": "passed"
+    },
+    {
+      "id": "case2-db08-verify-and-parse",
+      "scenario": "shipped DB-08-archive.json passes CLI verify and DecisionRecordV1.from_mapping(now=utc)",
+      "expectedBehavior": "verify exits 0 with signatures_verified true; from_mapping(now=utc) accepts without raising",
+      "observed": "cmd: python3.12 scripts/second_brain_decision.py verify --record artifacts/product-release/second-brain-v1/decisions/DB-08-archive.json\nexit: 0\nsignatures_verified: true\nfrom_mapping(now=utc): parsed OK, decision_id=DB-08, outcome=NO_GO",
+      "verdict": "passed"
+    },
+    {
+      "id": "case3-withdrawn-db03-byte-identical-and-verifies",
+      "scenario": "withdrawn/DB-03-unified-db.json is byte-identical to the gen-1 shipped record (non-destructive withdrawal) and still verifies",
+      "expectedBehavior": "sha256(withdrawn/DB-03-unified-db.json) == 8c863e297d9f358b3548345f067ff0f16b1fefa18b3617100847cf2b25b76655; verify exits 0, signatures_verified true",
+      "observed": "cmd: shasum -a 256 artifacts/product-release/second-brain-v1/withdrawn/DB-03-unified-db.json\nactual: 8c863e297d9f358b3548345f067ff0f16b1fefa18b3617100847cf2b25b76655\nexpected (gen-1 value): 8c863e297d9f358b3548345f067ff0f16b1fefa18b3617100847cf2b25b76655\nmatch: true\ncmd: python3.12 scripts/second_brain_decision.py verify --record artifacts/product-release/second-brain-v1/withdrawn/DB-03-unified-db.json\nexit: 0\nsignatures_verified: true, outcome: GO, scope_kind: migration_source, scope_name: unified-db",
+      "verdict": "passed"
+    },
+    {
+      "id": "case4-attack-withdrawal-denies-authorization",
+      "scenario": "ATTACK: with only NO_GO-shaped current-world decisions present (no DB-03 GO record for unified-db), build a resolved-scope + expected-scope-manifest scenario via src/wiki_spike/memory_core/second_brain_contracts.py and try to enable unified-db in enabled_migration_sources; also try omitting the DB-03/unified-db decision record entirely (today's literal repo state)",
+      "expectedBehavior": "resolve_second_brain_contract must reject (raise InvalidContractValue) any attempt to enable unified-db in ResolvedScopeV1.enabled_migration_sources when no DB-03 GO decision exists for it; control scenario (unified-db correctly left disabled) must resolve RESOLVED to prove the harness itself is sound",
+      "observed": "script: /tmp/ws-qa-gen2/work/case4_attack.py (throwaway in-memory Ed25519 keys only, never touches ~/keys/wiki-spike-local/*.pem)\ncontrol: decisions=[4 global GO, 4x DB-02 GO, DB-03/legacy-Mem0-RAG GO, DB-03/me-wiki GO, DB-03/unified-db NO_GO, DB-06 NO_GO, DB-08 NO_GO], scope leaves unified-db out of enabled_migration_sources and disabled_migration_sources={'unified-db':'no GO decision exists for unified-db'} -> outcome=RESOLVED (proves the harness is sound)\nattack: same decisions, scope adds 'unified-db' to enabled_migration_sources and removes the disabled entry -> raised InvalidContractValue: 'migration_source enabled and disabled scopes must exactly match GO and NO_GO decisions' (resolver rejects at src/wiki_spike/memory_core/second_brain_contracts.py:356, because {'unified-db',...} != go-set which only contains 'legacy Mem0/RAG','me-wiki')\nattack2 (omit DB-03/unified-db decision entirely, matching literal current decisions/ contents): raised InvalidContractValue: 'decision evidence does not exactly match the expected-scope manifest' (resolver rejects even earlier, at second_brain_contracts.py:339, because ExpectedScopeManifestV1's _REQUIRED_SCOPE_INVENTORY for DB-03 always requires exactly {'unified-db','legacy Mem0/RAG','me-wiki'} as expected scoped entries, and the scoped-decision set no longer contains a unified-db entry at all)\nconclusion: the withdrawn GO grants nothing -- unified-db cannot be enabled or even reach RESOLVED without a live DB-03 GO decision in decisions/",
+      "verdict": "passed"
+    },
+    {
+      "id": "case5-attack-restore-restores-authority",
+      "scenario": "ATTACK: copy the withdrawn DB-03 record into a TEMP decisions dir (never mutating the repo original) and show it parses as a valid GO again, proving reversibility is real and withdrawal is a policy boundary (file-location gate), not corruption",
+      "expectedBehavior": "copied file is byte-identical to the withdrawn original; CLI verify exits 0 with signatures_verified true; DecisionRecordV1.from_mapping accepts it as a GO for migration_source/unified-db",
+      "observed": "cmd: mkdir -p /tmp/ws-qa-gen2/work/restored-decisions && cp artifacts/product-release/second-brain-v1/withdrawn/DB-03-unified-db.json /tmp/ws-qa-gen2/work/restored-decisions/DB-03-unified-db.json\nsha256 of copy: 8c863e297d9f358b3548345f067ff0f16b1fefa18b3617100847cf2b25b76655 (matches withdrawn original and gen-1 value)\ncmd: python3.12 scripts/second_brain_decision.py verify --record /tmp/ws-qa-gen2/work/restored-decisions/DB-03-unified-db.json\nexit: 0, signatures_verified: true\nDecisionRecordV1.from_mapping(now=utc) on the copy: parsed OK, decision_id=DB-03, outcome=GO, scope_kind=migration_source, scope_name=unified-db\nrepo original at artifacts/product-release/second-brain-v1/withdrawn/DB-03-unified-db.json left untouched (only copied, never mutated)",
+      "verdict": "passed"
+    },
+    {
+      "id": "case6-tamper-db06",
+      "scenario": "tamper one byte in a copy of the shipped DB-06-model-a.json (flip trailing character of reason field) and verify",
+      "expectedBehavior": "verify exits 1 with signatures_verified false",
+      "observed": "cmd: python3.12 scripts/second_brain_decision.py verify --record /tmp/ws-qa-gen2/work/tamper-DB-06-model-a.json\nexit: 1\nsignatures_verified: false (both approver and owner signatures verified:false)",
+      "verdict": "passed"
+    },
+    {
+      "id": "case6-tamper-db08",
+      "scenario": "tamper one byte in a copy of the shipped DB-08-archive.json (flip trailing character of reason field) and verify",
+      "expectedBehavior": "verify exits 1 with signatures_verified false",
+      "observed": "cmd: python3.12 scripts/second_brain_decision.py verify --record /tmp/ws-qa-gen2/work/tamper-DB-08-archive.json\nexit: 1\nsignatures_verified: false (both approver and owner signatures verified:false)",
+      "verdict": "passed"
+    },
+    {
+      "id": "case7-evidence-binding-db06",
+      "scenario": "sha256(evidence_refs[0]) must equal evidence_digest for DB-06, and every bundle constituent sha256 must match the live doc",
+      "expectedBehavior": "sha256(artifacts/product-release/second-brain-v1/evidence/db-06-model-a-no-go-bundle-v1.json) == ca484b77006acf70fca632f964e8b4b9d6b8d90b734f68536f01b5756b044d82; both bundle constituent hashes match live files",
+      "observed": "actual sha256 of evidence file: ca484b77006acf70fca632f964e8b4b9d6b8d90b734f68536f01b5756b044d82 (match)\nconstituents: docs/adr/ADR-0028-second-brain-product-boundary.md recorded=ab0ed44272a979801aef86d19f82eb511e60b3d73b2828ce557fa18799c82887 live=ab0ed44272a979801aef86d19f82eb511e60b3d73b2828ce557fa18799c82887 (match); docs/product/decisions/DB-06-model-egress.md recorded=50419001a68204041ca97835ef6c63532c880eede9612ab13bcde7c6f0c77687 live=50419001a68204041ca97835ef6c63532c880eede9612ab13bcde7c6f0c77687 (match)",
+      "verdict": "passed"
+    },
+    {
+      "id": "case7-evidence-binding-db08",
+      "scenario": "sha256(evidence_refs[0]) must equal evidence_digest for DB-08, and every bundle constituent sha256 must match the live doc",
+      "expectedBehavior": "sha256(artifacts/product-release/second-brain-v1/evidence/db-08-archive-no-go-bundle-v1.json) == 7d12d8c425620f208646bd5612a44446dacab1f37028fbd3bb302f534f870193; both bundle constituent hashes match live files",
+      "observed": "actual sha256 of evidence file: 7d12d8c425620f208646bd5612a44446dacab1f37028fbd3bb302f534f870193 (match)\nconstituents: docs/adr/ADR-0028-second-brain-product-boundary.md recorded=ab0ed44272a979801aef86d19f82eb511e60b3d73b2828ce557fa18799c82887 live=ab0ed44272a979801aef86d19f82eb511e60b3d73b2828ce557fa18799c82887 (match); docs/product/decisions/DB-08-publication-scope.md recorded=27988c9221c1cc1a7d241c31bbde1ad7c4edafefad78e74c1fa94e7b56965dcf live=27988c9221c1cc1a7d241c31bbde1ad7c4edafefad78e74c1fa94e7b56965dcf (match)",
+      "verdict": "passed"
+    },
+    {
+      "id": "case8-key-identity-db06-and-db08",
+      "scenario": "each shipped record's two public_key_b64 values equal base64 of ~/keys/wiki-spike-local/owner.pub.raw and approver.pub.raw (reading only the .pub.raw public files), signatures ordered approver-then-owner, distinct key_ids",
+      "expectedBehavior": "signatures[0].public_key_b64 == base64(approver.pub.raw), signatures[1].public_key_b64 == base64(owner.pub.raw), roles order == ['approver','owner'], key_ids distinct",
+      "observed": "read only ~/keys/wiki-spike-local/approver.pub.raw (32 bytes) and owner.pub.raw (32 bytes); never read *.pem\nbase64(approver.pub.raw) = qqjshbOlaEeE5umj4jBVJPYqOqFypULm4nX9FSxIMNQ=\nbase64(owner.pub.raw) = AqkUcin7vP0DSKNKq77+AoG4dLivjs7gBQC+I2U0znQ=\nDB-06: roles=['approver','owner'], key_ids=['wiki-spike-local-approver-2026','wiki-spike-local-owner-2026'] (distinct), approver pub match=true, owner pub match=true\nDB-08: roles=['approver','owner'], key_ids=['wiki-spike-local-approver-2026','wiki-spike-local-owner-2026'] (distinct), approver pub match=true, owner pub match=true",
+      "verdict": "passed"
+    },
+    {
+      "id": "case9-regression-pytest",
+      "scenario": "tests/second_brain/test_decision_contracts.py",
+      "expectedBehavior": "pytest exits 0 with all tests passing",
+      "observed": "cmd: python3.12 -m pytest tests/second_brain/test_decision_contracts.py -q\nexit: 0\nsummary: 25 passed in 0.27s",
+      "verdict": "passed"
+    }
+  ],
+  "summary": {
+    "total": 12,
+    "passed": 12,
+    "failed": 0
+  },
+  "regression": {
+    "test_decision_contracts": "25 passed",
+    "gen1_baseline": "artifacts/conformance/second-brain/db-decision-signing-red-team-v1.json reported 28/28 passed prior to the DB-03 withdrawal fix",
+    "core_regression_check": "case4 and case5 jointly prove withdrawal is a fail-closed policy boundary (unresolved/no-grant) rather than corruption: the withdrawn GO grants nothing while in withdrawn/, and restoring the exact same bytes into decisions/ fully restores its GO authority"
+  }
+}
