@@ -56,6 +56,8 @@ jobs:
           gate1_workflow_digest="$(git show "${GATE1_COMMIT}:.github/workflows/encrypted-lifecycle-gate1-decision.yml" | sha256sum | cut -d' ' -f1)"
           conformance_workflow_digest="$(git show "${IMPLEMENTATION_COMMIT}:.github/workflows/encrypted-lifecycle-conformance.yml" | sha256sum | cut -d' ' -f1)"
           canary_workflow_digest="$(git show "${IMPLEMENTATION_COMMIT}:.github/workflows/encrypted-lifecycle-canary.yml" | sha256sum | cut -d' ' -f1)"
+          git worktree remove --force gate1-tree 2>/dev/null || true
+          rm -rf gate1-tree
           git worktree add --detach gate1-tree "$GATE1_COMMIT"
           implementation_contract_digest="$(find schemas/encrypted-lifecycle -type f -name '*.schema.json' -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
           gate1_contract_digest="$(cd gate1-tree && find schemas/encrypted-lifecycle -type f -name '*.schema.json' -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
