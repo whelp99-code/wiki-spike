@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/unified-db-export-plan-v1.schema.json",
+  "title": "Second Brain Unified-DB Export Plan V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "plan_version",
+    "profile_digest",
+    "fixture_id",
+    "fixture_digest",
+    "row_set_digest",
+    "expected_source_ids",
+    "row_order",
+    "db_commitment",
+    "catalog_commitment",
+    "source_commitment",
+    "data_root_commitment",
+    "plan_digest"
+  ],
+  "properties": {
+    "plan_version": {
+      "const": "second-brain-unified-db-export-plan-v1"
+    },
+    "profile_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "fixture_id": {
+      "type": "string"
+    },
+    "fixture_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "row_set_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "expected_source_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "row_order": {
+      "const": "source_id,native_id"
+    },
+    "db_commitment": {
+      "$ref": "#/$defs/sha256"
+    },
+    "catalog_commitment": {
+      "$ref": "#/$defs/sha256"
+    },
+    "source_commitment": {
+      "$ref": "#/$defs/sha256"
+    },
+    "data_root_commitment": {
+      "$ref": "#/$defs/sha256"
+    },
+    "plan_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}
