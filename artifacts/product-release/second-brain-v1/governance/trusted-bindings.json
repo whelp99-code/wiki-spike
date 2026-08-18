@@ -1,0 +1,128 @@
+{
+  "aggregate_binding": {
+    "approver_key_id": "wiki-approver-2026",
+    "approver_public_key_b64": "o3MsXdJIhRnHggMzCd1RGSVDJMqtb5abxWgKlElxc+g=",
+    "owner_key_id": "wiki-owner-2026",
+    "owner_public_key_b64": "K0zr+45z5JHxAKdqodvDeZSB36B7L8OooR+g9W+vo20="
+  },
+  "decision_bindings": [
+    {
+      "approver_key_id": "wiki-approver-2026",
+      "approver_public_key_b64": "o3MsXdJIhRnHggMzCd1RGSVDJMqtb5abxWgKlElxc+g=",
+      "decision_id": "DB-01",
+      "owner_key_id": "wiki-owner-2026",
+      "owner_public_key_b64": "K0zr+45z5JHxAKdqodvDeZSB36B7L8OooR+g9W+vo20=",
+      "scope_kind": "global",
+      "scope_name": null
+    },
+    {
+      "approver_key_id": "wiki-approver-2026",
+      "approver_public_key_b64": "o3MsXdJIhRnHggMzCd1RGSVDJMqtb5abxWgKlElxc+g=",
+      "decision_id": "DB-02",
+      "owner_key_id": "wiki-owner-2026",
+      "owner_public_key_b64": "K0zr+45z5JHxAKdqodvDeZSB36B7L8OooR+g9W+vo20=",
+      "scope_kind": "source_profile",
+      "scope_name": "Claude/Memory Bank"
+    },
+    {
+      "approver_key_id": "wiki-approver-2026",
+      "approver_public_key_b64": "o3MsXdJIhRnHggMzCd1RGSVDJMqtb5abxWgKlElxc+g=",
+      "decision_id": "DB-02",
+      "owner_key_id": "wiki-owner-2026",
+      "owner_public_key_b64": "K0zr+45z5JHxAKdqodvDeZSB36B7L8OooR+g9W+vo20=",
+      "scope_kind": "source_profile",
+      "scope_name": "Codex"
+    },
+    {
+      "approver_key_id": "wiki-approver-2026",
+      "approver_public_key_b64": "o3MsXdJIhRnHggMzCd1RGSVDJMqtb5abxWgKlElxc+g=",
+      "decision_id": "DB-02",
+      "owner_key_id": "wiki-owner-2026",
+      "owner_public_key_b64": "K0zr+45z5JHxAKdqodvDeZSB36B7L8OooR+g9W+vo20=",
+      "scope_kind": "source_profile",
+      "scope_name": "Git"
+    },
+    {
+      "approver_key_id": "wiki-approver-2026",
+      "approver_public_key_b64": "o3MsXdJIhRnHggMzCd1RGSVDJMqtb5abxWgKlElxc+g=",
+      "decision_id": "DB-02",
+      "owner_key_id": "wiki-owner-2026",
+      "owner_public_key_b64": "K0zr+45z5JHxAKdqodvDeZSB36B7L8OooR+g9W+vo20=",
+      "scope_kind": "source_profile",
+      "scope_name": "Markdown"
+    },
+    {
+      "approver_key_id": "wiki-approver-2026",
+      "approver_public_key_b64": "o3MsXdJIhRnHggMzCd1RGSVDJMqtb5abxWgKlElxc+g=",
+      "decision_id": "DB-03",
+      "owner_key_id": "wiki-owner-2026",
+      "owner_public_key_b64": "K0zr+45z5JHxAKdqodvDeZSB36B7L8OooR+g9W+vo20=",
+      "scope_kind": "migration_source",
+      "scope_name": "legacy Mem0/RAG"
+    },
+    {
+      "approver_key_id": "wiki-approver-2026",
+      "approver_public_key_b64": "o3MsXdJIhRnHggMzCd1RGSVDJMqtb5abxWgKlElxc+g=",
+      "decision_id": "DB-03",
+      "owner_key_id": "wiki-owner-2026",
+      "owner_public_key_b64": "K0zr+45z5JHxAKdqodvDeZSB36B7L8OooR+g9W+vo20=",
+      "scope_kind": "migration_source",
+      "scope_name": "me-wiki"
+    },
+    {
+      "approver_key_id": "wiki-approver-2026",
+      "approver_public_key_b64": "o3MsXdJIhRnHggMzCd1RGSVDJMqtb5abxWgKlElxc+g=",
+      "decision_id": "DB-03",
+      "owner_key_id": "wiki-owner-2026",
+      "owner_public_key_b64": "K0zr+45z5JHxAKdqodvDeZSB36B7L8OooR+g9W+vo20=",
+      "scope_kind": "migration_source",
+      "scope_name": "unified-db"
+    },
+    {
+      "approver_key_id": "wiki-approver-2026",
+      "approver_public_key_b64": "o3MsXdJIhRnHggMzCd1RGSVDJMqtb5abxWgKlElxc+g=",
+      "decision_id": "DB-04",
+      "owner_key_id": "wiki-owner-2026",
+      "owner_public_key_b64": "K0zr+45z5JHxAKdqodvDeZSB36B7L8OooR+g9W+vo20=",
+      "scope_kind": "global",
+      "scope_name": null
+    },
+    {
+      "approver_key_id": "wiki-approver-2026",
+      "approver_public_key_b64": "o3MsXdJIhRnHggMzCd1RGSVDJMqtb5abxWgKlElxc+g=",
+      "decision_id": "DB-05",
+      "owner_key_id": "wiki-owner-2026",
+      "owner_public_key_b64": "K0zr+45z5JHxAKdqodvDeZSB36B7L8OooR+g9W+vo20=",
+      "scope_kind": "global",
+      "scope_name": null
+    },
+    {
+      "approver_key_id": "wiki-approver-2026",
+      "approver_public_key_b64": "o3MsXdJIhRnHggMzCd1RGSVDJMqtb5abxWgKlElxc+g=",
+      "decision_id": "DB-06",
+      "owner_key_id": "wiki-owner-2026",
+      "owner_public_key_b64": "K0zr+45z5JHxAKdqodvDeZSB36B7L8OooR+g9W+vo20=",
+      "scope_kind": "external_model_route",
+      "scope_name": "model-a"
+    },
+    {
+      "approver_key_id": "wiki-approver-2026",
+      "approver_public_key_b64": "o3MsXdJIhRnHggMzCd1RGSVDJMqtb5abxWgKlElxc+g=",
+      "decision_id": "DB-07",
+      "owner_key_id": "wiki-owner-2026",
+      "owner_public_key_b64": "K0zr+45z5JHxAKdqodvDeZSB36B7L8OooR+g9W+vo20=",
+      "scope_kind": "global",
+      "scope_name": null
+    },
+    {
+      "approver_key_id": "wiki-approver-2026",
+      "approver_public_key_b64": "o3MsXdJIhRnHggMzCd1RGSVDJMqtb5abxWgKlElxc+g=",
+      "decision_id": "DB-08",
+      "owner_key_id": "wiki-owner-2026",
+      "owner_public_key_b64": "K0zr+45z5JHxAKdqodvDeZSB36B7L8OooR+g9W+vo20=",
+      "scope_kind": "export_destination",
+      "scope_name": "archive"
+    }
+  ],
+  "trusted_bindings_version": "second-brain-trusted-decision-key-bindings-v1"
+}
