@@ -176,6 +176,17 @@ def _verify_unchanged(root: Path, root_before: os.stat_result, observed: tuple[_
         raise SourceDiscoveryError("source root mutation observed during scan")
 
 
+def is_denied_source_path(relative_path: str) -> bool:
+    """Return True when a relative path is in a closed deny class."""
+    return _deny_class(relative_path)
+
+
+def is_allowed_source_suffix(relative_path: str) -> bool:
+    """Return True when the file suffix is an approved discovery/import type."""
+    suffix = Path(relative_path).suffix.casefold()
+    return bool(suffix) and suffix in _ALLOWED_SUFFIXES
+
+
 def discover_source(request: SourceDiscoveryRequestV1) -> SourceDiscoveryManifestV1:
     """Discover approved regular files without opening any source body."""
     source_root = Path(request.source_root)

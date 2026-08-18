@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/bounded-snapshot-v1.schema.json",
+  "title": "Second Brain Bounded Snapshot V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "snapshot_version",
+    "source_name",
+    "native_namespace",
+    "snapshot_watermark",
+    "records",
+    "snapshot_digest"
+  ],
+  "properties": {
+    "snapshot_version": {
+      "const": "bounded-source-snapshot-v1"
+    },
+    "source_name": {
+      "enum": ["me-wiki", "unified-db", "legacy Mem0/RAG"]
+    },
+    "native_namespace": {
+      "type": "string",
+      "pattern": "^second-brain:import:.+$"
+    },
+    "snapshot_watermark": {
+      "type": "string",
+      "minLength": 1
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/record"
+      }
+    },
+    "snapshot_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "native_id",
+        "revision",
+        "watermark",
+        "tombstone",
+        "relative_path",
+        "content_digest"
+      ],
+      "properties": {
+        "native_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "watermark": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tombstone": {
+          "type": "boolean"
+        },
+        "relative_path": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?($|/))(?!.*\\\\).+$"
+        },
+        "content_digest": {
+          "anyOf": [
+            {"$ref": "#/$defs/sha256"},
+            {"type": "null"}
+          ]
+        }
+      }
+    }
+  }
+}

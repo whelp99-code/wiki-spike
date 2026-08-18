@@ -1,0 +1,15 @@
+{
+  "body_reads_in_evidence": "0",
+  "coverage_scope": "fixture-only",
+  "cross_namespace": false,
+  "cutover_eligible": false,
+  "evidence_version": "second-brain-snapshot-import-conformance-v1",
+  "live_import_authorized": false,
+  "plaintext_persisted": false,
+  "runtime_fallback": false,
+  "scope_authority": "non-authoritative-caller-asserted",
+  "serving_promotion": false,
+  "skipped_reconciliation": false,
+  "source_mutation": false,
+  "unknown_scope": false
+}

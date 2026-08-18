@@ -15,7 +15,7 @@ dev = ["pytest>=8", "setuptools>=68", "wheel>=0.43", "jsonschema>=4"]
 where = ["src"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 testpaths = ["tests"]
 filterwarnings = ["error"]
 
