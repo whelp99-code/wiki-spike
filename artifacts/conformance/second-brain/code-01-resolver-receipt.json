@@ -1,0 +1,24 @@
+{
+  "architecture_boundary": "PASS",
+  "artifact_version": "second-brain-code-01-resolver-conformance-v1",
+  "basedpyright_errors": "0",
+  "basedpyright_warnings": "0",
+  "current_decision_inventory": [
+    "DB-04",
+    "DB-06/model-a",
+    "DB-08/archive"
+  ],
+  "current_incomplete_result": "FAIL_CLOSED_EXACT_COVERAGE",
+  "implementation_base_commit": "a19e87e585c4a21ffafb61fd90c29d5156df7cc2",
+  "live_operation_authorized": false,
+  "manual_surfaces": [
+    "help_rc0",
+    "bad_input_rc2_no_write",
+    "current_incomplete_rc2_no_write",
+    "synthetic_signed_resolved"
+  ],
+  "pytest_result": "40 passed",
+  "ruff": "PASS",
+  "secret_scan": "PASS",
+  "synthetic_result": "RESOLVED"
+}
