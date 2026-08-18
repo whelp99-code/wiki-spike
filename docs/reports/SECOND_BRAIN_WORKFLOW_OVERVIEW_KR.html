@@ -102,8 +102,8 @@
         <p class="lede">승인·동의·삭제·시간·인용을 하나의 암호화된 권한 경로로 묶고, 충돌하거나 근거가 부족하면 답변을 보류하는 Second Brain의 현재 확인된 범위입니다.</p>
       </div>
       <aside class="snapshot" aria-label="스냅샷 기준">
-        <b>시점 스냅샷 · 2026-08-10 04:23:13 KST</b>
-        <span>라이브 텔레메트리가 아닙니다. 아래 상태는 이 시점에 확인된 구현·실행·결정 증거만 요약하며, 새 권한을 만들지 않습니다.</span>
+        <b>시점 스냅샷 · 2026-08-18</b>
+        <span>라이브 텔레메트리가 아닙니다. 아래 상태는 이 시점에 확인된 구현·실행·결정 증거만 요약하며, 새 권한을 만들지 않습니다. 2026-08-10 04:23:13 KST 스냅샷은 historical/superseded입니다.</span>
       </aside>
     </div>
   </header>
@@ -112,7 +112,7 @@
     <div class="shell status-grid">
       <div class="status"><small>구현 작업트리</small><strong><span class="done">whelp99-code/trevally</span><br><code>d76359ecffaf8215c5e6ec38c4a977afbdbab6bf</code></strong></div>
       <div class="status"><small>코드/문서 게이트</small><strong class="done">CODE-01…07 · 3일/72h floor<br>로컬 커밋 · 미푸시 · 비권한 증거</strong></div>
-      <div class="status"><small>현재 Gate 8</small><strong class="current">Canary <code>31314519580</code><br>in_progress</strong></div>
+      <div class="status"><small>현재 Gate 8</small><strong class="done">durable closure 기록<br>canary <code>31950626791</code></strong></div>
       <div class="status"><small>전역 제공</small><strong class="next">DB 미해결로 block<br>source disabled</strong></div>
     </div>
   </div>
@@ -121,14 +121,14 @@
 
   <main class="shell">
     <section id="picture">
-      <p class="eyebrow">01 · 현재 확인된 범위</p><h2>코드·문서 바닥은 갖췄지만, Gate 8 Canary와 서명된 DB 결정이 제공 권한을 아직 열지 않습니다.</h2>
-      <p class="section-intro">CODE-01부터 CODE-07까지와 현행 3 full days/72h code/doc floor는 로컬 closure 범위에서 커밋됐지만 미푸시이며 권한을 부여하지 않습니다. 14일/1일 표기는 historical record입니다. Gate 8의 암호화된 수명주기 Canary는 실행 중이고, 전역 제공은 미해결 DB 결정 때문에 차단된 채 source disabled입니다.</p>
-      <div class="meter" aria-label="Gate 8 Canary: 실행 단계 1부터 6까지 성공, strict import와 upload 대기">
-        <div class="meter-head"><span>Gate 8 Canary 실행 위치</span><span>완료율 아님 · 1–6 성공 후 strict import/upload 대기</span></div>
-        <div class="gate-segments" role="img" aria-label="6단계 중 앞의 3단계 완료, 4번째 Evidence Join 단계 진행 중, 이후 2단계 대기">
-          <span class="gate-segment done" aria-hidden="true"></span><span class="gate-segment done" aria-hidden="true"></span><span class="gate-segment done" aria-hidden="true"></span><span class="gate-segment current" aria-hidden="true"></span><span class="gate-segment" aria-hidden="true"></span><span class="gate-segment" aria-hidden="true"></span>
+      <p class="eyebrow">01 · 현재 확인된 범위</p><h2>Gate 8 durable closure는 기록됐고, 서명된 DB 결정이 제공 권한을 아직 열지 않습니다.</h2>
+      <p class="section-intro">CODE-01부터 CODE-07까지와 현행 3 full days/72h code/doc floor는 로컬 closure 범위에서 커밋됐지만 미푸시이며 권한을 부여하지 않습니다. 14일/1일 표기는 historical record입니다. Gate 8의 암호화된 수명주기 durable evidence는 아래에 적힌 체인으로 닫혔습니다. 전역 제공은 미해결 DB 결정 때문에 차단된 채 source disabled입니다. 이 페이지는 서빙 권한, 배포, 라이브 import, #64/#65 완료를 주장하지 않습니다.</p>
+      <div class="meter" aria-label="Gate 8 durable closure: canary, join, receipt 기록 완료. 제공 권한 아님">
+        <div class="meter-head"><span>Gate 8 durable closure</span><span>제공 권한 아님 · #76이 durable closure 소유</span></div>
+        <div class="gate-segments" role="img" aria-label="6단계 durable evidence 기록 완료">
+          <span class="gate-segment done" aria-hidden="true"></span><span class="gate-segment done" aria-hidden="true"></span><span class="gate-segment done" aria-hidden="true"></span><span class="gate-segment done" aria-hidden="true"></span><span class="gate-segment done" aria-hidden="true"></span><span class="gate-segment done" aria-hidden="true"></span>
         </div>
-        <small>실행 <code>31314519580</code> · job <code>93247496969</code> · <b>in_progress</b>. producer는 2026-08-09T12:56:15Z (21:56:15 KST)에 시작했고, 정확한 24시간 최초 완료 가능 시각은 <b>2026-08-10 21:56:15 KST</b>입니다.</small>
+        <small>implementation <code>d9176d5dd32e47fc86248fff75946e9042386fe4</code> · canary <code>31950626791</code> · join <code>32036623702</code>. manifest <code>2e22de6de7cd17e1563c78cafbbe5d41afe8edaf00127139a25e8a15c34de285</code> · join digest <code>109234c7699bc1f6a422880b77082e16b7dd78a390c4eac06ddd3e6c79359b70</code> · inventory <code>44774b509724ce051f935cf688ac8a957f5704c16f56e1743cd34d192f4de459</code> · receipt SHA-256 <code>5a81df57a2862afae4e41acff3208b3e8e656f12691fc7ce6718b7c841fff1d9</code> · path <code>artifacts/encrypted-lifecycle/gate8-final/final-review-receipt.json</code>. #69/#70 completed and closed. #75 may close after commit. 구 run <code>31314519580</code>과 당시 <b>in_progress</b>는 historical/superseded입니다.</small>
       </div>
     </section>
 
@@ -164,23 +164,22 @@
       <div class="trust-notes"><article><h3>동의·삭제가 우선</h3><p>현재 동의 또는 삭제 의무가 만족되지 않으면 캡처와 회상 모두 실패-폐쇄합니다.</p></article><article><h3>프로젝션은 원본이 아님</h3><p>검색·대시보드 등은 재생성/보류할 수 있는 내부 보기이며 기억의 진실을 독자적으로 결정하지 않습니다.</p></article><article><h3>외부 유출은 기본 비활성</h3><p>공급자·경로·데이터 등급에 대한 별도 유효 opt-in 없이는 외부 egress/export를 하지 않습니다.</p></article></div>
     </section>
 
-    <section id="release"><p class="eyebrow">05 · 릴리스 게이트</p><h2>현재 흐름은 Gate 8 Canary를 보존하며 기다리는 단계이고, 코드 완료와 DB 결정은 서로 대체할 수 없습니다.</h2>
+    <section id="release"><p class="eyebrow">05 · 릴리스 게이트</p><h2>Gate 8 durable evidence는 기록됐고, 코드 완료와 DB 결정은 서로 대체할 수 없습니다.</h2>
       <div class="timeline">
         <article class="milestone done"><span class="state done">DONE · 로컬 코드/문서 바닥</span><h3>CODE-01…07 및 15-file DRIFT scope</h3><p>구현 작업트리는 <code>/Volumes/DevSpace/orca/workspaces/wiki-spike/trevally</code>, branch <code>whelp99-code/trevally</code>, local commit <code>d76359ecffaf8215c5e6ec38c4a977afbdbab6bf</code>입니다. 현행 code/doc floor는 <b>3 full days / 72h</b>이며 full suite는 <b>2215 passed in 189.13s</b>, rc 0입니다. 14일/1일 및 199-test 표기는 historical record로 보존하지만 현행 주장으로 사용하지 않습니다. 이 commit은 미푸시이며 비권한 증거입니다.</p></article>
-        <article class="milestone current-step"><span class="state current">CURRENT · 실행 보존</span><h3>encrypted-lifecycle-canary 실행 중</h3><p>workflow <code>encrypted-lifecycle-canary</code>의 run <span class="run">31314519580</span>, job <span class="run">93247496969</span>는 <b>in_progress</b>입니다. producer step은 2026-08-09T12:56:15Z / 21:56:15 KST에 시작했습니다.</p></article>
-        <article class="milestone done"><span class="state done">DONE · 실행 단계 1–6</span><h3>앞선 여섯 단계 success</h3><p>현재 실행의 steps 1–6은 success입니다. strict import와 upload는 아직 대기 중이므로, 이 사실은 Canary 전체 성공이나 릴리스 승인으로 해석되지 않습니다.</p></article>
-        <article class="milestone next-step"><span class="state next">WAIT · 정확한 24시간</span><h3>가장 이른 완료 가능 시각</h3><p>정확한 24시간 기준으로 <b>2026-08-10 21:56:15 KST</b> 이전에는 완료될 수 없습니다. 이 실행을 cancel하거나 restart하지 않습니다.</p></article>
-        <article class="milestone next-step"><span class="state next">BLOCKED · DB 결정</span><h3>전역 제공은 source disabled</h3><p>DB-01/02/03/05/07이 미해결이므로 전역 block이 유지됩니다. Gate 8의 관찰 결과나 코드 완료가 이 서명·범위 결정을 대체하지 않습니다.</p></article>
+        <article class="milestone done"><span class="state done">HISTORICAL · superseded</span><h3>구 canary run <span class="run">31314519580</span></h3><p>2026-08-10 스냅샷에서 workflow <code>encrypted-lifecycle-canary</code>의 run <span class="run">31314519580</span>, job <span class="run">93247496969</span>는 <b>in_progress</b>로 관찰됐습니다. 그 관찰은 당시 사실입니다. 이후 그 run은 24h에 못 미쳐 failure로 끝났고, 현행 주장이 아닙니다.</p></article>
+        <article class="milestone current-step"><span class="state current">CURRENT · durable closure 기록</span><h3>확인된 Gate 8 체인</h3><p>implementation commit <code>d9176d5dd32e47fc86248fff75946e9042386fe4</code>, canary run <span class="run">31950626791</span>, evidence join run <span class="run">32036623702</span>. manifest <code>2e22de6de7cd17e1563c78cafbbe5d41afe8edaf00127139a25e8a15c34de285</code>, join digest <code>109234c7699bc1f6a422880b77082e16b7dd78a390c4eac06ddd3e6c79359b70</code>, inventory <code>44774b509724ce051f935cf688ac8a957f5704c16f56e1743cd34d192f4de459</code>, receipt SHA-256 <code>5a81df57a2862afae4e41acff3208b3e8e656f12691fc7ce6718b7c841fff1d9</code>, path <code>artifacts/encrypted-lifecycle/gate8-final/final-review-receipt.json</code>. #69/#70 completed and closed. #76 owns durable closure. #75 may close after commit.</p></article>
+        <article class="milestone next-step"><span class="state next">BLOCKED · DB 결정</span><h3>전역 제공은 source disabled</h3><p>DB-01/02/03/05/07이 미해결이므로 전역 block이 유지됩니다. Gate 8 durable evidence나 코드 완료가 이 서명·범위 결정을 대체하지 않습니다. 서빙 권한, 배포, 라이브 import, #64/#65는 별건입니다.</p></article>
       </div>
     </section>
 
     <section id="status"><p class="eyebrow">06 · 대기 항목과 비활성 범위</p><h2>현재 열려 있는 일과 의도적으로 꺼 둔 범위를 구분합니다.</h2>
-      <div class="alerts"><article class="alert pending"><h3>지금 진행을 막는 항목</h3><ul><li>Gate 8 run <code>31314519580</code>의 정확한 24시간 관찰과 strict import/upload</li><li>DB-01/02/03/05/07의 서명된 결정 및 해소</li><li>DB-04의 trusted identity와 resolved-scope binding</li><li>DB-05/07 supersession의 DRIFT-02 signed 결론 — 현재 <b>NOT_AUTHORIZED</b></li><li>한 long native test는 <b>INCONCLUSIVE</b>이며 PASS가 아닙니다.</li></ul></article>
+      <div class="alerts"><article class="alert pending"><h3>지금 진행을 막는 항목</h3><ul><li>DB-01/02/03/05/07의 서명된 결정 및 해소. Gate 8 durable closure는 이미 기록됐고, 구 run <code>31314519580</code> 관찰은 historical/superseded입니다.</li><li>DB-04의 trusted identity와 resolved-scope binding</li><li>DB-05/07 supersession의 DRIFT-02 signed 결론. 현재 <b>NOT_AUTHORIZED</b></li><li>한 long native test는 <b>INCONCLUSIVE</b>이며 PASS가 아닙니다.</li><li>서빙 권한, 배포, 라이브 import, #64/#65는 이 Gate 8 기록과 별건입니다.</li></ul></article>
         <article class="alert disabled"><h3>검증됐지만 제공 권한은 아닌 범위</h3><ul><li><b>DB-04: embedded signatures GO</b> — verify rc 0 및 evidence digest match. trusted identity/resolved-scope binding은 여전히 대기입니다.</li><li><b>DB-06: model-a scoped NO_GO</b>, <b>DB-08: archive scoped NO_GO</b> — shared root에 존재하고 embedded signature/evidence hash가 검증됐습니다.</li><li>DB-06/08은 copy하거나 binding을 claim할 수 없습니다. 이 조건들과 미해결 DB 결정 때문에 전역 block/source disabled가 유지됩니다.</li><li>실제 활성화 뒤 90일 read-only retention은 정확한 요구사항입니다. 삭제·revocation은 인간 승인 없이는 할 수 없고, 지금은 실행할 수 없습니다.</li></ul></article></div>
     </section>
 
     <section id="next"><p class="eyebrow">07 · 다음 통제 전환</p><h2>지금은 가속 단계가 아니라 실행을 보존하고, 권한이 생긴 뒤에만 다음 경계를 검사하는 단계입니다.</h2>
-      <div class="roadmap"><article><time>현재 → 2026-08-10 21:56:15 KST</time><h3>Canary 관찰 유지</h3><p>run <code>31314519580</code>을 관찰합니다. 24시간 창이 끝나기 전에는 완료를 주장하지 않으며 cancel/restart하지 않습니다.</p></article><article><time>24시간 조건 충족 후</time><h3>strict import/upload 확인</h3><p>대기 중인 strict import와 upload의 결과를 해당 실행의 증거로만 판정합니다. steps 1–6 success는 이 후속 경계를 대체하지 않습니다.</p></article><article><time>실제 활성화 후</time><h3>90일 read-only 보존</h3><p>정확히 90일의 읽기 전용 보존을 지킵니다. deletion/revocation은 인간 승인이 있는 별도 절차이며 현재 수행할 수 없습니다.</p></article></div>
+      <div class="roadmap"><article><time>현재 · 2026-08-18</time><h3>Gate 8 durable evidence 유지</h3><p>현행 체인은 canary <code>31950626791</code>, join <code>32036623702</code>, receipt SHA-256 <code>5a81df57a2862afae4e41acff3208b3e8e656f12691fc7ce6718b7c841fff1d9</code>입니다. 구 run <code>31314519580</code>은 historical/superseded입니다. #76 owns durable closure. #75 may close after commit.</p></article><article><time>별도 권한 후</time><h3>DB·GOV·라이브 경계</h3><p>서명된 DB 결정과 별도 운영 권한이 생기기 전에는 전역 제공, 배포, 라이브 import를 열지 않습니다. #64/#65는 이 기록과 별건입니다.</p></article><article><time>실제 활성화 후</time><h3>90일 read-only 보존</h3><p>정확히 90일의 읽기 전용 보존을 지킵니다. deletion/revocation은 인간 승인이 있는 별도 절차이며 현재 수행할 수 없습니다.</p></article></div>
       <p class="note">이 문서는 관찰·제한 상태를 설명할 뿐, GitHub 실행 제어, 서명, binding, 활성화, 삭제, revocation, 병합 또는 배포 권한을 부여하지 않습니다.</p>
     </section>
 
@@ -199,6 +198,6 @@
       <p class="note">상태 세부는 지정된 결정/GJC JSON 및 PR 상태의 시점 확인값을 함께 반영했습니다. 이 문서는 운용 현황을 설명하는 페이지이며, 새로운 릴리스 권한이나 증거를 생성하지 않습니다.</p>
     </section>
   </main>
-  <footer><div class="shell">Second Brain workflow overview · point-in-time snapshot: 2026-08-10 04:23:13 KST · 외부 자산/네트워크 의존성 없음</div></footer>
+  <footer><div class="shell">Second Brain workflow overview · point-in-time snapshot: 2026-08-18 · 2026-08-10 04:23:13 KST 스냅샷은 historical/superseded · 외부 자산/네트워크 의존성 없음</div></footer>
 </body>
 </html>

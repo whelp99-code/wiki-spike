@@ -28,8 +28,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Mapping, Sequence
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
@@ -37,7 +37,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from wiki_spike.memory_core.contracts import canonical_bytes
+from wiki_spike.memory_core.contracts import JsonValue, canonical_bytes
 
 # ---------------------------------------------------------------------------
 # 1. HKDF-SHA-256 key derivation (ADR-0026 §3).
@@ -99,7 +99,11 @@ def derive_identity_keys(root_ikm: bytes) -> dict[str, bytes]:
 # ---------------------------------------------------------------------------
 
 
-def identity_hmac_hex(derived_keys: Mapping[str, bytes], label: str, payload: Mapping) -> str:
+def identity_hmac_hex(
+    derived_keys: Mapping[str, bytes],
+    label: str,
+    payload: Mapping[str, JsonValue],
+) -> str:
     """HMAC-SHA-256 hex digest over canonical_bytes(payload) under the
     derived key for ``label``. This is the single canonicalization path for
     all identity bytes in this system (reuses frozen Core canonical_bytes)."""
@@ -119,16 +123,25 @@ def domain_prefix(domain: str) -> bytes:
     return domain.encode("ascii") + b"\x00"
 
 
-def signature_input(domain: str, payload: Mapping) -> bytes:
+def signature_input(domain: str, payload: Mapping[str, JsonValue]) -> bytes:
     """signature_input = domain_prefix_bytes + canonical_bytes(payload_object)."""
     return domain_prefix(domain) + canonical_bytes(payload)
 
 
-def sign(private_key: Ed25519PrivateKey, domain: str, payload: Mapping) -> str:
+def sign(
+    private_key: Ed25519PrivateKey,
+    domain: str,
+    payload: Mapping[str, JsonValue],
+) -> str:
     return private_key.sign(signature_input(domain, payload)).hex()
 
 
-def verify(public_key: Ed25519PublicKey, domain: str, payload: Mapping, signature_hex: str) -> None:
+def verify(
+    public_key: Ed25519PublicKey,
+    domain: str,
+    payload: Mapping[str, JsonValue],
+    signature_hex: str,
+) -> None:
     """Raises cryptography.exceptions.InvalidSignature on any mismatch,
     including a signature valid only under a different domain or key."""
     public_key.verify(bytes.fromhex(signature_hex), signature_input(domain, payload))
@@ -321,7 +334,9 @@ def hexkey_to_int(hex64: str) -> int:
 BUNDLE_SELF_FIELDS: tuple[str, str] = ("artifact_name", "bundle_sha256")
 
 
-def project_bundle_envelope(template: Mapping) -> tuple[bytes, str, int]:
+def project_bundle_envelope(
+    template: Mapping[str, JsonValue],
+) -> tuple[bytes, str, int]:
     """Replace the two self-fields with fixed JSON empty strings and
     canonicalize once. Returns ``(projected_bytes, projected_sha256_hex,
     projected_size)``."""
@@ -332,11 +347,18 @@ def project_bundle_envelope(template: Mapping) -> tuple[bytes, str, int]:
     return projected_bytes, hashlib.sha256(projected_bytes).hexdigest(), len(projected_bytes)
 
 
-def build_bundle_manifest(entries: Sequence[Mapping]) -> dict:
-    return {"schema": "wiki-artifact-bundle-manifest-v1", "entries": list(entries)}
+def build_bundle_manifest(
+    entries: Sequence[Mapping[str, JsonValue]],
+) -> dict[str, JsonValue]:
+    return {
+        "schema": "wiki-artifact-bundle-manifest-v1",
+        "entries": [dict(entry) for entry in entries],
+    }
 
 
-def compute_bundle_digest(manifest: Mapping) -> tuple[bytes, str]:
+def compute_bundle_digest(
+    manifest: Mapping[str, JsonValue],
+) -> tuple[bytes, str]:
     """Returns ``(manifest_canonical_bytes, bundle_sha256_hex)``."""
     manifest_bytes = canonical_bytes(manifest)
     return manifest_bytes, hashlib.sha256(manifest_bytes).hexdigest()

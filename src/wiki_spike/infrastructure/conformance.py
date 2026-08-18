@@ -24,13 +24,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Mapping
+from datetime import UTC, datetime
 from pathlib import PurePosixPath
+from typing import cast
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
 
 from wiki_spike.infrastructure import crypto
-from wiki_spike.memory_core.contracts import canonical_bytes
+from wiki_spike.memory_core.contracts import JsonValue, canonical_bytes
 
 # ---------------------------------------------------------------------------
 # Domains / schemas / closed enums
@@ -58,19 +64,19 @@ LANE_ARTIFACT_KINDS: dict[str, str] = {
     CONFORMANCE: "CONFORMANCE_PRE_CANARY",
     CANARY: "CANARY_24H",
 }
-STRICT_IMPORT_RECEIPT_FIELDS = frozenset((
+STRICT_IMPORT_RECEIPT_FIELDS: frozenset[str] = frozenset((
     "repository", "artifact_kind", "platform", "producer_commit",
     "contract_digest", "toolchain_lock_digest", "workflow_file_digest",
     "workflow_run_id", "workflow_run_attempt", "artifact_name",
     "bundle_sha256", "payload_paths", "payload_sha256", "source_run_url",
     "verified",
 ))
-ATTESTATION_FIELDS = frozenset((
+ATTESTATION_FIELDS: frozenset[str] = frozenset((
     "schema", "reviewer_role", "verdict", "workspace_id",
     "implementation_commit", "manifest_digest", "reviewer_key_id",
     "issued_at", "expires_at", "signature",
 ))
-FINAL_REVIEW_RECEIPT_FIELDS = frozenset((
+FINAL_REVIEW_RECEIPT_FIELDS: frozenset[str] = frozenset((
     "schema", "workspace_id", "implementation_commit", "manifest_digest",
     "artifact_inventory", "attestations",
 ))
@@ -78,15 +84,31 @@ APPROVE = "APPROVE"
 MAX_ATTESTATION_LIFETIME_SECONDS = 3600
 _ATTESTATION_TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
+JsonObject = dict[str, JsonValue]
+RawJsonValue = (
+    None
+    | bool
+    | int
+    | float
+    | str
+    | list["RawJsonValue"]
+    | dict[str, "RawJsonValue"]
+)
+ReceiptMapping = Mapping[str, JsonValue]
+TrustedReviewers = Mapping[str, tuple[str, Ed25519PublicKey]]
+
 
 class ConformanceError(Exception):
+    code: str
+    message: str
+
     def __init__(self, code: str, message: str) -> None:
         super().__init__(f"{code}: {message}")
         self.code = code
         self.message = message
 
 
-def _domain_digest(domain: str, body: Mapping) -> str:
+def _domain_digest(domain: str, body: Mapping[str, JsonValue]) -> str:
     return hashlib.sha256(crypto.signature_input(domain, body)).hexdigest()
 
 
@@ -100,7 +122,7 @@ class BundleRef:
     """One lane's complete, strictly verified import receipt."""
 
     lane: str
-    receipt: dict
+    receipt: JsonObject
 
 
 @dataclass(frozen=True)
@@ -115,7 +137,11 @@ class PreReviewManifest:
     manifest_digest: str
 
 
-def _manifest_body(workspace_id: str, implementation_commit: str, bundles: tuple[BundleRef, ...]) -> dict:
+def _manifest_body(
+    workspace_id: str,
+    implementation_commit: str,
+    bundles: tuple[BundleRef, ...],
+) -> JsonObject:
     return {
         "workspace_id": workspace_id,
         "implementation_commit": implementation_commit,
@@ -127,7 +153,7 @@ def build_pre_review_manifest(
     *,
     workspace_id: str,
     implementation_commit: str,
-    bundles: Mapping[str, Mapping],
+    bundles: Mapping[str, ReceiptMapping],
 ) -> PreReviewManifest:
     """Build the verdict-free pre-review manifest from exactly the three
     required lanes. Each lane supplies one complete, strictly verified import
@@ -144,7 +170,7 @@ def build_pre_review_manifest(
     seen_receipts: set[bytes] = set()
     for lane in REQUIRED_LANES:
         receipt = bundles[lane]
-        if set(receipt) != receipt_keys:
+        if set(receipt) != set(receipt_keys):
             raise ConformanceError(
                 "manifest_receipt_keys_invalid",
                 f"lane {lane!r} receipt must use the closed strict-import receipt wire",
@@ -219,10 +245,8 @@ class ReviewAttestation:
 
 
 def _parse_attestation_time(value: str, field: str) -> datetime:
-    if not isinstance(value, str):
-        raise ConformanceError("attestation_time_invalid", f"{field} must be a UTC timestamp")
     try:
-        return datetime.strptime(value, _ATTESTATION_TIME_FORMAT).replace(tzinfo=timezone.utc)
+        return datetime.strptime(value, _ATTESTATION_TIME_FORMAT).replace(tzinfo=UTC)
     except ValueError as exc:
         raise ConformanceError(
             "attestation_time_invalid",
@@ -257,7 +281,7 @@ def attest_manifest(
     *,
     reviewer_role: str,
     reviewer_key_id: str,
-    private_key,
+    private_key: Ed25519PrivateKey,
     workspace_id: str,
     implementation_commit: str,
     manifest_digest: str,
@@ -281,10 +305,8 @@ def attest_manifest(
     )
 
 
-def _validate_attestation_mapping(value: Mapping) -> None:
-    if not isinstance(value, Mapping):
-        raise ConformanceError("attestation_fields_invalid", "attestation must be an object")
-    if set(value) != ATTESTATION_FIELDS - {"signature"} and set(value) != ATTESTATION_FIELDS:
+def _validate_attestation_mapping(value: Mapping[str, JsonValue]) -> None:
+    if set(value) != set(ATTESTATION_FIELDS - {"signature"}) and set(value) != set(ATTESTATION_FIELDS):
         raise ConformanceError("attestation_fields_invalid", "attestation must use the closed wire fields")
     if value.get("schema") != REVIEW_ATTESTATION_SCHEMA:
         raise ConformanceError("attestation_schema_mismatch", f"expected {REVIEW_ATTESTATION_SCHEMA!r}")
@@ -299,16 +321,39 @@ def _validate_attestation_mapping(value: Mapping) -> None:
         raise ConformanceError("attestation_invalid_field", "signature must be a non-empty string")
 
 
-def _attestation_from_mapping(value: Mapping) -> ReviewAttestation:
+def _attestation_from_mapping(value: JsonValue) -> ReviewAttestation:
+    if not isinstance(value, dict):
+        raise ConformanceError("attestation_fields_invalid", "attestation must be an object")
     _validate_attestation_mapping(value)
-    if set(value) != ATTESTATION_FIELDS:
+    if set(value) != set(ATTESTATION_FIELDS):
         raise ConformanceError("attestation_fields_invalid", "attestation signature is required")
-    return ReviewAttestation(**dict(value))
+    return ReviewAttestation(
+        schema=_required_attestation_string(value, "schema"),
+        reviewer_role=_required_attestation_string(value, "reviewer_role"),
+        verdict=_required_attestation_string(value, "verdict"),
+        workspace_id=_required_attestation_string(value, "workspace_id"),
+        implementation_commit=_required_attestation_string(
+            value,
+            "implementation_commit",
+        ),
+        manifest_digest=_required_attestation_string(value, "manifest_digest"),
+        reviewer_key_id=_required_attestation_string(value, "reviewer_key_id"),
+        issued_at=_required_attestation_string(value, "issued_at"),
+        expires_at=_required_attestation_string(value, "expires_at"),
+        signature=_required_attestation_string(value, "signature"),
+    )
+
+
+def _required_attestation_string(value: ReceiptMapping, field: str) -> str:
+    item = value[field]
+    if not isinstance(item, str):
+        raise ConformanceError("attestation_invalid_field", f"{field} must be a string")
+    return item
 
 
 def verify_attestation(
     attestation: ReviewAttestation,
-    trusted_reviewers: Mapping[str, tuple[str, object]],
+    trusted_reviewers: TrustedReviewers,
     *,
     workspace_id: str,
     implementation_commit: str,
@@ -363,7 +408,7 @@ def verify_attestation(
 
 def _validate_attestation_set(
     attestations: tuple[ReviewAttestation, ...],
-    trusted_reviewers: Mapping[str, tuple[str, object]],
+    trusted_reviewers: TrustedReviewers,
     *,
     workspace_id: str,
     implementation_commit: str,
@@ -412,9 +457,9 @@ def write_final_review_receipt(
     workspace_id: str,
     implementation_commit: str,
     manifest: PreReviewManifest,
-    evidence_join: "EvidenceJoin",
+    evidence_join: EvidenceJoin,
     attestations: tuple[ReviewAttestation, ...],
-    trusted_reviewers: Mapping[str, tuple[str, object]],
+    trusted_reviewers: TrustedReviewers,
     now: str,
 ) -> bytes:
     """Write the sole canonical final-review receipt representation."""
@@ -430,7 +475,7 @@ def write_final_review_receipt(
         "implementation_commit": implementation_commit,
         "manifest_digest": manifest_digest,
     }.items():
-        if not isinstance(value, str) or not value:
+        if not value:
             raise ConformanceError("receipt_invalid_field", f"{field} must be a non-empty string")
     _validate_attestation_set(
         attestations, trusted_reviewers, workspace_id=workspace_id,
@@ -447,22 +492,36 @@ def write_final_review_receipt(
     return canonical_bytes(receipt)
 
 
+def _parse_json_value(value: RawJsonValue) -> JsonValue:
+    if value is None or isinstance(value, (bool, str)):
+        return value
+    if isinstance(value, list):
+        return [_parse_json_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _parse_json_value(item) for key, item in value.items()}
+    raise TypeError("JSON value must use the canonical string-only wire types")
+
+
 def import_final_review_receipt(
     receipt_bytes: bytes,
     *,
-    trusted_reviewers: Mapping[str, tuple[str, object]],
+    trusted_reviewers: TrustedReviewers,
     workspace_id: str,
     implementation_commit: str,
     manifest: PreReviewManifest,
-    evidence_join: "EvidenceJoin",
+    evidence_join: EvidenceJoin,
     now: str,
 ) -> tuple[ReviewAttestation, ...]:
     """Strictly import and verify a canonical final-review receipt."""
     try:
-        receipt = json.loads(receipt_bytes)
+        raw_receipt = cast(RawJsonValue, json.loads(receipt_bytes))
+        parsed_receipt = _parse_json_value(raw_receipt)
     except (TypeError, ValueError, UnicodeDecodeError) as exc:
         raise ConformanceError("receipt_decode_invalid", "receipt must be UTF-8 JSON") from exc
-    if not isinstance(receipt, dict) or set(receipt) != FINAL_REVIEW_RECEIPT_FIELDS:
+    if not isinstance(parsed_receipt, dict):
+        raise ConformanceError("receipt_fields_invalid", "receipt must use the closed final-review wire")
+    receipt = parsed_receipt
+    if set(receipt) != set(FINAL_REVIEW_RECEIPT_FIELDS):
         raise ConformanceError("receipt_fields_invalid", "receipt must use the closed final-review wire")
     try:
         if canonical_bytes(receipt) != receipt_bytes:
@@ -512,7 +571,7 @@ class EvidenceJoin:
     schema: str
     workspace_id: str
     implementation_commit: str
-    import_receipts: tuple[tuple[str, dict], ...]  # (lane, receipt) pairs
+    import_receipts: tuple[tuple[str, JsonObject], ...]  # (lane, receipt) pairs
     manifest_digest: str
     join_digest: str
 
@@ -520,9 +579,9 @@ class EvidenceJoin:
 def _join_body(
     workspace_id: str,
     implementation_commit: str,
-    import_receipts: tuple[tuple[str, dict], ...],
+    import_receipts: tuple[tuple[str, JsonObject], ...],
     manifest_digest: str,
-) -> dict:
+) -> JsonObject:
     return {
         "workspace_id": workspace_id,
         "implementation_commit": implementation_commit,
@@ -535,7 +594,7 @@ def build_evidence_join(
     *,
     workspace_id: str,
     implementation_commit: str,
-    import_receipts: Mapping[str, Mapping],
+    import_receipts: Mapping[str, ReceiptMapping],
     manifest_digest: str,
 ) -> EvidenceJoin:
     """Join exactly the three independent import receipts (gate1, conformance,
@@ -549,10 +608,10 @@ def build_evidence_join(
         raise ConformanceError("join_extra_lanes", f"unexpected import receipt lane(s): {sorted(extra)}")
 
     seen_receipts: set[bytes] = set()
-    ordered_items: list[tuple[str, dict]] = []
+    ordered_items: list[tuple[str, JsonObject]] = []
     for lane in REQUIRED_LANES:
         receipt = import_receipts[lane]
-        if set(receipt) != STRICT_IMPORT_RECEIPT_FIELDS or receipt.get("verified") is not True:
+        if set(receipt) != set(STRICT_IMPORT_RECEIPT_FIELDS) or receipt.get("verified") is not True:
             raise ConformanceError("join_receipt_invalid", f"lane {lane!r} is not a closed verified import receipt")
         if receipt.get("artifact_kind") != LANE_ARTIFACT_KINDS[lane] or not receipt.get("source_run_url"):
             raise ConformanceError("join_receipt_lane_mismatch", f"lane {lane!r} receipt does not bind its expected provenance")
@@ -586,7 +645,7 @@ def verify_evidence_join(join: EvidenceJoin, manifest_digest: str) -> None:
         raise ConformanceError("join_lanes_mismatch", f"expected lanes {sorted(REQUIRED_LANES)}, got {sorted(lanes)}")
     seen_receipts: set[bytes] = set()
     for lane, receipt in join.import_receipts:
-        if set(receipt) != STRICT_IMPORT_RECEIPT_FIELDS or receipt.get("verified") is not True:
+        if set(receipt) != set(STRICT_IMPORT_RECEIPT_FIELDS) or receipt.get("verified") is not True:
             raise ConformanceError("join_receipt_invalid", f"lane {lane!r} is not a closed verified import receipt")
         if receipt.get("artifact_kind") != LANE_ARTIFACT_KINDS[lane] or not receipt.get("source_run_url"):
             raise ConformanceError("join_receipt_lane_mismatch", f"lane {lane!r} receipt does not bind its expected provenance")
@@ -631,6 +690,8 @@ def _reviewed_artifact_inventory(
         if canonical_bytes(receipt) != canonical_bytes(join_receipts[lane]):
             raise ConformanceError("receipt_manifest_receipt_mismatch", f"lane {lane!r} differs between reviewed manifests")
         paths, digests = receipt["payload_paths"], receipt["payload_sha256"]
+        if not isinstance(paths, list) or not isinstance(digests, list):
+            raise ConformanceError("receipt_inventory_invalid", f"lane {lane!r} has invalid payload inventory")
         if len(paths) != len(digests) or not paths:
             raise ConformanceError("receipt_inventory_invalid", f"lane {lane!r} has invalid payload inventory")
         for path, digest in zip(paths, digests):
