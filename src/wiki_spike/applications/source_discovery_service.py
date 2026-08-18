@@ -30,6 +30,7 @@ _ALLOWED_SUFFIXES: Final = frozenset(
         ".toml",
     }
 )
+_EXCLUDED_DIRECTORY_NAMES: Final = frozenset({".git"})
 _DENIED_SUFFIXES: Final = frozenset(
     {
         ".pem",
@@ -136,6 +137,12 @@ def _scan_tree(
             observed.append(_ObservedPath(candidate, relative, metadata))
             if stat.S_ISLNK(metadata.st_mode):
                 raise SourceDiscoveryError(f"symlink source path refused: {relative}")
+            if child.name in _EXCLUDED_DIRECTORY_NAMES:
+                if not stat.S_ISDIR(metadata.st_mode):
+                    raise SourceDiscoveryError(
+                        f"reserved source directory is not a directory: {relative}"
+                    )
+                continue
             if stat.S_ISDIR(metadata.st_mode):
                 pending.append(candidate)
                 continue

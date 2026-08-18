@@ -75,6 +75,28 @@ def test_discovery_emits_canonical_metadata_without_body_reads(
     ) == manifest
 
 
+def test_discovery_excludes_git_metadata_without_reading_bodies(tmp_path: Path) -> None:
+    root = tmp_path / "source"
+    git_dir = root / ".git"
+    git_dir.mkdir(parents=True)
+    note = root / "note.md"
+    edit_message = git_dir / "COMMIT_EDITMSG"
+    _ = note.write_text("approved body", encoding="utf-8")
+    _ = edit_message.write_text("private VCS metadata", encoding="utf-8")
+    before = {
+        path: (path.stat().st_size, path.stat().st_mtime_ns)
+        for path in (note, git_dir, edit_message)
+    }
+
+    manifest = discover_source(_request(root))
+
+    assert [entry.relative_path for entry in manifest.entries] == ["note.md"]
+    assert before == {
+        path: (path.stat().st_size, path.stat().st_mtime_ns)
+        for path in before
+    }
+
+
 @pytest.mark.parametrize(
     "relative_path",
     [
