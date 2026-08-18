@@ -1,30 +1,57 @@
+from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import cast
 
-from test_stage1_capabilities import authority as security_authority
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from wiki_spike.composition.second_brain_product import compose_second_brain_product_v2
-from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore
-from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase
-from test_stage3_ledger_persistence import (
-    _COMMAND_PROVENANCE,
-    DeterministicEd25519Verifier,
+from tests.second_brain import test_stage3_ledger_persistence as ledger_fixtures
+from tests.second_brain.test_macos_persistence_profile import (
+    SQLCIPHER_ARTIFACT,
+    persistence_profile,
+    persistence_receipt,
+)
+from tests.second_brain.test_stage1_capabilities import (
+    authority as security_authority,
+)
+from tests.second_brain.test_stage3_ledger_persistence import (
     KEY_ID,
+    NOW,
     SIGNER_REF,
+    DeterministicEd25519Verifier,
+    TrackingLedgerService,
     blob,
     command,
+    create_and_approve,
+    digest,
     ref,
-    request,
     signed_snapshot_signer,
-    trust_for_request,
 )
-from wiki_spike.infrastructure.second_brain_ledger import LedgerAuthority, LifecycleLedgerAuthority
 from wiki_spike.applications.second_brain_ledger_service import SecondBrainLedgerService
 from wiki_spike.applications.second_brain_recall_service import SecondBrainRecallService
 from wiki_spike.composition.api_v2 import CapabilityUseV2, SecondBrainApiV2
-from wiki_spike.composition.second_brain_product import SecondBrainProductV2
-from wiki_spike.memory_core.second_brain_ledger_contracts import RecallContinuationV2
-from test_stage3_ledger_persistence import NOW, TrackingLedgerService, create_and_approve, digest
-import test_stage3_ledger_persistence as ledger_fixtures
+from wiki_spike.composition.second_brain_product import (
+    SecondBrainProductV2,
+    compose_second_brain_product_v2,
+)
+from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore
+from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase
+from wiki_spike.infrastructure.persistence_profile import verify_mac_persistence_profile
+from wiki_spike.infrastructure.second_brain_ledger import (
+    LedgerAuthority,
+    LifecycleLedgerAuthority,
+)
+from wiki_spike.memory_core.second_brain_ledger_contracts import (
+    AuthorityProvenanceV2,
+    RecallContinuationV2,
+    RecallSnapshotRequestV2,
+    RecallTrustAuthorityV2,
+)
+
+request = cast(Callable[..., RecallSnapshotRequestV2], ledger_fixtures.request)
+trust_for_request = cast(
+    Callable[..., RecallTrustAuthorityV2],
+    ledger_fixtures.trust_for_request,
+)
 
 
 def test_product_composition_executes_authority_append_and_recall(tmp_path: Path) -> None:
@@ -33,27 +60,66 @@ def test_product_composition_executes_authority_append_and_recall(tmp_path: Path
     cas = EncryptedContentStore(tmp_path / "cas")
     workspace = ref("workspace", "composition")
     recall_request = request(workspace, transaction_cut="1")
+    owner = Ed25519PrivateKey.generate()
+    approver = Ed25519PrivateKey.generate()
+    profile = persistence_profile()
+    verified_persistence = verify_mac_persistence_profile(
+        profile=profile,
+        receipt=persistence_receipt(profile, owner, approver),
+        owner_public_key=owner.public_key(),
+        approver_public_key=approver.public_key(),
+        sqlcipher_artifact_path=SQLCIPHER_ARTIFACT,
+        database=database,
+        cas=cas,
+    )
     product = compose_second_brain_product_v2(
         authority=security_authority(), database=database, cas=cas,
+        persistence_profile=verified_persistence,
         verifier=DeterministicEd25519Verifier(), clock=lambda: "2026-01-01T00:00:00Z",
-        provenance=trust_for_request(recall_request)._RecallTrustAuthorityV2__provenance,
+        provenance=cast(
+            Mapping[str, AuthorityProvenanceV2],
+            object.__getattribute__(
+                trust_for_request(recall_request),
+                "_RecallTrustAuthorityV2__provenance",
+            ),
+        ),
         snapshot_signer=signed_snapshot_signer, signer_ref=SIGNER_REF, key_id=KEY_ID,
     )
-    ledger_authority = product.ledger._ledger
+    ledger_authority = cast(
+        LifecycleLedgerAuthority,
+        object.__getattribute__(product.ledger, "_ledger"),
+    )
     ledger_authority.set_authority(workspace, LedgerAuthority(ref("capability", "stage3"), "1"), "2026-01-01T00:00:00Z")
     item = command("CREATE_CANDIDATE", ref("candidate", "composition"), command_name="composition", workspace=workspace, content_digest=blob(cas, "composition"), transaction_cut="1")
-    ledger_authority._trust_authority.register_verified_provenance(
-        _COMMAND_PROVENANCE[item.authority_provenance_ref]
+    trust_authority = cast(
+        RecallTrustAuthorityV2,
+        object.__getattribute__(ledger_authority, "_trust_authority"),
     )
-    product.ledger.append(item)
+    command_provenance = cast(
+        dict[str, AuthorityProvenanceV2],
+        vars(ledger_fixtures)["_COMMAND_PROVENANCE"],
+    )
+    trust_authority.register_verified_provenance(
+        command_provenance[item.authority_provenance_ref]
+    )
+    _ = product.ledger.append(item)
     assert product.recall.recall(recall_request).abstained
     database.close()
 
 
 def test_v2_recall_paginates_across_a_workspace_with_more_candidates_than_the_page_size(tmp_path: Path) -> None:
-    ledger_fixtures._ACTIVE_REVISIONS.clear()
-    ledger_fixtures._COMMAND_PROVENANCE.clear()
-    ledger_fixtures._CURRENT_CUT = "1"
+    active_revisions = cast(
+        dict[str, str],
+        vars(ledger_fixtures)["_ACTIVE_REVISIONS"],
+    )
+    command_provenance = cast(
+        dict[str, AuthorityProvenanceV2],
+        vars(ledger_fixtures)["_COMMAND_PROVENANCE"],
+    )
+    active_revisions.clear()
+    command_provenance.clear()
+    module_state = cast(dict[str, object], ledger_fixtures.__dict__)
+    module_state["_CURRENT_CUT"] = "1"
     database = LifecycleDatabase(tmp_path / "ledger.sqlite")
     database.initialize()
     cas = EncryptedContentStore(tmp_path / "cas")
