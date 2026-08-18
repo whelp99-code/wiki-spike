@@ -6,6 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
@@ -181,7 +182,10 @@ def test_public_envelopes_verify_and_reject_tamper(tmp_path: Path) -> None:
     assert tampered.returncode != 0
 
 
-def test_live_export_still_refuses_before_dsn_fd_read(tmp_path: Path) -> None:
+def test_live_export_still_refuses_before_dsn_fd_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
     read_fd, write_fd = os.pipe()
     payload = b"postgresql://localhost:5433/unified"
     _ = os.write(write_fd, payload)

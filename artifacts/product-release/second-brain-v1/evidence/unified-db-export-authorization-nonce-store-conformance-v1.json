@@ -1,0 +1,17 @@
+{
+  "body_present": false,
+  "consumed_on_attempt": true,
+  "cutover_eligible": false,
+  "durable_store": true,
+  "evidence_version": "second-brain-unified-db-export-authorization-nonce-store-conformance-v1",
+  "import_invoked": false,
+  "live_export_authorized": false,
+  "private_key_material": false,
+  "production_path_override": false,
+  "raw_nonce_persisted": false,
+  "raw_numeric_payload": false,
+  "schema_version": "1",
+  "serving_promotion": false,
+  "source_mutation": false,
+  "store_kind": "export-authorization-nonce-store-v1"
+}

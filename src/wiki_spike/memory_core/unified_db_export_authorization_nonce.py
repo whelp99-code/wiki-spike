@@ -1,28 +1,36 @@
-"""Process-local nonce reservation seam for one-shot export authorization.
-
-Nonce identity is global: the same nonce cannot be reserved under two
-authorization_ids. This in-memory fake is fixture-only. A durable production
-store is still required before any live adapter.
-"""
+"""Global one-shot export authorization nonce protocol."""
 from __future__ import annotations
 
+from hashlib import sha256
 from threading import Lock
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from .unified_db_snapshot_export import UnifiedDbExportError
+
+NONCE_DIGEST_DOMAIN: Final = b"wiki-spike.second-brain.export-nonce-store.v1\x00"
+
+
+def export_authorization_nonce_digest(nonce: str) -> str:
+    if not nonce.isascii():
+        raise UnifiedDbExportError("authorization nonce must be ASCII")
+    return sha256(NONCE_DIGEST_DOMAIN + nonce.encode("ascii")).hexdigest()
 
 
 @runtime_checkable
 class ExportAuthorizationNonceStore(Protocol):
-    def reserve(self, authorization_id: str, nonce: str) -> None:
-        """Reserve nonce exclusively, ignoring authorization_id for uniqueness."""
-
-    def consume(self, authorization_id: str, nonce: str) -> None:
-        """Mark a reserved nonce consumed. Attempts are not retryable."""
+    def reserve_and_consume(
+        self,
+        *,
+        authorization_id: str,
+        nonce: str,
+        authorization_digest: str,
+        authorization_issued_at: str,
+    ) -> None:
+        """Insert the nonce as CONSUMED or refuse a replay."""
 
 
 class InMemoryExportAuthorizationNonceStore:
-    """Fixture-only fake. Does not persist a nonce store."""
+    """Fixture-only fake. One locked final-state insertion. Not durable."""
 
     _states: dict[str, str]
     _lock: Lock
@@ -31,16 +39,17 @@ class InMemoryExportAuthorizationNonceStore:
         self._states = {}
         self._lock = Lock()
 
-    def reserve(self, authorization_id: str, nonce: str) -> None:
-        _ = authorization_id
+    def reserve_and_consume(
+        self,
+        *,
+        authorization_id: str,
+        nonce: str,
+        authorization_digest: str,
+        authorization_issued_at: str,
+    ) -> None:
+        _ = authorization_id, authorization_digest, authorization_issued_at
+        digest = export_authorization_nonce_digest(nonce)
         with self._lock:
-            if nonce in self._states:
+            if digest in self._states:
                 raise UnifiedDbExportError("authorization nonce was already consumed")
-            self._states[nonce] = "reserved"
-
-    def consume(self, authorization_id: str, nonce: str) -> None:
-        _ = authorization_id
-        with self._lock:
-            if self._states.get(nonce) != "reserved":
-                raise UnifiedDbExportError("authorization nonce was already consumed")
-            self._states[nonce] = "consumed"
+            self._states[digest] = "CONSUMED"

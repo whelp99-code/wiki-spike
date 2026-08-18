@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from tests.second_brain.unified_db_export_support import (
     FIXTURE,
     SCRIPT,
@@ -95,7 +97,10 @@ def test_cli_fixture_and_verify_in_isolated_temp(tmp_path: Path) -> None:
     assert authority().authority_kind == "FIXTURE_ONLY"
 
 
-def test_cli_export_refuses_before_dsn_fd_read(tmp_path: Path) -> None:
+def test_cli_export_refuses_before_dsn_fd_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
     read_fd, write_fd = os.pipe()
     payload = b"postgresql://localhost:5433/unified"
     _ = os.write(write_fd, payload)

@@ -40,6 +40,12 @@ AUTHORIZATION_PY = (
     Path("src/wiki_spike/applications/unified_db_export_authorization_verify.py"),
     Path("src/wiki_spike/applications/unified_db_export_authorization_cli.py"),
     Path("src/wiki_spike/applications/unified_db_export_authorization_publish.py"),
+    Path("src/wiki_spike/infrastructure/export_authorization_nonce_store.py"),
+    Path("src/wiki_spike/infrastructure/export_authorization_nonce_fs.py"),
+    Path("src/wiki_spike/infrastructure/export_authorization_nonce_schema.py"),
+    Path("src/wiki_spike/infrastructure/export_authorization_nonce_backup.py"),
+    Path("src/wiki_spike/infrastructure/export_authorization_nonce_decode.py"),
+    Path("src/wiki_spike/composition/unified_db_live_export.py"),
 )
 EXPORT_PY = (
     Path("src/wiki_spike/memory_core/unified_db_snapshot_export.py"),

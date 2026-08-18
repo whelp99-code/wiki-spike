@@ -202,8 +202,12 @@ def verify_export_only_authorization(
 ) -> VerifiedUnifiedDbExportAuthorityV1:
     snapshot = snapshot_from_canonical_bytes(request.body_bytes)
     authorization = UnifiedDbExportOnlyAuthorizationV1.from_mapping(snapshot)
-    nonces.reserve(authorization.authorization_id, authorization.nonce)
-    nonces.consume(authorization.authorization_id, authorization.nonce)
+    nonces.reserve_and_consume(
+        authorization_id=authorization.authorization_id,
+        nonce=authorization.nonce,
+        authorization_digest=authorization.authorization_digest,
+        authorization_issued_at=authorization.issued_at,
+    )
     bind_expected_digests(authorization, request.expected)
     bind_trusted_time(authorization, request.now)
     bind_export_signatures(snapshot, request.envelopes, request.trusted)

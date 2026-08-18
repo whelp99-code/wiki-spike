@@ -173,9 +173,11 @@ def main() -> int:
         if is_authority_command(arguments.command):
             return _run_authority(arguments)
         if arguments.command == "export":
-            raise UnifiedDbExportError(
-                "live export refused: executable mapping and signed authority are absent"
+            from wiki_spike.composition.unified_db_live_export import (
+                refuse_live_unified_db_export,
             )
+
+            refuse_live_unified_db_export(dsn_fd=arguments.dsn_fd)
         if arguments.command == "verify":
             receipt = verify_export_package(str(arguments.package))
             _ = sys.stdout.buffer.write(canonical_bytes(receipt.to_mapping()) + b"\n")

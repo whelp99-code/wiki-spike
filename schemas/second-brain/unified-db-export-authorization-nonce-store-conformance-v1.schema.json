@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/unified-db-export-authorization-nonce-store-conformance-v1.schema.json",
+  "title": "Second Brain Unified-DB Export Authorization Nonce Store Conformance V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body_present",
+    "private_key_material",
+    "raw_nonce_persisted",
+    "raw_numeric_payload",
+    "consumed_on_attempt",
+    "durable_store",
+    "store_kind",
+    "schema_version",
+    "production_path_override",
+    "live_export_authorized",
+    "import_invoked",
+    "source_mutation",
+    "serving_promotion",
+    "cutover_eligible",
+    "evidence_version"
+  ],
+  "properties": {
+    "evidence_version": {
+      "const": "second-brain-unified-db-export-authorization-nonce-store-conformance-v1"
+    },
+    "body_present": {
+      "const": false
+    },
+    "private_key_material": {
+      "const": false
+    },
+    "raw_nonce_persisted": {
+      "const": false
+    },
+    "raw_numeric_payload": {
+      "const": false
+    },
+    "consumed_on_attempt": {
+      "const": true
+    },
+    "durable_store": {
+      "const": true
+    },
+    "store_kind": {
+      "const": "export-authorization-nonce-store-v1"
+    },
+    "schema_version": {
+      "const": "1"
+    },
+    "production_path_override": {
+      "const": false
+    },
+    "live_export_authorized": {
+      "const": false
+    },
+    "import_invoked": {
+      "const": false
+    },
+    "source_mutation": {
+      "const": false
+    },
+    "serving_promotion": {
+      "const": false
+    },
+    "cutover_eligible": {
+      "const": false
+    }
+  }
+}
