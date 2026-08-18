@@ -111,7 +111,7 @@
   <div class="status-strip" aria-label="현재 상태 요약">
     <div class="shell status-grid">
       <div class="status"><small>구현 작업트리</small><strong><span class="done">whelp99-code/trevally</span><br><code>d76359ecffaf8215c5e6ec38c4a977afbdbab6bf</code></strong></div>
-      <div class="status"><small>코드/문서 게이트</small><strong class="done">CODE-01…07 · 3일/72h floor<br>로컬 커밋 · 미푸시 · 비권한 증거</strong></div>
+      <div class="status"><small>코드/문서 게이트</small><strong class="done">CODE-01…07 · 1일 floor<br>로컬 정합 · 비권한 증거</strong></div>
       <div class="status"><small>현재 Gate 8</small><strong class="done">durable closure 기록<br>canary <code>31950626791</code></strong></div>
       <div class="status"><small>전역 제공</small><strong class="next">DB 미해결로 block<br>source disabled</strong></div>
     </div>
@@ -122,7 +122,7 @@
   <main class="shell">
     <section id="picture">
       <p class="eyebrow">01 · 현재 확인된 범위</p><h2>Gate 8 durable closure는 기록됐고, 서명된 DB 결정이 제공 권한을 아직 열지 않습니다.</h2>
-      <p class="section-intro">CODE-01부터 CODE-07까지와 현행 3 full days/72h code/doc floor는 로컬 closure 범위에서 커밋됐지만 미푸시이며 권한을 부여하지 않습니다. 14일/1일 표기는 historical record입니다. Gate 8의 암호화된 수명주기 durable evidence는 아래에 적힌 체인으로 닫혔습니다. 전역 제공은 미해결 DB 결정 때문에 차단된 채 source disabled입니다. 이 페이지는 서빙 권한, 배포, 라이브 import, #64/#65 완료를 주장하지 않습니다.</p>
+      <p class="section-intro">CODE-01부터 CODE-07까지와 현행 1 full day code/doc floor는 로컬 closure 범위에서 정합되었지만 권한을 부여하지 않습니다. 14일/3일/72h 표기는 historical record입니다. Gate 8의 암호화된 수명주기 durable evidence는 아래에 적힌 체인으로 닫혔습니다. 전역 제공은 미해결 DB 결정 때문에 차단된 채 source disabled입니다. 이 페이지는 서빙 권한, 배포, 라이브 import, #64/#65 완료를 주장하지 않습니다.</p>
       <div class="meter" aria-label="Gate 8 durable closure: canary, join, receipt 기록 완료. 제공 권한 아님">
         <div class="meter-head"><span>Gate 8 durable closure</span><span>제공 권한 아님 · #76이 durable closure 소유</span></div>
         <div class="gate-segments" role="img" aria-label="6단계 durable evidence 기록 완료">
@@ -166,7 +166,7 @@
 
     <section id="release"><p class="eyebrow">05 · 릴리스 게이트</p><h2>Gate 8 durable evidence는 기록됐고, 코드 완료와 DB 결정은 서로 대체할 수 없습니다.</h2>
       <div class="timeline">
-        <article class="milestone done"><span class="state done">DONE · 로컬 코드/문서 바닥</span><h3>CODE-01…07 및 15-file DRIFT scope</h3><p>구현 작업트리는 <code>/Volumes/DevSpace/orca/workspaces/wiki-spike/trevally</code>, branch <code>whelp99-code/trevally</code>, local commit <code>d76359ecffaf8215c5e6ec38c4a977afbdbab6bf</code>입니다. 현행 code/doc floor는 <b>3 full days / 72h</b>이며 full suite는 <b>2215 passed in 189.13s</b>, rc 0입니다. 14일/1일 및 199-test 표기는 historical record로 보존하지만 현행 주장으로 사용하지 않습니다. 이 commit은 미푸시이며 비권한 증거입니다.</p></article>
+        <article class="milestone done"><span class="state done">DONE · 로컬 코드/문서 바닥</span><h3>CODE-01…07 및 15-file DRIFT scope</h3><p>구현 작업트리는 <code>/Volumes/DevSpace/orca/workspaces/wiki-spike/trevally</code>, branch <code>whelp99-code/trevally</code>, local commit <code>d76359ecffaf8215c5e6ec38c4a977afbdbab6bf</code>입니다. 현행 code/doc floor는 <b>1 full day</b>이며 14일/3일/72h 및 199-test 표기는 historical record로 보존하지만 현행 주장으로 사용하지 않습니다. 이 commit은 비권한 증거입니다.</p></article>
         <article class="milestone done"><span class="state done">HISTORICAL · superseded</span><h3>구 canary run <span class="run">31314519580</span></h3><p>2026-08-10 스냅샷에서 workflow <code>encrypted-lifecycle-canary</code>의 run <span class="run">31314519580</span>, job <span class="run">93247496969</span>는 <b>in_progress</b>로 관찰됐습니다. 그 관찰은 당시 사실입니다. 이후 그 run은 24h에 못 미쳐 failure로 끝났고, 현행 주장이 아닙니다.</p></article>
         <article class="milestone current-step"><span class="state current">CURRENT · durable closure 기록</span><h3>확인된 Gate 8 체인</h3><p>implementation commit <code>d9176d5dd32e47fc86248fff75946e9042386fe4</code>, canary run <span class="run">31950626791</span>, evidence join run <span class="run">32036623702</span>. manifest <code>2e22de6de7cd17e1563c78cafbbe5d41afe8edaf00127139a25e8a15c34de285</code>, join digest <code>109234c7699bc1f6a422880b77082e16b7dd78a390c4eac06ddd3e6c79359b70</code>, inventory <code>44774b509724ce051f935cf688ac8a957f5704c16f56e1743cd34d192f4de459</code>, receipt SHA-256 <code>5a81df57a2862afae4e41acff3208b3e8e656f12691fc7ce6718b7c841fff1d9</code>, path <code>artifacts/encrypted-lifecycle/gate8-final/final-review-receipt.json</code>. #69/#70 completed and closed. #76 owns durable closure. #75 may close after commit.</p></article>
         <article class="milestone next-step"><span class="state next">BLOCKED · DB 결정</span><h3>전역 제공은 source disabled</h3><p>DB-01/02/03/05/07이 미해결이므로 전역 block이 유지됩니다. Gate 8 durable evidence나 코드 완료가 이 서명·범위 결정을 대체하지 않습니다. 서빙 권한, 배포, 라이브 import, #64/#65는 별건입니다.</p></article>

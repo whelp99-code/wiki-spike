@@ -185,13 +185,13 @@ ARCHITECT와 CRITIC은 서로 다른 trusted reviewer key와 서로 다른 `revi
 
 ## DRIFT — 계획·문서·코드/시험 정합화
 
-**현행 정정 (2026-08-10):** 사용자의 결정에 따른 code/doc floor는 정확히 **3 full days / 72h**다. 아래의 14-day 및 1-day 진술은 append-only historical checkpoint/review의 당시 주장으로 보존하며, 현행 code/doc 상태를 설명하는 근거로 사용하지 않는다. DRIFT-02의 서명된 supersession, DB-05/07 authority는 여전히 없으므로 모든 shadow/cutover/live operation은 `[⊘] NOT_AUTHORIZED`다.
+**현행 정정 (2026-08-18):** 사용자의 결정에 따른 code/doc floor는 정확히 **1 full day**다. 아래의 14-day 및 3-day/72h 진술은 append-only historical checkpoint/review의 당시 주장으로 보존하며, 현행 code/doc 상태를 설명하는 근거로 사용하지 않는다. DRIFT-02의 서명된 supersession, DB-05/07 authority는 여전히 없으므로 모든 shadow/cutover/live operation은 `[⊘] NOT_AUTHORIZED`다.
 
 DRIFT-01 ownership은 다음 **정확히 15개** 파일로 한정한다: `docs/adr/ADR-0028-second-brain-product-boundary.md`, `docs/ops/decision-record-signing-runbook.md`, `docs/product/decisions/DB-05-benchmark-governance.md`, `docs/product/decisions/DB-07-cutover-retention.md`, `scripts/second_brain_evaluation_governance.py`, `src/wiki_spike/applications/second_brain_shadow_measurement.py`, `src/wiki_spike/memory_core/second_brain_cutover.py`, `src/wiki_spike/memory_core/second_brain_evaluation_contracts.py`, `tests/second_brain/test_decision_doc_slo_agreement.py`, `tests/second_brain/test_evaluation_governance_tool.py`, `tests/second_brain/test_native_shadow_measurement.py`, `tests/second_brain/test_native_shadow_measurement_cli.py`, `tests/second_brain/test_native_shadow_measurement_red_team.py`, `tests/second_brain/test_stage4_evaluation_governance.py`, `tests/second_brain/test_stage4_evaluation_red_team.py`.
 
 | ID | 의존성 / 소유 | 상태 | 표면 | 증거·argv | 기대 rc / 실패 조건 | rollback / 삭제 권한 |
 |---|---|---|---|---|---|---|
-| DRIFT-01 | BASE-02 / code/doc owner | `[x] CODE_DOC_COMPLETE` | 15-file code/doc scope above | current floor=`3 full days/72h`; root full suite=`2215 passed in 189.13s`, rc `0`; architecture, secrets, compile, and diff checks rc `0`. Historical 14-day/1-day rows and their test totals are superseded for current code/doc state. | Signed DRIFT-02, DB-05/07 authority, manual shadow inputs, and live I/O were not supplied. | CODE/DOC completion is non-authorizing until signed DRIFT-02 supersession; no change / 없음 |
+| DRIFT-01 | BASE-02 / code/doc owner | `[x] CODE_DOC_COMPLETE` | 15-file code/doc scope above | current floor=`1 full day`; historical 14-day/3-day/72h rows and their test totals are superseded for current code/doc state. | Signed DRIFT-02, DB-05/07 authority, manual shadow inputs, and live I/O were not supplied. | CODE/DOC completion is non-authorizing until signed DRIFT-02 supersession; no change / 없음 |
 | DRIFT-02 | BASE-05, BASE-06, DRIFT-01 / MANUAL | `[⊘] NOT_AUTHORIZED` | DB-05/07, ADR/contract digest | signed superseding reconciliation이 window, retention, threshold, cohort semantics와 digest chain을 함께 bind | unsigned edit/lowered floor/digest mismatch는 실패 | prior scope 유지 / 없음 |
 
 ## CODE — 운영 전 필수 implementation gates
@@ -231,7 +231,7 @@ The detailed CODE rows retained below are evidence detail from the prior layout.
 | CODE-05 | route CLI, infrastructure route authority, Core contracts/ports | route CLI/red-team | code-only route transaction; CUTOVER manual blocked |
 | CODE-06 | decommission certificate CLI, Core contracts/ports | certificate/red-team | code-only closed readiness; no certificate issuance/delete/revoke |
 | CODE-07 | four connector files, Core contracts/ports, capture composition | live-source-adapter, Stage-2 fixture tests | fixture/process-local only; no live I/O |
-| DRIFT-01 | exact 15 files enumerated above | their focused code/doc checks | 3 full days/72h code/doc floor only; DRIFT-02 absent |
+| DRIFT-01 | exact 15 files enumerated above | their focused code/doc checks | 1 full day code/doc floor only; DRIFT-02 absent |
 
 **Out of this closure:** V2 API/MCP, broader E2E/browser work, source adapter credentials/I/O, import, Canary control, cutover, live activation, retention and deletion are either previously committed outside this local closure, planning-only, or externally/manual-authority blocked. No completion claim for them is made here without separate current evidence.
 
@@ -240,7 +240,7 @@ The detailed CODE rows retained below are evidence detail from the prior layout.
 | owned files | allowed adaptations | stop / escalate | exact rerun commands |
 |---|---|---|---|
 | `docs/planning/SECOND_BRAIN_LIVE_ABSORPTION_DECOMMISSION_CHECKLIST_KR.md`; `docs/reports/SECOND_BRAIN_WORKFLOW_OVERVIEW_KR.html`; `docs/reports/ROADMAP_KR.html` | current-state wording, dependency rows/overrides, traceability and historical labels only | any required code/artifact edit; a new final status digest/commit; missing signed DRIFT-02 or DB-05/07 authority; any live/import/cutover/delete request | `git diff --check -- docs/planning/SECOND_BRAIN_LIVE_ABSORPTION_DECOMMISSION_CHECKLIST_KR.md docs/reports/SECOND_BRAIN_WORKFLOW_OVERVIEW_KR.html docs/reports/ROADMAP_KR.html` |
-| planning current layer | replace stale 14/1-day operative claims with 3-day/72h and label retained history | a current row still asserts approved 14 days, 1 day, or a CODE dependency on BASE-06 | local commit `d76359ecffaf8215c5e6ec38c4a977afbdbab6bf` is unpushed; trevally is clean with digest `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`. Rerun: `awk '/^### Current CODE dependency table/,/^### Historical detailed CODE evidence/ {if ($0 ~ /BASE-06/) bad=1} END {exit bad}' docs/planning/SECOND_BRAIN_LIVE_ABSORPTION_DECOMMISSION_CHECKLIST_KR.md` |
+| planning current layer | replace stale 14/3-day/72h operative claims with 1 full day and label retained history | a current row still asserts approved 14 days, 3 days/72h, or a CODE dependency on BASE-06 | local commit `d76359ecffaf8215c5e6ec38c4a977afbdbab6bf` is unpushed; trevally is clean with digest `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`. Rerun: `awk '/^### Current CODE dependency table/,/^### Historical detailed CODE evidence/ {if ($0 ~ /BASE-06/) bad=1} END {exit bad}' docs/planning/SECOND_BRAIN_LIVE_ABSORPTION_DECOMMISSION_CHECKLIST_KR.md` |
 | code-only/manual boundary | move local tests to `ADAPT-CODE`/`RECON-CODE`; leave operational rows MANUAL/live only | a manual row contains fixture-only/static argv, or code-only verification claims live I/O | `rg -n 'ADAPT-CODE|RECON-CODE|Current operational-row correction|Current SHADOW-01 correction' docs/planning/SECOND_BRAIN_LIVE_ABSORPTION_DECOMMISSION_CHECKLIST_KR.md` |
 
 ## CODE-06 설계 결정 게이트
@@ -308,7 +308,7 @@ The detailed CODE rows retained below are evidence detail from the prior layout.
 
 ## SHADOW — retained authority와 계량 관찰
 
-**Current SHADOW-01 correction:** code/doc is aligned to **3 full days / 72h**. The historical `plan=14/docs=1/code-tests>=3` text in the preserved detailed row below is superseded and must not be read as a current conflict. SHADOW-01 remains `[⊘] NOT_AUTHORIZED` solely because signed DRIFT-02 plus DB-05/07 authority and required operational evidence are absent.
+**Current SHADOW-01 correction:** code/doc is aligned to **1 full day**. The historical `plan=14/docs=1/code-tests>=3` and later 3-day/72h text in the preserved detailed row below is superseded and must not be read as a current conflict. SHADOW-01 remains `[⊘] NOT_AUTHORIZED` solely because signed DRIFT-02 plus DB-05/07 authority and required operational evidence are absent.
 
 현재 `scripts/second_brain_shadow_measurement.py`는 deployment `MonotonicAppendAuthority` adapter가 없어 의도적으로 rc `2`를 반환한다. `--help`는 gate가 아니다. CODE-04의 implementation/approval/independent review 전 shadow를 시작할 수 없다.
 
@@ -316,7 +316,7 @@ CODE-04 후 각각 exact argv는 공통 `--db "$SHADOW_DB" --authority-endpoint 
 
 | ID | 의존성 / 소유 | 상태 | 표면 | 증거·argv | 기대 rc / 실패 조건 | rollback / 삭제 권한 |
 |---|---|---|---|---|---|---|
-| SHADOW-01 | BASE-05, BASE-06, DRIFT-02, RECON-02, CODE-04 / MANUAL | `[⊘] NOT_AUTHORIZED` | signed DB-05/07, cohort | code/doc floor=`3 full days/72h` aligned. Signed DRIFT-02, DB-05/07 authority, and required operational evidence are absent. | unsigned/missing authority or evidence fails; no observation starts. | observation 없음 / 없음 |
+| SHADOW-01 | BASE-05, BASE-06, DRIFT-02, RECON-02, CODE-04 / MANUAL | `[⊘] NOT_AUTHORIZED` | signed DB-05/07, cohort | code/doc floor=`1 full day` aligned. Signed DRIFT-02, DB-05/07 authority, and required operational evidence are absent. | unsigned/missing authority or evidence fails; no observation starts. | observation 없음 / 없음 |
 | SHADOW-02 | BASE-05, BASE-06, SHADOW-01, CODE-04 / MANUAL | `[⊘] NOT_AUTHORIZED` | deployment adapter/script | `init`, `append`, `status`, `verify` argv와 adapter attestation/receipt digests | CODE-04 전 rc `2`; CODE-04 후 all rc `0`; serving write/missing retained authority 실패 | non-serving 유지 / 없음 |
 | SHADOW-03 | BASE-05, BASE-06, SHADOW-02 / MANUAL | `[⊘] NOT_AUTHORIZED` | `CutoverDecisionV1` | migration/quality/security/product external roles, safety=0, signed window, parity/source, cohort E2E, holdout unchanged, Wilson minima | role 누락/formula false/holdout change/safety>0 실패 | decision 미발행 / 없음 |
 
@@ -370,7 +370,7 @@ git -C "$DEDICATED_WORKTREE" rev-parse HEAD
 
 ## 활성 blocker
 
-1. 현행 code/doc floor는 정확히 **3 full days / 72h**로 aligned다. 운영 shadow/cutover 값은 signed DRIFT-02와 DB-05/07 authority/evidence가 없으므로 확정·실행할 수 없다.
+1. 현행 code/doc floor는 정확히 **1 full day**로 aligned다. 운영 shadow/cutover 값은 signed DRIFT-02와 DB-05/07 authority/evidence가 없으므로 확정·실행할 수 없다.
 2. DB-01/02/03/05/07은 unsigned/unresolved이며 DB-02/03은 disabled/deferred, DB-01/05/07은 global block이다. DB-04의 embedded signature verification만으로 trusted identity/resolved-scope binding은 충족되지 않았고, DB-06/08 scoped `NO_GO`는 binding 수용 후에도 disabled다. GJC/Ouroboros/Orca/codebase-memory source decisions도 해소되지 않았다.
 3. CODE-01..07은 모두 code-only `CODE_COMPLETE`일 뿐 live/operational/delete authorization이 아니다. RECON/ADAPT/GOV/SHADOW/CUTOVER/RETAIN/DELETE operational gates는 계속 별도 manual authority를 요구한다.
 4. deployment retained-authority adapter가 없어 current shadow CLI는 의도적으로 rc `2`다.

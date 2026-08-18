@@ -7,8 +7,9 @@ transitions up to but not including unauthorized live activation.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+from typing import ClassVar, Final
 
 from .errors import InvalidContractValue
 from .second_brain_contracts import ResolvedScopeV1
@@ -17,6 +18,7 @@ from .second_brain_product_release import resolved_scope_digest
 
 CUTOVER_DECISION_V1 = "second-brain-cutover-decision-v1"
 COHORT_MANIFEST_V1 = "second-brain-migration-cohort-manifest-v1"
+MIN_OBSERVATION_DAYS: Final[int] = 1
 _HEX64 = frozenset("0123456789abcdef")
 _COHORT_STATES = (
     "DISCOVERED",
@@ -46,21 +48,25 @@ _ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
 }
 _REQUIRED_APPROVER_ROLES = ("migration", "quality", "security", "product")
 
+type JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]
+type JsonObject = Mapping[str, JsonValue]
+type ContractInput = JsonValue | JsonObject
 
-def _digest(value: Any, field: str) -> str:
+
+def _digest(value: JsonValue, field: str) -> str:
     if not isinstance(value, str) or len(value) != 64 or any(ch not in _HEX64 for ch in value):
         raise InvalidContractValue(f"{field} must be a lowercase sha256 hex digest")
     return value
 
 
-def _text(value: Any, field: str, *, maximum: int = 256) -> str:
+def _text(value: JsonValue, field: str, *, maximum: int = 256) -> str:
     if not isinstance(value, str) or not value or len(value) > maximum:
         raise InvalidContractValue(f"{field} must be a non-empty bounded string")
     return value
 
 
-def _strict(data: Any, fields: set[str]) -> dict[str, Any]:
-    if not isinstance(data, Mapping) or any(not isinstance(k, str) for k in data):
+def _strict(data: ContractInput, fields: frozenset[str]) -> dict[str, JsonValue]:
+    if not isinstance(data, Mapping):
         raise InvalidContractValue("contract must be an object with string keys")
     unknown, missing = set(data) - fields, fields - set(data)
     if unknown or missing:
@@ -68,13 +74,13 @@ def _strict(data: Any, fields: set[str]) -> dict[str, Any]:
     return {key: data[key] for key in fields}
 
 
-def _uint(value: Any, field: str, *, minimum: int = 0, maximum: int = 10**9) -> int:
-    if type(value) is not int or isinstance(value, bool) or not minimum <= value <= maximum:
+def _uint(value: JsonValue, field: str, *, minimum: int = 0, maximum: int = 10**9) -> int:
+    if type(value) is not int or not minimum <= value <= maximum:
         raise InvalidContractValue(f"{field} out of range")
     return value
 
 
-def _bool(value: Any, field: str) -> bool:
+def _bool(value: JsonValue, field: str) -> bool:
     if value is not True and value is not False:
         raise InvalidContractValue(f"{field} must be a boolean")
     return value
@@ -84,10 +90,10 @@ def _bool(value: Any, field: str) -> bool:
 class MigrationCohortManifestV1:
     """Source-by-source final-workspace non-serving cohort roster."""
 
-    FIELDS = {
+    FIELDS: ClassVar[frozenset[str]] = frozenset({
         "manifest_version", "workspace_ref", "cohort_state", "source_names",
         "resolved_scope_digest", "source_manifest_digest", "manifest_digest",
-    }
+    })
     manifest_version: str
     workspace_ref: str
     cohort_state: str
@@ -97,7 +103,7 @@ class MigrationCohortManifestV1:
     manifest_digest: str
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any]) -> "MigrationCohortManifestV1":
+    def from_mapping(cls, data: ContractInput) -> MigrationCohortManifestV1:
         values = _strict(data, cls.FIELDS)
         if values["manifest_version"] != COHORT_MANIFEST_V1:
             raise InvalidContractValue("unsupported cohort manifest version")
@@ -112,21 +118,31 @@ class MigrationCohortManifestV1:
         # DB-07 / ADR-0028: source-by-source cutover — one migration source per cohort.
         if len(sources) != 1:
             raise InvalidContractValue("cohort must contain exactly one migration source at a time")
-        body = {
+        workspace_ref = _text(values["workspace_ref"], "workspace_ref")
+        scope_digest = _digest(values["resolved_scope_digest"], "resolved_scope_digest")
+        source_digest = _digest(values["source_manifest_digest"], "source_manifest_digest")
+        body: dict[str, JsonValue] = {
             "manifest_version": COHORT_MANIFEST_V1,
-            "workspace_ref": _text(values["workspace_ref"], "workspace_ref"),
+            "workspace_ref": workspace_ref,
             "cohort_state": state,
             "source_names": list(sources),
-            "resolved_scope_digest": _digest(values["resolved_scope_digest"], "resolved_scope_digest"),
-            "source_manifest_digest": _digest(values["source_manifest_digest"], "source_manifest_digest"),
+            "resolved_scope_digest": scope_digest,
+            "source_manifest_digest": source_digest,
         }
         digest = _digest(values["manifest_digest"], "manifest_digest")
         if digest != canonical_ledger_digest("migration-cohort-manifest-v1", body):
             raise InvalidContractValue("cohort manifest_digest does not bind its body")
-        return cls(COHORT_MANIFEST_V1, body["workspace_ref"], state, sources,
-                   body["resolved_scope_digest"], body["source_manifest_digest"], digest)
+        return cls(
+            COHORT_MANIFEST_V1,
+            workspace_ref,
+            state,
+            sources,
+            scope_digest,
+            source_digest,
+            digest,
+        )
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self) -> dict[str, JsonValue]:
         return {
             "manifest_version": self.manifest_version,
             "workspace_ref": self.workspace_ref,
@@ -179,7 +195,7 @@ def assert_post_mutation_fail_closed(state: str, *, action: str) -> None:
 class CutoverDecisionV1:
     """Signed quantitative cutover decision. Does not itself switch production routes."""
 
-    FIELDS = {
+    FIELDS: ClassVar[frozenset[str]] = frozenset({
         "decision_version", "decision_id", "workspace_ref", "cohort_manifest_digest",
         "resolved_scope_digest", "contract_digest", "source_manifest_digest",
         "capability_manifest_digest", "benchmark_manifest_digest", "holdout_manifest_digest",
@@ -188,7 +204,7 @@ class CutoverDecisionV1:
         "parity_bps_lower", "citation_bps_lower", "completeness_bps_lower", "availability_bps_lower",
         "parity_min_bps", "citation_min_bps", "completeness_min_bps", "availability_min_bps",
         "holdout_changed", "approver_roles", "formula_pass", "decision_digest",
-    }
+    })
     decision_version: str
     decision_id: str
     workspace_ref: str
@@ -220,7 +236,7 @@ class CutoverDecisionV1:
     decision_digest: str
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any]) -> "CutoverDecisionV1":
+    def from_mapping(cls, data: ContractInput) -> CutoverDecisionV1:
         values = _strict(data, cls.FIELDS)
         if values["decision_version"] != CUTOVER_DECISION_V1:
             raise InvalidContractValue("unsupported cutover decision version")
@@ -247,7 +263,7 @@ class CutoverDecisionV1:
         # PASS = S∧W∧N∧P∧C∧D∧Q∧L∧A∧R (plan formula; R/holdout encoded as holdout_changed false)
         computed = (
             ints["safety_violations"] == 0
-            and ints["observation_days"] >= 3
+            and ints["observation_days"] >= MIN_OBSERVATION_DAYS
             and ints["parity_cases_per_source"] >= 200
             and ints["cohort_e2e_queries"] >= 500
             and ints["parity_bps_lower"] >= ints["parity_min_bps"]
@@ -259,20 +275,32 @@ class CutoverDecisionV1:
         formula_pass = _bool(values["formula_pass"], "formula_pass")
         if formula_pass != computed:
             raise InvalidContractValue("formula_pass does not match quantitative PASS formula")
-        body = {
+        decision_id = _text(values["decision_id"], "decision_id", maximum=128)
+        workspace_ref = _text(values["workspace_ref"], "workspace_ref")
+        cohort_digest = _digest(values["cohort_manifest_digest"], "cohort_manifest_digest")
+        scope_digest = _digest(values["resolved_scope_digest"], "resolved_scope_digest")
+        contract_digest = _digest(values["contract_digest"], "contract_digest")
+        source_digest = _digest(values["source_manifest_digest"], "source_manifest_digest")
+        capability_digest = _digest(values["capability_manifest_digest"], "capability_manifest_digest")
+        benchmark_digest = _digest(values["benchmark_manifest_digest"], "benchmark_manifest_digest")
+        holdout_digest = _digest(values["holdout_manifest_digest"], "holdout_manifest_digest")
+        generation_digest = _digest(values["generation_digest"], "generation_digest")
+        checkpoint_digest = _digest(values["checkpoint_digest"], "checkpoint_digest")
+        route_version = _text(values["route_version"], "route_version", maximum=64)
+        body: dict[str, JsonValue] = {
             "decision_version": CUTOVER_DECISION_V1,
-            "decision_id": _text(values["decision_id"], "decision_id", maximum=128),
-            "workspace_ref": _text(values["workspace_ref"], "workspace_ref"),
-            "cohort_manifest_digest": _digest(values["cohort_manifest_digest"], "cohort_manifest_digest"),
-            "resolved_scope_digest": _digest(values["resolved_scope_digest"], "resolved_scope_digest"),
-            "contract_digest": _digest(values["contract_digest"], "contract_digest"),
-            "source_manifest_digest": _digest(values["source_manifest_digest"], "source_manifest_digest"),
-            "capability_manifest_digest": _digest(values["capability_manifest_digest"], "capability_manifest_digest"),
-            "benchmark_manifest_digest": _digest(values["benchmark_manifest_digest"], "benchmark_manifest_digest"),
-            "holdout_manifest_digest": _digest(values["holdout_manifest_digest"], "holdout_manifest_digest"),
-            "generation_digest": _digest(values["generation_digest"], "generation_digest"),
-            "checkpoint_digest": _digest(values["checkpoint_digest"], "checkpoint_digest"),
-            "route_version": _text(values["route_version"], "route_version", maximum=64),
+            "decision_id": decision_id,
+            "workspace_ref": workspace_ref,
+            "cohort_manifest_digest": cohort_digest,
+            "resolved_scope_digest": scope_digest,
+            "contract_digest": contract_digest,
+            "source_manifest_digest": source_digest,
+            "capability_manifest_digest": capability_digest,
+            "benchmark_manifest_digest": benchmark_digest,
+            "holdout_manifest_digest": holdout_digest,
+            "generation_digest": generation_digest,
+            "checkpoint_digest": checkpoint_digest,
+            "route_version": route_version,
             **ints,
             "holdout_changed": holdout_changed,
             "approver_roles": list(roles),
@@ -282,10 +310,10 @@ class CutoverDecisionV1:
         if digest != canonical_ledger_digest("cutover-decision-v1", body):
             raise InvalidContractValue("decision_digest does not bind its body")
         return cls(
-            CUTOVER_DECISION_V1, body["decision_id"], body["workspace_ref"], body["cohort_manifest_digest"],
-            body["resolved_scope_digest"], body["contract_digest"], body["source_manifest_digest"],
-            body["capability_manifest_digest"], body["benchmark_manifest_digest"], body["holdout_manifest_digest"],
-            body["generation_digest"], body["checkpoint_digest"], body["route_version"],
+            CUTOVER_DECISION_V1, decision_id, workspace_ref, cohort_digest,
+            scope_digest, contract_digest, source_digest,
+            capability_digest, benchmark_digest, holdout_digest,
+            generation_digest, checkpoint_digest, route_version,
             ints["observation_days"], ints["parity_cases_per_source"], ints["cohort_e2e_queries"],
             ints["safety_violations"], ints["parity_bps_lower"], ints["citation_bps_lower"],
             ints["completeness_bps_lower"], ints["availability_bps_lower"], ints["parity_min_bps"],
@@ -293,7 +321,7 @@ class CutoverDecisionV1:
             holdout_changed, roles, formula_pass, digest,
         )
 
-    def to_mapping(self) -> dict[str, Any]:
+    def to_mapping(self) -> dict[str, JsonValue]:
         return {
             "decision_version": self.decision_version,
             "decision_id": self.decision_id,
@@ -385,16 +413,17 @@ def assert_destructive_decommission_authorized(
 
 
 __all__ = [
-    "CUTOVER_DECISION_V1",
     "COHORT_MANIFEST_V1",
-    "MigrationCohortManifestV1",
+    "CUTOVER_DECISION_V1",
+    "MIN_OBSERVATION_DAYS",
     "CutoverDecisionV1",
+    "MigrationCohortManifestV1",
     "assert_cohort_subset_of_enabled_migration_sources",
     "assert_cohort_transition",
-    "assert_pre_mutation_rollback_allowed",
-    "assert_post_mutation_fail_closed",
     "assert_cutover_decision_joins_scope_and_cohort",
-    "assert_live_route_switch_authorized",
     "assert_destructive_decommission_authorized",
+    "assert_live_route_switch_authorized",
+    "assert_post_mutation_fail_closed",
+    "assert_pre_mutation_rollback_allowed",
     "canonical_ledger_digest",
 ]
