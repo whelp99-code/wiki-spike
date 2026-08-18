@@ -4,8 +4,8 @@ import ast
 from pathlib import Path
 
 from tests.second_brain.snapshot_importer_support import import_service
+from tests.second_brain.unified_db_export_authorization_support import EXPORT_PY
 from tests.second_brain.unified_db_export_support import (
-    EXPORT_PY,
     authority,
     bound_reader,
     plan_for,

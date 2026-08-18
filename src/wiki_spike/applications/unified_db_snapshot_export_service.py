@@ -1,8 +1,12 @@
 """Fixture-only unified-db snapshot export orchestration."""
 from __future__ import annotations
 
-from dataclasses import dataclass
-
+from wiki_spike.applications.unified_db_export_authorization_verify import (
+    VerifiedUnifiedDbExportAuthorityV1,
+)
+from wiki_spike.applications.unified_db_snapshot_export_reader import (
+    StaticUnifiedDbFixtureReader,
+)
 from wiki_spike.applications.unified_db_snapshot_export_verify import (
     load_export_fixture,
     verify_export_package,
@@ -37,10 +41,7 @@ from wiki_spike.memory_core.unified_db_snapshot_export_profile import (
     UnifiedDbExportPlanV1,
     UnifiedDbExportProfileV1,
 )
-from wiki_spike.memory_core.unified_db_snapshot_export_proof import (
-    FixtureReadResultV1,
-    UnifiedDbReadSafetyProofV1,
-)
+from wiki_spike.memory_core.unified_db_snapshot_export_proof import FixtureReadResultV1
 from wiki_spike.memory_core.unified_db_snapshot_export_result import (
     UnifiedDbExportReceiptV1,
 )
@@ -60,38 +61,6 @@ _FILES = (
 )
 
 
-@dataclass(frozen=True, slots=True)
-class StaticUnifiedDbFixtureReader:
-    rows: tuple[UnifiedDbExportRowV1, ...]
-    opening_proof: UnifiedDbReadSafetyProofV1
-    closing_proof: UnifiedDbReadSafetyProofV1
-    cursors: SnapshotCursorMapV1
-    fixture_id: str
-    fixture_digest: str
-    row_set_digest: str
-
-    def read_fixture_rows(
-        self,
-        authority: object,
-        plan: UnifiedDbExportPlanV1,
-        limit: int,
-    ) -> FixtureReadResultV1:
-        if not isinstance(authority, FixtureExportAuthorityV1):
-            raise UnifiedDbExportError("fixture read requires fixture-only authority")
-        if limit < 1:
-            raise UnifiedDbExportError("fixture read limit must be positive")
-        _ = plan
-        return FixtureReadResultV1(
-            self.rows[:limit],
-            self.opening_proof,
-            self.closing_proof,
-            self.cursors,
-            self.fixture_id,
-            self.fixture_digest,
-            self.row_set_digest,
-        )
-
-
 class UnifiedDbSnapshotExportService:
     _reader: UnifiedDbFixtureReadPort
     _writer: LocalSnapshotPackageWriterPort
@@ -108,6 +77,8 @@ class UnifiedDbSnapshotExportService:
         _ = dsn_fd
         if isinstance(authority, FixtureExportAuthorityV1):
             raise UnifiedDbExportError("fixture-only authority cannot call live export")
+        if isinstance(authority, VerifiedUnifiedDbExportAuthorityV1):
+            _ = authority.claim()
         raise UnifiedDbExportError(
             "live export refused: executable mapping and signed authority are absent"
         )

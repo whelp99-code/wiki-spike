@@ -8,10 +8,10 @@ from typing import cast
 
 import pytest
 
+from tests.second_brain.unified_db_export_authorization_support import EXPORT_PY
 from tests.second_brain.unified_db_export_support import (
     ALPHA,
     BETA,
-    EXPORT_PY,
     authority,
     bound_reader,
     make_fixture,
