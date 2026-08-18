@@ -174,4 +174,3 @@ class BoundedSnapshotV1:
             "snapshot_digest": self.snapshot_digest,
         }
 
-
