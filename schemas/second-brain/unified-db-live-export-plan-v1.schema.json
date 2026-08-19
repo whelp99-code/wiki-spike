@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/unified-db-live-export-plan-v1.schema.json",
+  "title": "Second Brain Unified-DB Live Export Plan V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "plan_version",
+    "source_name",
+    "operation",
+    "authorization_kind",
+    "profile_digest",
+    "source_identity_digest",
+    "catalog_digest",
+    "mapper_id",
+    "mapper_version",
+    "mapping_digest",
+    "adapter_digest",
+    "destination_digest",
+    "quiescence_digest",
+    "deletion_semantics",
+    "absence_policy",
+    "plan_digest"
+  ],
+  "properties": {
+    "plan_version": {
+      "const": "second-brain-unified-db-live-export-plan-v1"
+    },
+    "source_name": {
+      "const": "unified-db"
+    },
+    "operation": {
+      "const": "EXPORT_ONLY"
+    },
+    "authorization_kind": {
+      "const": "LIVE_EXPORT_ONLY"
+    },
+    "profile_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "source_identity_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "catalog_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "mapper_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "mapper_version": {
+      "type": "string",
+      "pattern": "^v[1-9][0-9]*$"
+    },
+    "mapping_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "adapter_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "destination_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "quiescence_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "deletion_semantics": {
+      "const": "EXPLICIT_TOMBSTONE_ONLY"
+    },
+    "absence_policy": {
+      "const": "ABSENCE_IS_NOT_DELETION"
+    },
+    "plan_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

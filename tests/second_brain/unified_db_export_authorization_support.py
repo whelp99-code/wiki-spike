@@ -67,6 +67,15 @@ EXPORT_PY = (
     Path("src/wiki_spike/applications/unified_db_snapshot_export_tree.py"),
     Path("src/wiki_spike/applications/unified_db_snapshot_export_verify.py"),
     Path("src/wiki_spike/infrastructure/local_snapshot_package_writer.py"),
+    Path("src/wiki_spike/memory_core/unified_db_postgres_identity.py"),
+    Path("src/wiki_spike/memory_core/unified_db_live_export_parse.py"),
+    Path("src/wiki_spike/memory_core/unified_db_live_export_mapping.py"),
+    Path("src/wiki_spike/memory_core/unified_db_live_export_commitments.py"),
+    Path("src/wiki_spike/memory_core/unified_db_live_export_plan.py"),
+    Path("src/wiki_spike/memory_core/unified_db_live_export_registry.py"),
+    Path("src/wiki_spike/applications/unified_db_live_export_verify.py"),
+    Path("src/wiki_spike/applications/unified_db_live_export_preflight.py"),
+    Path("src/wiki_spike/applications/unified_db_live_export_cli.py"),
     SCRIPT,
 ) + AUTHORIZATION_PY
 SCHEMA = Path("schemas/second-brain/unified-db-export-only-authorization-v1.schema.json")

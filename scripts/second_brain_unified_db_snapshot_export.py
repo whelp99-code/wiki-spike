@@ -42,6 +42,14 @@ class _Arguments(argparse.Namespace):
     key_id: str = ""
     public_key: Path = Path()
     signature: Path | list[str] | None = None
+    kind: str = ""
+    input_path: Path = Path()
+    identity: Path = Path()
+    mapping: Path = Path()
+    adapter: Path = Path()
+    destination: Path = Path()
+    quiescence: Path = Path()
+    authorization: Path = Path()
 
 
 def _load_json(path: Path) -> dict[str, JsonValue]:
@@ -88,6 +96,23 @@ def _arguments() -> _Arguments:
     auth_verify = sub.add_parser("authority-verify", help="verify public export-only envelopes")
     _ = auth_verify.add_argument("--body", required=True, type=Path)
     _ = auth_verify.add_argument("--signature", action="append", required=True)
+    from wiki_spike.applications.unified_db_live_export_cli import INSPECT_KINDS
+
+    inspect = sub.add_parser("live-inspect", help="inspect a body-free live-export contract")
+    _ = inspect.add_argument("--kind", required=True, choices=INSPECT_KINDS)
+    _ = inspect.add_argument("--input", dest="input_path", required=True, type=Path)
+    live_verify = sub.add_parser("live-verify", help="verify live-export contract bindings")
+    live_preflight = sub.add_parser(
+        "live-preflight", help="preflight live export against the empty production registry"
+    )
+    for live in (live_verify, live_preflight):
+        _ = live.add_argument("--plan", required=True, type=Path)
+        _ = live.add_argument("--identity", required=True, type=Path)
+        _ = live.add_argument("--mapping", required=True, type=Path)
+        _ = live.add_argument("--adapter", required=True, type=Path)
+        _ = live.add_argument("--destination", required=True, type=Path)
+        _ = live.add_argument("--quiescence", required=True, type=Path)
+        _ = live.add_argument("--authorization", required=True, type=Path)
     arguments = _Arguments()
     _ = parser.parse_args(namespace=arguments)
     return arguments
@@ -172,6 +197,27 @@ def main() -> int:
 
         if is_authority_command(arguments.command):
             return _run_authority(arguments)
+        from wiki_spike.applications.unified_db_live_export_cli import (
+            LiveExportCliPaths,
+            is_live_contract_command,
+            run_live_contract_command,
+        )
+
+        if is_live_contract_command(arguments.command):
+            return run_live_contract_command(
+                arguments.command,
+                LiveExportCliPaths(
+                    arguments.kind,
+                    arguments.input_path,
+                    arguments.plan,
+                    arguments.identity,
+                    arguments.mapping,
+                    arguments.adapter,
+                    arguments.destination,
+                    arguments.quiescence,
+                    arguments.authorization,
+                ),
+            )
         if arguments.command == "export":
             from wiki_spike.composition.unified_db_live_export import (
                 refuse_live_unified_db_export,

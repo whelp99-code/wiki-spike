@@ -20,7 +20,8 @@ FS = Path("src/wiki_spike/infrastructure/export_authorization_nonce_fs.py")
 SCHEMA = Path("src/wiki_spike/infrastructure/export_authorization_nonce_schema.py")
 BACKUP = Path("src/wiki_spike/infrastructure/export_authorization_nonce_backup.py")
 DECODE = Path("src/wiki_spike/infrastructure/export_authorization_nonce_decode.py")
-PRE_DSN = (COMPOSITION, STORE, FS, SCHEMA, BACKUP, DECODE)
+REGISTRY = Path("src/wiki_spike/memory_core/unified_db_live_export_registry.py")
+PRE_DSN = (COMPOSITION, STORE, FS, SCHEMA, BACKUP, DECODE, REGISTRY)
 PRODUCTION_TAIL = (
     "Library/Application Support/wiki-spike/export-authority-v1/nonces.sqlite3"
 )
@@ -119,7 +120,7 @@ def test_refuse_live_export_validates_store_and_leaves_dsn_unread(
     leftover = os.read(read_fd, 64)
     os.close(read_fd)
     assert refused.returncode != 0
-    assert b"executable mapping and signed authority" in refused.stderr
+    assert b"unapproved mapper" in refused.stderr
     assert leftover == payload
     assert not dest.exists()
     store = (

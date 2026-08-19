@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/unified-db-live-export-adapter-v1.schema.json",
+  "title": "Second Brain Unified-DB Live Export Adapter V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "adapter_version",
+    "adapter_id",
+    "source_name",
+    "isolation",
+    "read_only",
+    "deferrable",
+    "select_template_digest",
+    "adapter_digest"
+  ],
+  "properties": {
+    "adapter_version": {
+      "const": "second-brain-unified-db-live-export-adapter-v1"
+    },
+    "adapter_id": {
+      "const": "unified-db-readonly-serializable-v1"
+    },
+    "source_name": {
+      "const": "unified-db"
+    },
+    "isolation": {
+      "const": "SERIALIZABLE"
+    },
+    "read_only": {
+      "const": true
+    },
+    "deferrable": {
+      "const": true
+    },
+    "select_template_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "adapter_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

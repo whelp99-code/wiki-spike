@@ -7,7 +7,9 @@ from wiki_spike.infrastructure.export_authorization_nonce_fs import ensure_priva
 from wiki_spike.infrastructure.export_authorization_nonce_store import (
     SqliteExportAuthorizationNonceStore,
 )
-from wiki_spike.memory_core.unified_db_snapshot_export import UnifiedDbExportError
+from wiki_spike.memory_core.unified_db_live_export_registry import (
+    PRODUCTION_MAPPER_REGISTRY,
+)
 
 _PRODUCTION_RELATIVE = (
     "Library/Application Support/wiki-spike/export-authority-v1/nonces.sqlite3"
@@ -30,6 +32,4 @@ def refuse_live_unified_db_export(*, dsn_fd: int | None = None) -> None:
     _ = dsn_fd
     store = open_production_export_authorization_nonce_store()
     store.close()
-    raise UnifiedDbExportError(
-        "live export refused: executable mapping and signed authority are absent"
-    )
+    _ = PRODUCTION_MAPPER_REGISTRY.approved_mapping("-", "v1")

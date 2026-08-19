@@ -123,7 +123,7 @@ def test_cli_export_refuses_before_dsn_fd_read(
     leftover = os.read(read_fd, 64)
     os.close(read_fd)
     assert refused.returncode != 0
-    assert b"executable mapping and signed authority" in refused.stderr
+    assert b"unapproved mapper" in refused.stderr
     assert leftover == payload
     assert not dest.exists()
 
