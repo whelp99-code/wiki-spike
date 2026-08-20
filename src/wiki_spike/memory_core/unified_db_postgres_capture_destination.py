@@ -41,7 +41,13 @@ def parse_absolute_destination_path(value: JsonValue) -> str:
     if any(ord(char) < 32 or char == "\x7f" for char in text):
         raise InvalidContractValue("destination_path must not contain control characters")
     parsed = PurePosixPath(text)
-    if "\\" in text or not parsed.is_absolute() or parsed.as_posix() != text or text == "/":
+    if (
+        text.startswith("//")
+        or "\\" in text
+        or not parsed.is_absolute()
+        or parsed.as_posix() != text
+        or text == "/"
+    ):
         raise InvalidContractValue(
             "destination_path must be an absolute canonical POSIX path"
         )

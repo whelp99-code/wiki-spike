@@ -17,6 +17,10 @@ from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from wiki_spike.applications.unified_db_snapshot_export_io import (
+    HARD_CAP,
+    read_bounded_path,
+)
 from wiki_spike.memory_core.contracts import JsonValue
 from wiki_spike.memory_core.errors import (
     InvalidContractValue,
@@ -117,7 +121,7 @@ def _reject_symlink_output(path: Path) -> None:
 
 def _body(path: Path) -> dict[str, JsonValue]:
     try:
-        parsed = decode_json_object(path.read_text(encoding="utf-8"))
+        parsed = decode_json_object(read_bounded_path(path, HARD_CAP).decode("utf-8"))
         _ = UnifiedDbMetadataCaptureOnlyAuthorizationV1.from_mapping(parsed)
     except (
         OSError,

@@ -57,6 +57,8 @@ def test_destination_rejects_relative_path(path: str) -> None:
         "/captured/foo/..",
         "/captured/./out",
         "/captured//out",
+        "//private/tmp/postgres-metadata",
+        "//captured/out",
         "/captured/out/",
         "/",
     ],

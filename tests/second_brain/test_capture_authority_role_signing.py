@@ -118,6 +118,7 @@ def test_runner_refuses_when_unsigned_body_is_missing(tmp_path: Path) -> None:
     assert str(key_path) not in combined
     assert "BEGIN" not in combined
     assert "PRIVATE KEY" not in combined
+    assert not (tmp_path / "out").exists()
 
 
 def test_runner_refuses_when_output_is_symlink(tmp_path: Path) -> None:
@@ -175,6 +176,37 @@ def test_signer_writes_public_envelope_schema_when_key_matches(tmp_path: Path) -
     assert metadata_capture_authorization_signing_bytes(body).startswith(
         METADATA_CAPTURE_ONLY_AUTHORIZATION_DOMAIN
     )
+
+
+def test_signer_refuses_when_body_is_symlink(tmp_path: Path) -> None:
+    key = Ed25519PrivateKey.generate()
+    private_key = tmp_path / "owner.pem"
+    expected_public_key_b64 = _write_private_key(private_key, key)
+    real_body = tmp_path / "body.json"
+    _ = real_body.write_bytes(canonical_bytes(authorization_body()) + b"\n")
+    body_link = tmp_path / "body-link.json"
+    body_link.symlink_to(real_body)
+    output = tmp_path / "owner-envelope.json"
+    result = _run_signer(
+        [
+            "--role",
+            "owner",
+            "--key-id",
+            "wiki-owner-2026",
+            "--expected-public-key-b64",
+            expected_public_key_b64,
+            "--body",
+            str(body_link),
+            "--private-key",
+            str(private_key),
+            "--output",
+            str(output),
+        ]
+    )
+    assert result.returncode == 2
+    assert "authorization body cannot be read safely" in result.stderr
+    assert not output.exists()
+    assert str(private_key) not in result.stdout + result.stderr
 
 
 def test_signer_omits_private_key_material_when_envelope_written(tmp_path: Path) -> None:

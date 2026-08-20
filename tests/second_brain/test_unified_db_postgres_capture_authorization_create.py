@@ -138,6 +138,22 @@ def test_create_defaults_out_to_runner_body_path(tmp_path: Path) -> None:
     assert body.destination.destination_path == str(destination)
 
 
+def test_create_refuses_when_destination_has_double_slash_prefix(tmp_path: Path) -> None:
+    out = tmp_path / "body.json"
+    completed = _run(
+        [
+            "capture-authority-create",
+            "--destination",
+            "//private/tmp/postgres-metadata",
+            "--out",
+            str(out),
+        ]
+    )
+    assert completed.returncode != 0
+    assert b"absolute" in completed.stderr or b"canonical" in completed.stderr
+    assert not out.exists()
+
+
 def test_create_refuses_when_destination_is_relative(tmp_path: Path) -> None:
     out = tmp_path / "body.json"
     completed = _run(

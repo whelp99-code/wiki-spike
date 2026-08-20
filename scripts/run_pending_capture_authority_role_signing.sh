@@ -56,22 +56,11 @@ output="$output_directory/POSTGRES_METADATA_CAPTURE_ONLY.$role-envelope.json"
 if path_has_symlink "$output" || path_has_symlink "$output_directory"; then
   refuse_symlink_output
 fi
-if [[ -e "$output_directory" ]]; then
-  if [[ ! -d "$output_directory" ]]; then
-    printf 'metadata capture signing refused: output directory is invalid\n' >&2
-    exit 2
-  fi
-else
-  if path_has_symlink "$(dirname "$output_directory")"; then
-    refuse_symlink_output
-  fi
-  umask 077
-  mkdir -p "$output_directory"
-  if path_has_symlink "$output_directory"; then
-    refuse_symlink_output
-  fi
+if [[ -e "$output_directory" && ! -d "$output_directory" ]]; then
+  printf 'metadata capture signing refused: output directory is invalid\n' >&2
+  exit 2
 fi
-if path_has_symlink "$output"; then
+if path_has_symlink "$(dirname "$output_directory")"; then
   refuse_symlink_output
 fi
 
@@ -81,6 +70,15 @@ if [[ ! -f "$body" ]]; then
   printf 'unsigned body is missing\n' >&2
   exit 2
 fi
+
+if [[ ! -e "$output_directory" ]]; then
+  umask 077
+  mkdir -p "$output_directory"
+fi
+if path_has_symlink "$output" || path_has_symlink "$output_directory"; then
+  refuse_symlink_output
+fi
+
 umask 077
 uv run python "$root/scripts/sign_second_brain_capture_authority_role.py" \
   --role "$role" \
