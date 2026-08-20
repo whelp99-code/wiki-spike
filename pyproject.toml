@@ -20,4 +20,4 @@ testpaths = ["tests"]
 filterwarnings = ["error"]
 
 [project.scripts]
-wiki = "wiki_spike.cli:main"
+wiki = "wiki_spike.composition.mac_production:main"
