@@ -89,6 +89,8 @@ def test_create_writes_unsigned_body_when_destination_is_create_only(
     assert _HEX64.fullmatch(body.nonce)
     assert _HEX64.fullmatch(body.capture_plan_digest)
     assert _HEX64.fullmatch(body.output_digest)
+    assert body.capture_plan_digest == "0" * 64
+    assert body.output_digest == "0" * 64
     assert body.destination.destination_path == str(destination)
     assert body.destination.destination_digest == body.destination.computed_digest()
     assert body.authorization_digest == body.computed_digest()

@@ -159,7 +159,9 @@ def test_verifier_rejects_body_or_signature_swap() -> None:
     [
         ("query_manifest_digest", "11" * 32),
         ("capture_plan_digest", "22" * 32),
+        ("capture_plan_digest", "0" * 64),
         ("output_digest", "33" * 32),
+        ("output_digest", "0" * 64),
         ("destination_digest", "44" * 32),
     ],
 )

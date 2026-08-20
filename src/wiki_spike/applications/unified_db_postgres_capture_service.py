@@ -10,6 +10,9 @@ from pathlib import Path
 from wiki_spike.applications.unified_db_export_authorization_publish import (
     publish_exclusive_bytes,
 )
+from wiki_spike.applications.unified_db_postgres_capture_authorization_checks import (
+    bind_produced_capture_digests,
+)
 from wiki_spike.applications.unified_db_postgres_capture_authorization_verify import (
     ClaimedUnifiedDbMetadataCaptureAuthorityV1,
     VerifiedUnifiedDbMetadataCaptureAuthorityV1,
@@ -106,6 +109,7 @@ class PostgresMetadataCaptureService:
         files, receipt = _artifact_bytes(
             _CaptureBundle(destination, queries, catalog, identity, plan)
         )
+        bind_produced_capture_digests(claimed.authorization, receipt)
         _write_tree(destination.destination_path, files)
         return receipt
 

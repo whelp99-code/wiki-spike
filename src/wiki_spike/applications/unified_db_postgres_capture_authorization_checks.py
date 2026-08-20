@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Final
 
 from wiki_spike.applications.unified_db_postgres_capture_authorization_types import (
     ExpectedMetadataCaptureDigestsV1,
@@ -21,8 +22,13 @@ from wiki_spike.memory_core.unified_db_postgres_capture_authorization_sign impor
     METADATA_CAPTURE_ONLY_AUTHORIZATION_DOMAIN,
     parse_metadata_capture_envelopes,
 )
+from wiki_spike.memory_core.unified_db_postgres_capture_result import (
+    PostgresMetadataCaptureReceiptV1,
+)
 from wiki_spike.memory_core.unified_db_snapshot_export import UnifiedDbExportError
 from wiki_spike.memory_core.unified_db_snapshot_export_json import decode_json_object
+
+_UNBOUND_ARTIFACT_DIGEST: Final = "0" * 64
 
 
 def bind_expected_digests(
@@ -50,6 +56,28 @@ def bind_expected_digests(
     for name, actual, wanted in pairs:
         if actual != wanted:
             raise InvalidContractValue(f"{name} digest does not match the expected digest")
+
+
+def bind_produced_capture_digests(
+    authorization: UnifiedDbMetadataCaptureOnlyAuthorizationV1,
+    receipt: PostgresMetadataCaptureReceiptV1,
+) -> None:
+    """Refuse 64-zero plan/output digests as wildcards for produced artifacts."""
+    pairs = (
+        (
+            "capture plan",
+            authorization.capture_plan_digest,
+            receipt.capture_plan_digest,
+        ),
+        ("output", authorization.output_digest, receipt.output_digest),
+    )
+    for name, actual, produced in pairs:
+        if actual == produced:
+            continue
+        if actual == _UNBOUND_ARTIFACT_DIGEST:
+            raise InvalidContractValue(
+                f"{name} digest does not match the expected digest"
+            )
 
 
 def bind_trusted_time(
