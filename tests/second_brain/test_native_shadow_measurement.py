@@ -152,6 +152,34 @@ def collector(
     return value, key
 
 
+def signed_sample(
+    collector: NativeShadowMeasurementCollector,
+    key: Ed25519PrivateKey,
+    sample_id: str,
+    source: str,
+    outcome: str = "valid",
+    **measures: bool,
+) -> dict[str, JsonValue]:
+    """Build a sample the collector will accept for its next append."""
+    state = collector._state
+    assert state is not None
+    raw: dict[str, JsonValue] = {
+        "sample_version": "second-brain-native-shadow-sample-v1",
+        "sample_id": sample_id,
+        "source_profile": source,
+        "outcome": outcome,
+        "citation": measures.get("citation", True),
+        "completeness": measures.get("completeness", True),
+        "parity": measures.get("parity", True),
+        "safety_violation": measures.get("safety_violation", False),
+        "cohort_digest": collector.cohort_digest,
+        "previous": state["chain_head"],
+        "sequence": state["sample_count"],
+    }
+    raw["signature"] = key.sign(canonical_ledger_bytes(DOMAIN, raw)).hex()
+    return raw
+
+
 def test_signed_samples_require_real_wall_clock_and_raw_denominators(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

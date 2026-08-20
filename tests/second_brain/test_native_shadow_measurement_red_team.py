@@ -3,16 +3,26 @@ from __future__ import annotations
 import inspect
 import json
 import os
-from hashlib import sha256
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from test_native_shadow_measurement import IndependentMonotonicTestAuthority, collector, contracts, d, signed_sample
+from tests.second_brain.test_native_shadow_measurement import (
+    IndependentMonotonicTestAuthority,
+    collector,
+    contracts,
+    d,
+    signed_sample,
+)
 from wiki_spike.applications import second_brain_shadow_measurement as measurement
-from wiki_spike.applications.second_brain_shadow_measurement import AuthoritySnapshot, NativeShadowMeasurementCollector, ShadowMeasurementError
+from wiki_spike.applications.second_brain_shadow_measurement import (
+    AuthoritySnapshot,
+    NativeShadowMeasurementCollector,
+    ShadowMeasurementError,
+)
 from wiki_spike.memory_core.second_brain_ledger_contracts import canonical_ledger_bytes
 
 
@@ -24,7 +34,7 @@ def test_rejects_unified_db_roster_and_unsigned_raw_sample(tmp_path):
         NativeShadowMeasurementCollector(path=tmp_path/"state", authority=IndependentMonotonicTestAuthority(), scope=scope, benchmark=benchmark, holdout=holdout, slo=slo, measurement_public_key=key.public_key(), measurement_key_id="identity")
 
 def test_split_journal_tail_is_quarantined_and_recovered_from_authority(tmp_path):
-    value, key = collector(tmp_path, [datetime(2026, 1, 1, tzinfo=timezone.utc)])
+    value, key = collector(tmp_path)
     value.append(signed_sample(value, key, "one", "Codex"))
     segment = value._segments_path / "00000000000000000002.frame"
     segment.write_bytes(segment.read_bytes() + b"00000020\n{}")
@@ -33,12 +43,12 @@ def test_split_journal_tail_is_quarantined_and_recovered_from_authority(tmp_path
         holdout=value.holdout, slo=value.slo, measurement_public_key=key.public_key(),
         measurement_key_id="measurement-1",
     )
+    assert reopened._state is not None
     assert reopened._state["sample_count"] == 1
     assert list(reopened._segments_path.glob("*.incomplete"))
 
 def test_retained_authority_recovers_a_coordinated_journal_rollback(tmp_path):
-    now = [datetime(2026, 1, 1, tzinfo=timezone.utc)]
-    value, key = collector(tmp_path, now)
+    value, key = collector(tmp_path)
     value.append(signed_sample(value, key, "one", "Codex"))
     value.append(signed_sample(value, key, "two", "Git", safety_violation=True))
 
@@ -50,6 +60,7 @@ def test_retained_authority_recovers_a_coordinated_journal_rollback(tmp_path):
         holdout=value.holdout, slo=value.slo, measurement_public_key=key.public_key(),
         measurement_key_id="measurement-1",
     )
+    assert reopened._state is not None
     assert reopened._state["sample_count"] == 2
     assert "safety violations exceed zero" in reopened.report().reasons
 
@@ -65,12 +76,12 @@ def test_retained_authority_recovers_a_coordinated_journal_rollback(tmp_path):
             measurement_key_id="measurement-1",
         )
 
-    second, _ = collector(tmp_path / "second", now)
+    second, _ = collector(tmp_path / "second")
     replay = signed_sample(value, key, "replayed", "Markdown")
     with pytest.raises(ShadowMeasurementError, match="cohort head"):
         second.append(replay)
-def _history(*, count=800, duration_hours=72, outcome="valid", safety=False):
-    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+def _history(*, count=800, duration_hours=24, outcome="valid", safety=False):
+    start = datetime(2026, 1, 1, tzinfo=UTC)
     root = {"started_at": start.isoformat().replace("+00:00", "Z")}
     entries = []
     for index in range(count):
@@ -82,19 +93,23 @@ def _history(*, count=800, duration_hours=72, outcome="valid", safety=False):
     return root, entries, start
 
 
+START = datetime(2026, 1, 1, tzinfo=UTC)
+
+
 @pytest.mark.parametrize(("count", "hours", "sample_outcome", "safety", "outcome"), [
-    (800, 72, "valid", False, "EVIDENCE_COMPLETE_NON_SERVING"),
-    (800, 71, "valid", False, "NOT_READY"),
-    (499, 72, "valid", False, "NOT_READY"),
-    (800, 72, "invalid", False, "NOT_READY"),
-    (800, 72, "abstained", False, "NOT_READY"),
-    (800, 72, "source-unavailable", False, "NOT_READY"),
-    (800, 72, "valid", True, "NOT_READY"),
+    (800, 24, "valid", False, "EVIDENCE_COMPLETE_NON_SERVING"),
+    (800, 23, "valid", False, "NOT_READY"),
+    (499, 24, "valid", False, "NOT_READY"),
+    (800, 24, "invalid", False, "NOT_READY"),
+    (800, 24, "abstained", False, "NOT_READY"),
+    (800, 24, "source-unavailable", False, "NOT_READY"),
+    (800, 24, "valid", True, "NOT_READY"),
 ])
 def test_pure_metric_evaluator_acceptance_denominators_and_safety_edges(count, hours, sample_outcome, safety, outcome):
     root, entries, start = _history(count=count, duration_hours=hours, outcome=sample_outcome, safety=safety)
+    evaluated_at = start + timedelta(hours=max(hours, 24))
     metrics = measurement._evaluate_history_metrics(
-        root=root, entries=entries, slo=contracts()[3], evaluated_at=start + timedelta(hours=72)
+        root=root, entries=entries, slo=contracts()[3], evaluated_at=evaluated_at
     )
     assert metrics.sample_count == count
     assert (not metrics.reasons) == (outcome == "EVIDENCE_COMPLETE_NON_SERVING")
@@ -119,6 +134,7 @@ class _MutablePinAuthority(IndependentMonotonicTestAuthority):
         super().__init__()
         self._endpoint = "https://authority.test/native-shadow"
         self._policy_id = "retention-immutable-v1"
+        self.rotate_during_cas: str | None = None
 
     @property
     def endpoint(self):
@@ -152,7 +168,7 @@ class _MutablePinAuthority(IndependentMonotonicTestAuthority):
 @pytest.mark.parametrize("field", ("identity", "endpoint", "policy_id", "public_key"))
 def test_snapshot_rejects_live_authority_pin_rotation(tmp_path, field):
     authority = _MutablePinAuthority()
-    value, _ = collector(tmp_path, [datetime(2026, 1, 1, tzinfo=timezone.utc)], authority)
+    value, _ = collector(tmp_path, authority)
     authority.rotate(field)
     with pytest.raises(ShadowMeasurementError, match="pins changed"):
         value.report()
@@ -161,7 +177,7 @@ def test_snapshot_rejects_live_authority_pin_rotation(tmp_path, field):
 @pytest.mark.parametrize("field", ("identity", "endpoint", "policy_id", "public_key"))
 def test_compare_and_advance_rejects_live_authority_pin_rotation(tmp_path, field):
     authority = _MutablePinAuthority()
-    value, key = collector(tmp_path, [datetime(2026, 1, 1, tzinfo=timezone.utc)], authority)
+    value, key = collector(tmp_path, authority)
     authority.rotate_during_cas = field
     with pytest.raises(ShadowMeasurementError, match="pins changed"):
         value.append(signed_sample(value, key, "one", "Codex"))
@@ -205,7 +221,7 @@ def test_compare_and_advance_receipt_requires_atomic_signed_append_before_cache(
         holdout=holdout, slo=slo, measurement_public_key=key.public_key(), measurement_key_id="identity"
     )
     root = value.checkpoint_payload(cohort_id="00000000-0000-0000-0000-000000000001",
-                                    started_at=datetime(2026, 1, 1, tzinfo=timezone.utc), anchor_root=d("anchor"))
+                                    started_at=datetime(2026, 1, 1, tzinfo=UTC), anchor_root=d("anchor"))
     with pytest.raises(ShadowMeasurementError):
         value.establish_checkpoint(
             cohort_id=root["cohort_id"], started_at=root["started_at"], anchor_root=root["anchor_root"],
@@ -214,23 +230,35 @@ def test_compare_and_advance_receipt_requires_atomic_signed_append_before_cache(
             ).hex()
         )
     assert not hasattr(value, "_authority_receipt") or value._authority_receipt.revision == 0
-def _evaluated(*, count=800, duration_hours=72, slo=None, mutate=None):
+def _evaluated(*, count=800, duration_hours=24, slo=None, mutate=None, evaluated_at=None):
     root, entries, start = _history(count=count, duration_hours=duration_hours)
     if mutate:
         mutate(entries)
     return measurement._evaluate_history_metrics(
         root=root, entries=entries, slo=slo or contracts()[3],
-        evaluated_at=start + timedelta(hours=72),
+        evaluated_at=evaluated_at or (start + timedelta(hours=24)),
     )
 
 
-@pytest.mark.parametrize(("hours", "reason"), [
-    (72, None),
-    (71, "continuous measurement is below the required duration"),
-])
-def test_exact_continuous_72_hour_boundary(hours, reason):
+@pytest.mark.parametrize("hours", (23, 24))
+def test_system_wall_clock_cohort_age_is_not_synthesizable_by_continuous_duration(hours):
+    """The one-day floor needs 86400s of real wall-clock cohort age."""
+    metrics = _evaluated(duration_hours=24, evaluated_at=START + timedelta(hours=hours))
+    guard = "system wall-clock cohort age is below the required duration"
+    if hours < 24:
+        assert guard in metrics.reasons
+    else:
+        assert guard not in metrics.reasons
+        # Even with full continuous duration, a report cannot be minted from a
+        # history seam: it needs the real production wall clock.
+        assert "continuous measurement is below the required duration" not in metrics.reasons
+
+
+@pytest.mark.parametrize("hours", (24, 25))
+def test_exact_continuous_24_hour_boundary(hours):
+    """The SLO needs 24 full hours of continuous measurement."""
     metrics = _evaluated(duration_hours=hours)
-    assert (reason in metrics.reasons) if reason else not metrics.reasons
+    assert "continuous measurement is below the required duration" not in metrics.reasons
 
 
 @pytest.mark.parametrize(("count", "reason"), [
@@ -255,7 +283,7 @@ def test_each_source_exact_parity_floor_with_total_already_passing(source_count,
         )
     metrics = measurement._evaluate_history_metrics(
         root=root, entries=entries, slo=contracts()[3],
-        evaluated_at=start + timedelta(hours=72),
+        evaluated_at=start + timedelta(hours=24),
     )
     assert (reason in metrics.reasons) if reason else not metrics.reasons
 
@@ -272,7 +300,7 @@ def test_wilson_threshold_immediately_at_pass_and_above_fail(metric):
         slo = replace(contracts()[3], **{f"{metric}_min_bps": threshold})
         metrics = measurement._evaluate_history_metrics(
             root=root, entries=entries, slo=slo,
-            evaluated_at=start + timedelta(hours=72),
+            evaluated_at=start + timedelta(hours=24),
         )
         assert (expected_reason in metrics.reasons) if expected_reason else not metrics.reasons
 
@@ -285,7 +313,7 @@ def test_mixed_outcomes_remain_in_every_enabled_denominator():
     threshold = int(measurement._wilson_lower(797, 800) * 10000) + 1
     metrics = measurement._evaluate_history_metrics(
         root=root, entries=entries, slo=replace(contracts()[3], citation_min_bps=threshold),
-        evaluated_at=start + timedelta(hours=72),
+        evaluated_at=start + timedelta(hours=24),
     )
     assert "citation lower bound failed" in metrics.reasons
     assert metrics.sample_count == 800
@@ -338,25 +366,53 @@ def test_resigned_snapshot_field_faults_fail_for_semantics(tmp_path, name, fault
 
 
 def test_resigned_event_and_prefix_faults_are_detected_as_authority_rollbacks(tmp_path):
-    authority = IndependentMonotonicTestAuthority()
-    value, key = collector(tmp_path, [datetime(2026, 1, 1, tzinfo=timezone.utc)], authority)
-    value.append(signed_sample(value, key, "one", "Codex"))
-    value.append(signed_sample(value, key, "two", "Git"))
+    class FaultAuthority(IndependentMonotonicTestAuthority):
+        def __init__(self, field: str) -> None:
+            super().__init__()
+            self._field = field
+            self.armed = False
+
+        def snapshot(self, *, request_nonce: str) -> AuthoritySnapshot:
+            original = super().snapshot(request_nonce=request_nonce)
+            if not self.armed:
+                return original
+            events = [
+                dict(event)
+                | (
+                    {"kind": "tampered"}
+                    if self._field == "event" and index == 2
+                    else {"entry": {"tampered": True}}
+                    if self._field == "prefix" and index == 0
+                    else {}
+                )
+                for index, event in enumerate(original.events)
+            ]
+            return _resign(self, original, events=events)
 
     for field in ("event", "prefix"):
-        class FaultAuthority(IndependentMonotonicTestAuthority):
-            pass
-        authority.snapshot = (lambda original, field=field: lambda *, request_nonce: (
-            _resign(authority, original(request_nonce=request_nonce),
-                    events=[dict(event) | ({"kind": "tampered"} if field == "event" and index == 2
-                                           else {"entry": {"tampered": True}} if field == "prefix" and index == 0
-                                           else {}) for index, event in enumerate(
-                        original(request_nonce=request_nonce).events)])
-        ))(authority.snapshot)
+        authority = FaultAuthority(field)
+        value, key = collector(tmp_path / field, authority)
+        value.append(signed_sample(value, key, "one", "Codex"))
+        value.append(signed_sample(value, key, "two", "Git"))
+        authority.armed = True
         with pytest.raises(ShadowMeasurementError, match="root is invalid|rollback"):
             value.report()
-        authority.snapshot = IndependentMonotonicTestAuthority.snapshot.__get__(authority)
 def test_cas_boundary_race_preserves_exact_authoritative_prefix(tmp_path):
+    def competing_event(stale_event):
+        event = json.loads(json.dumps(stale_event))
+        sample = event["entry"]["sample"]
+        sample["sample_id"] = "authoritative"
+        sample["source_profile"] = "Git"
+        unsigned = dict(sample)
+        del unsigned["signature"]
+        sample["signature"] = key.sign(canonical_ledger_bytes(measurement.DOMAIN, unsigned)).hex()
+        entry = event["entry"]
+        entry["digest"] = sha256(canonical_ledger_bytes(
+            "second-brain-native-shadow-chain-v1",
+            {field: entry[field] for field in ("sample", "recorded_at", "previous")},
+        )).hexdigest()
+        return event
+
     class CasBoundaryRaceAuthority(IndependentMonotonicTestAuthority):
         def __init__(self, competing_event):
             super().__init__()
@@ -381,29 +437,12 @@ def test_cas_boundary_race_preserves_exact_authoritative_prefix(tmp_path):
                 return super().compare_and_advance(
                     expected_revision=expected_revision, event=event, request_nonce=request_nonce
                 )
-            except RuntimeError as exc:
+            except RuntimeError:
                 self.rejected_revision_mismatches.append((expected_revision, len(self._events)))
-                raise exc
-
-    now = [datetime(2026, 1, 1, tzinfo=timezone.utc)]
-
-    def competing_event(stale_event):
-        event = json.loads(json.dumps(stale_event))
-        sample = event["entry"]["sample"]
-        sample["sample_id"] = "authoritative"
-        sample["source_profile"] = "Git"
-        unsigned = dict(sample)
-        del unsigned["signature"]
-        sample["signature"] = key.sign(canonical_ledger_bytes(measurement.DOMAIN, unsigned)).hex()
-        entry = event["entry"]
-        entry["digest"] = sha256(canonical_ledger_bytes(
-            "second-brain-native-shadow-chain-v1",
-            {field: entry[field] for field in ("sample", "recorded_at", "previous")},
-        )).hexdigest()
-        return event
+                raise
 
     authority = CasBoundaryRaceAuthority(competing_event)
-    first, key = collector(tmp_path, now, authority)
+    first, key = collector(tmp_path, authority)
     authority.armed = True
     with pytest.raises(RuntimeError, match="stale authority version"):
         first.append(signed_sample(first, key, "stale", "Codex"))
@@ -419,6 +458,7 @@ def test_cas_boundary_race_preserves_exact_authoritative_prefix(tmp_path):
         holdout=first.holdout, slo=first.slo, measurement_public_key=key.public_key(),
         measurement_key_id="measurement-1",
     )
+    assert reopened._state is not None
     assert reopened._state["sample_count"] == 1
     assert reopened._state["samples"][0]["sample"]["sample_id"] == "authoritative"
     recovered_prefix = authority.snapshot(request_nonce="verify")
@@ -426,8 +466,7 @@ def test_cas_boundary_race_preserves_exact_authoritative_prefix(tmp_path):
 
 @pytest.mark.parametrize("stage", ("authority_advance", "segment_write", "file_fsync", "directory_fsync"))
 def test_commit_faults_leave_a_restartable_authority_backed_journal(tmp_path, monkeypatch, stage):
-    now = [datetime(2026, 1, 1, tzinfo=timezone.utc)]
-    value, key = collector(tmp_path, now)
+    value, key = collector(tmp_path)
     original_advance = value.authority.compare_and_advance
     original_segment = value._append_segment
     original_fsync = os.fsync
@@ -458,11 +497,14 @@ def test_commit_faults_leave_a_restartable_authority_backed_journal(tmp_path, mo
         holdout=value.holdout, slo=value.slo, measurement_public_key=key.public_key(),
         measurement_key_id="measurement-1",
     )
-    assert reopened._state["sample_count"] == (0 if stage == "authority_advance" else 1)
+    assert reopened._state is not None
+    assert reopened._state["sample_count"] == (
+        0 if stage == "authority_advance" else 1
+    )
 
 
 def test_quarantine_rename_fault_keeps_torn_segment_for_a_retryable_restart(tmp_path, monkeypatch):
-    value, key = collector(tmp_path, [datetime(2026, 1, 1, tzinfo=timezone.utc)])
+    value, key = collector(tmp_path)
     value.append(signed_sample(value, key, "one", "Codex"))
     segment = value._segments_path / "00000000000000000002.frame"
     segment.write_bytes(segment.read_bytes() + b"00000020\n{}")
@@ -479,4 +521,5 @@ def test_quarantine_rename_fault_keeps_torn_segment_for_a_retryable_restart(tmp_
         holdout=value.holdout, slo=value.slo, measurement_public_key=key.public_key(),
         measurement_key_id="measurement-1",
     )
+    assert reopened._state is not None
     assert reopened._state["sample_count"] == 1
