@@ -7,19 +7,22 @@ from pathlib import Path
 import pytest
 
 from tests.second_brain.mac_production_status_support import (
+    bomb as _bomb,
+)
+from tests.second_brain.mac_production_status_support import (
+    bomb_storage as _bomb_storage,
+)
+from tests.second_brain.mac_production_status_support import (
+    isolate_home as _isolate_home,
+)
+from tests.second_brain.mac_production_status_support import (
+    marked_root as _marked_root,
+)
+from tests.second_brain.mac_production_status_support import (
     passwd_lookup,
     tree_snapshot,
 )
 from wiki_spike.composition.mac_production import main
-from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore
-from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase
-from wiki_spike.infrastructure.macos_keychain import MacOSKeychainKeyStore
-from wiki_spike.infrastructure.macos_keychain_backend import SecurityCliKeychainBackend
-from wiki_spike.workspace_format import (
-    WORKSPACE_FORMAT_FILENAME,
-    ProfileSelection,
-    WorkspaceFormatMarker,
-)
 
 AUTHORITY_REQUIRED_TOKEN = "authority is required"
 SIGNED_AUTHORITY_ABSENT_TOKEN = "signed authority is absent"
@@ -29,18 +32,6 @@ STORAGE_DIR_NAMES = frozenset({"cas", "keychain", "keychains", "objects", "tombs
 STORAGE_SUFFIXES = frozenset({".db", ".sqlite", ".sqlite3"})
 
 
-def _marked_root(tmp_path: Path) -> Path:
-    root = tmp_path / "mac-root"
-    root.mkdir()
-    marker = WorkspaceFormatMarker.create(
-        workspace_id="mac-root",
-        profile_selection=ProfileSelection.FIELD_AEAD,
-        encrypted_lifecycle_enabled=True,
-    )
-    _ = (root / WORKSPACE_FORMAT_FILENAME).write_bytes(marker.canonical_bytes())
-    return root
-
-
 def _storage_paths(root: Path) -> list[str]:
     found: list[str] = []
     for path in root.rglob("*"):
@@ -48,27 +39,6 @@ def _storage_paths(root: Path) -> list[str]:
         if name in STORAGE_DIR_NAMES or Path(name).suffix.lower() in STORAGE_SUFFIXES:
             found.append(path.relative_to(root).as_posix())
     return found
-
-
-def _bomb(*_args: str | bytes | Path, **_kwargs: str | bytes | Path) -> None:
-    raise AssertionError("Mac status must refuse before constructing storage")
-
-
-def _isolate_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setattr("pwd.getpwuid", passwd_lookup(home))
-
-
-def _bomb_storage(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(LifecycleDatabase, "__init__", _bomb)
-    monkeypatch.setattr(EncryptedContentStore, "__init__", _bomb)
-    monkeypatch.setattr(MacOSKeychainKeyStore, "__init__", _bomb)
-    monkeypatch.setattr(SecurityCliKeychainBackend, "_run", _bomb)
-    monkeypatch.setattr(SecurityCliKeychainBackend, "add", _bomb)
-    monkeypatch.setattr(SecurityCliKeychainBackend, "read", _bomb)
-    monkeypatch.setattr(SecurityCliKeychainBackend, "delete", _bomb)
 
 
 def test_status_exits_with_authority_required_when_marker_only_root_has_no_authority(
@@ -136,6 +106,13 @@ def test_status_leaves_passwd_home_application_support_uncreated_when_unauthoriz
     assert tree_snapshot(passwd_home) == before_passwd
     assert tree_snapshot(env_home) == before_env
     assert not (passwd_home / "Library").exists()
+    assert not (
+        passwd_home
+        / "Library"
+        / "Application Support"
+        / "wiki-spike"
+        / "second-brain-v1"
+    ).exists()
 
 
 def test_status_ignores_home_env_when_unauthorized(
