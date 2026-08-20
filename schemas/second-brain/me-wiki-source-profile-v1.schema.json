@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/me-wiki-source-profile-v1.schema.json",
+  "title": "Second Brain me-wiki Source Profile V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "profile_version",
+    "source_name",
+    "source_root",
+    "discovery_manifest_digest",
+    "identity_mapping",
+    "revision_mapping",
+    "watermark_mapping",
+    "row_order",
+    "overlap_policy",
+    "restart_policy",
+    "pagination",
+    "retention_hours",
+    "deletion_policy",
+    "history_policy",
+    "body_reads",
+    "source_mutation",
+    "import_requested",
+    "serve_requested",
+    "promote_requested",
+    "git_head",
+    "tracked_tree",
+    "tracked_tree_digest",
+    "tracked_count",
+    "fixture_digest",
+    "profile_digest"
+  ],
+  "properties": {
+    "profile_version": {
+      "const": "second-brain-me-wiki-source-profile-v1"
+    },
+    "source_name": {
+      "const": "me-wiki"
+    },
+    "source_root": {
+      "const": "/Volumes/DevSpace/me-wiki"
+    },
+    "discovery_manifest_digest": {
+      "const": "aaf942e7700d6d728cc0bd5f1c9ffcf934dd9900f8130caee25b2743faa2dba8"
+    },
+    "identity_mapping": {
+      "const": "ROOT_RELATIVE_POSIX_PATH"
+    },
+    "revision_mapping": {
+      "const": "GIT_BLOB_OID"
+    },
+    "watermark_mapping": {
+      "const": "GIT_HEAD_PLUS_MTIME_NS"
+    },
+    "row_order": {
+      "const": "LEXICAL_CURSOR_ORDER"
+    },
+    "overlap_policy": {
+      "const": "INCLUSIVE_PREVIOUS_WATERMARK"
+    },
+    "restart_policy": {
+      "const": "REPLAY_AND_DEDUPE"
+    },
+    "pagination": {
+      "const": "CANONICAL_DECIMAL_PAGINATION"
+    },
+    "retention_hours": {
+      "const": "2160"
+    },
+    "deletion_policy": {
+      "const": "GIT_DIFF_TOMBSTONE"
+    },
+    "history_policy": {
+      "const": "GIT_OBJECT_HISTORY_RETAINED"
+    },
+    "body_reads": {
+      "const": "0"
+    },
+    "source_mutation": {
+      "const": false
+    },
+    "import_requested": {
+      "const": false
+    },
+    "serve_requested": {
+      "const": false
+    },
+    "promote_requested": {
+      "const": false
+    },
+    "git_head": {
+      "$ref": "#/$defs/sha1"
+    },
+    "tracked_tree": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/trackedRow"
+      }
+    },
+    "tracked_tree_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "tracked_count": {
+      "$ref": "#/$defs/canonicalDecimal"
+    },
+    "fixture_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "profile_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "canonicalDecimal": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$"
+    },
+    "sha1": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "trackedRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "oid", "stage", "relative_path"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "pattern": "^[0-7]{6}$"
+        },
+        "oid": {
+          "$ref": "#/$defs/sha1"
+        },
+        "stage": {
+          "$ref": "#/$defs/canonicalDecimal"
+        },
+        "relative_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?($|/))(?!.*\\\\).+$"
+        }
+      }
+    }
+  }
+}
