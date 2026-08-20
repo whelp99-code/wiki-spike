@@ -269,6 +269,25 @@ def test_status_denies_mixed_root_without_writes(
     assert _storage_paths(tmp_path) == ["mac-root/control.sqlite"]
 
 
+def test_status_denies_mixed_marker_plus_extra_file_without_writes_or_constructors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _isolate_home(tmp_path, monkeypatch)
+    root = _marked_root(tmp_path)
+    _ = (root / "extra").write_bytes(b"foreign extra")
+    _bomb_storage(monkeypatch)
+    before = _tree_snapshot(tmp_path)
+
+    code = main(["--root", str(root), "status"])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "workspace root denied: mixed" in captured.err
+    assert _tree_snapshot(tmp_path) == before
+
+
 def test_mac_production_does_not_import_storage_or_network_constructors() -> None:
     imported = _imported(COMPOSITION)
     assert BANNED_IMPORTS.isdisjoint(imported), sorted(imported & BANNED_IMPORTS)
