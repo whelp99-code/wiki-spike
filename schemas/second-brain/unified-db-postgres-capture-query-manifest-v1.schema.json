@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/unified-db-postgres-capture-query-manifest-v1.schema.json",
+  "title": "Second Brain Unified-DB PostgreSQL Capture Query Manifest V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["manifest_version", "queries", "manifest_digest"],
+  "properties": {
+    "manifest_version": {
+      "const": "second-brain-unified-db-postgres-capture-query-manifest-v1"
+    },
+    "queries": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "prefixItems": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["query_kind", "sql"],
+          "properties": {
+            "query_kind": { "const": "system_identifier" },
+            "sql": {
+              "const": "SELECT system_identifier FROM pg_catalog.pg_control_system()"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["query_kind", "sql"],
+          "properties": {
+            "query_kind": { "const": "database_oid" },
+            "sql": {
+              "const": "SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database()"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["query_kind", "sql"],
+          "properties": {
+            "query_kind": { "const": "server_version_num" },
+            "sql": { "const": "SHOW server_version_num" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["query_kind", "sql"],
+          "properties": {
+            "query_kind": { "const": "schemas" },
+            "sql": {
+              "const": "SELECT nspname, oid FROM pg_catalog.pg_namespace ORDER BY nspname, oid"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["query_kind", "sql"],
+          "properties": {
+            "query_kind": { "const": "tables" },
+            "sql": {
+              "const": "SELECT n.nspname, c.relname, c.oid, c.relkind FROM pg_catalog.pg_class AS c INNER JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace WHERE c.relkind = 'r' ORDER BY n.nspname, c.relname, c.oid"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["query_kind", "sql"],
+          "properties": {
+            "query_kind": { "const": "columns" },
+            "sql": {
+              "const": "SELECT n.nspname, c.relname, a.attname, a.attnum, t.typname, a.attnotnull FROM pg_catalog.pg_attribute AS a INNER JOIN pg_catalog.pg_class AS c ON c.oid = a.attrelid INNER JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace INNER JOIN pg_catalog.pg_type AS t ON t.oid = a.atttypid WHERE c.relkind = 'r' AND a.attnum > 0 AND a.attisdropped = false ORDER BY n.nspname, c.relname, a.attnum, a.attname"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["query_kind", "sql"],
+          "properties": {
+            "query_kind": { "const": "constraints" },
+            "sql": {
+              "const": "SELECT n.nspname, c.relname, x.conname, x.contype FROM pg_catalog.pg_constraint AS x INNER JOIN pg_catalog.pg_class AS c ON c.oid = x.conrelid INNER JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace ORDER BY n.nspname, c.relname, x.conname"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["query_kind", "sql"],
+          "properties": {
+            "query_kind": { "const": "indexes" },
+            "sql": {
+              "const": "SELECT n.nspname, c.relname, i.relname, x.indisunique FROM pg_catalog.pg_index AS x INNER JOIN pg_catalog.pg_class AS c ON c.oid = x.indrelid INNER JOIN pg_catalog.pg_class AS i ON i.oid = x.indexrelid INNER JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace ORDER BY n.nspname, c.relname, i.relname"
+            }
+          }
+        }
+      ],
+      "items": false
+    },
+    "manifest_digest": {
+      "const": "648ee2cdf9f10257d62744b39971ea528093e17515845b07e4286ed31555c4fb"
+    }
+  }
+}

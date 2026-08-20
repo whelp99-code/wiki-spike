@@ -1,12 +1,13 @@
 """Public inspect/verify/preflight for body-free live-export contracts."""
 from __future__ import annotations
 
+import argparse
 import datetime
 import json
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Final
+from typing import Final, Protocol
 
 from wiki_spike.applications.unified_db_live_export_preflight import (
     preflight_live_export,
@@ -51,6 +52,10 @@ INSPECT_KINDS: Final = (
 )
 
 
+class SubparserRegistrar(Protocol):
+    def add_parser(self, name: str, *, help: str = ...) -> argparse.ArgumentParser: ...
+
+
 class LiveExportInspectKind(StrEnum):
     IDENTITY = "identity"
     MAPPING = "mapping"
@@ -77,8 +82,26 @@ def is_live_contract_command(command: str) -> bool:
     return command in LIVE_CONTRACT_COMMANDS
 
 
+def register_live_parsers(sub: SubparserRegistrar) -> None:
+    inspect = sub.add_parser("live-inspect", help="inspect a body-free live-export contract")
+    _ = inspect.add_argument("--kind", required=True, choices=INSPECT_KINDS)
+    _ = inspect.add_argument("--input", dest="input_path", required=True, type=Path)
+    live_verify = sub.add_parser("live-verify", help="verify live-export contract bindings")
+    live_preflight = sub.add_parser(
+        "live-preflight", help="preflight live export against the empty production registry"
+    )
+    for live in (live_verify, live_preflight):
+        _ = live.add_argument("--plan", required=True, type=Path)
+        _ = live.add_argument("--identity", required=True, type=Path)
+        _ = live.add_argument("--mapping", required=True, type=Path)
+        _ = live.add_argument("--adapter", required=True, type=Path)
+        _ = live.add_argument("--destination", required=True, type=Path)
+        _ = live.add_argument("--quiescence", required=True, type=Path)
+        _ = live.add_argument("--authorization", required=True, type=Path)
+
+
 def run_live_contract_command(command: str, paths: LiveExportCliPaths) -> int:
-    match command:
+    match command:  # noqa: MATCH_OK
         case "live-inspect":
             return inspect_live_contract(paths.kind, paths.input_path)
         case "live-verify":
@@ -132,7 +155,7 @@ def _load(path: Path) -> dict[str, JsonValue]:
 
 
 def _inspect_kind(raw: str) -> LiveExportInspectKind:
-    match raw:
+    match raw:  # noqa: MATCH_OK
         case "identity":
             return LiveExportInspectKind.IDENTITY
         case "mapping":
@@ -150,7 +173,7 @@ def _inspect_kind(raw: str) -> LiveExportInspectKind:
 
 
 def _parse_kind(kind: LiveExportInspectKind, data: dict[str, JsonValue]) -> dict[str, JsonValue]:
-    match kind:
+    match kind:  # noqa: MATCH_OK
         case LiveExportInspectKind.IDENTITY:
             return PostgresIdentityReceiptV1.from_mapping(data).to_mapping()
         case LiveExportInspectKind.MAPPING:

@@ -1,0 +1,15 @@
+{
+  "approved_mapping_count": "0",
+  "application_row_query": false,
+  "body_present": false,
+  "dsn_read": false,
+  "evidence_version": "second-brain-unified-db-postgres-capture-conformance-v1",
+  "import_invoked": false,
+  "live_export_authorized": false,
+  "owner_approval_present": false,
+  "private_key_material": false,
+  "production_mapper_created": false,
+  "query_override": false,
+  "serving_promotion": false,
+  "source_mutation": false
+}

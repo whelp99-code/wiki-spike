@@ -45,6 +45,50 @@ def is_authority_command(command: str) -> bool:
     return command in AUTHORITY_COMMANDS
 
 
+@dataclass(frozen=True, slots=True)
+class AuthorityCliPaths:
+    body: Path
+    out: Path
+    signing_bytes: Path
+    role: str
+    key_id: str
+    public_key: Path
+    signature: Path | list[str] | None
+
+
+def _signature_paths(value: Path | list[str] | None) -> tuple[str, ...]:
+    if isinstance(value, list) and value:
+        return tuple(value)
+    if isinstance(value, Path):
+        return (str(value),)
+    raise UnifiedDbExportError("signature is required")
+
+
+def run_authority_command(command: str, paths: AuthorityCliPaths) -> int:
+    match command:  # noqa: MATCH_OK
+        case "authority-signing-bytes":
+            return emit_authority_signing_bytes(paths.body, paths.out)
+        case "authority-inspect":
+            return inspect_authority_signing_bytes(paths.signing_bytes)
+        case "authority-envelope":
+            signature = paths.signature
+            if not isinstance(signature, Path):
+                raise UnifiedDbExportError("signature must be a public file")
+            return wrap_authority_envelope(
+                PublicEnvelopeFiles(paths.role, paths.key_id, paths.public_key, signature)
+            )
+        case "authority-assemble":
+            return assemble_authority_envelopes(
+                paths.body, _signature_paths(paths.signature), paths.out
+            )
+        case "authority-verify":
+            return verify_authority_envelopes(
+                paths.body, _signature_paths(paths.signature)
+            )
+        case _ as unreachable:
+            raise UnifiedDbExportError(f"unknown authority command: {unreachable}")
+
+
 def _load_body(path: Path) -> dict[str, JsonValue]:
     parsed = decode_json_object(read_bounded_path(path, HARD_CAP).decode("utf-8"))
     _ = UnifiedDbExportOnlyAuthorizationV1.from_mapping(parsed)

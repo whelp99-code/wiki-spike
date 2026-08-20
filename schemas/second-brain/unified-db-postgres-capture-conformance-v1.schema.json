@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/unified-db-postgres-capture-conformance-v1.schema.json",
+  "title": "Second Brain Unified-DB PostgreSQL Capture Conformance V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "approved_mapping_count",
+    "application_row_query",
+    "body_present",
+    "dsn_read",
+    "evidence_version",
+    "import_invoked",
+    "live_export_authorized",
+    "owner_approval_present",
+    "private_key_material",
+    "production_mapper_created",
+    "query_override",
+    "serving_promotion",
+    "source_mutation"
+  ],
+  "properties": {
+    "evidence_version": {
+      "const": "second-brain-unified-db-postgres-capture-conformance-v1"
+    },
+    "approved_mapping_count": {
+      "const": "0"
+    },
+    "application_row_query": {
+      "const": false
+    },
+    "body_present": {
+      "const": false
+    },
+    "dsn_read": {
+      "const": false
+    },
+    "import_invoked": {
+      "const": false
+    },
+    "live_export_authorized": {
+      "const": false
+    },
+    "owner_approval_present": {
+      "const": false
+    },
+    "private_key_material": {
+      "const": false
+    },
+    "production_mapper_created": {
+      "const": false
+    },
+    "query_override": {
+      "const": false
+    },
+    "serving_promotion": {
+      "const": false
+    },
+    "source_mutation": {
+      "const": false
+    }
+  }
+}

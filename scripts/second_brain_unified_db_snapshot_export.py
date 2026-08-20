@@ -50,6 +50,8 @@ class _Arguments(argparse.Namespace):
     destination: Path = Path()
     quiescence: Path = Path()
     authorization: Path = Path()
+    catalog: Path = Path()
+    query_manifest: Path = Path()
 
 
 def _load_json(path: Path) -> dict[str, JsonValue]:
@@ -96,69 +98,16 @@ def _arguments() -> _Arguments:
     auth_verify = sub.add_parser("authority-verify", help="verify public export-only envelopes")
     _ = auth_verify.add_argument("--body", required=True, type=Path)
     _ = auth_verify.add_argument("--signature", action="append", required=True)
-    from wiki_spike.applications.unified_db_live_export_cli import INSPECT_KINDS
-
-    inspect = sub.add_parser("live-inspect", help="inspect a body-free live-export contract")
-    _ = inspect.add_argument("--kind", required=True, choices=INSPECT_KINDS)
-    _ = inspect.add_argument("--input", dest="input_path", required=True, type=Path)
-    live_verify = sub.add_parser("live-verify", help="verify live-export contract bindings")
-    live_preflight = sub.add_parser(
-        "live-preflight", help="preflight live export against the empty production registry"
+    from wiki_spike.applications.unified_db_live_export_cli import register_live_parsers
+    from wiki_spike.applications.unified_db_postgres_capture_cli import (
+        register_capture_parsers,
     )
-    for live in (live_verify, live_preflight):
-        _ = live.add_argument("--plan", required=True, type=Path)
-        _ = live.add_argument("--identity", required=True, type=Path)
-        _ = live.add_argument("--mapping", required=True, type=Path)
-        _ = live.add_argument("--adapter", required=True, type=Path)
-        _ = live.add_argument("--destination", required=True, type=Path)
-        _ = live.add_argument("--quiescence", required=True, type=Path)
-        _ = live.add_argument("--authorization", required=True, type=Path)
+
+    register_live_parsers(sub)
+    register_capture_parsers(sub)
     arguments = _Arguments()
     _ = parser.parse_args(namespace=arguments)
     return arguments
-
-
-def _signature_paths(value: Path | list[str] | None) -> tuple[str, ...]:
-    if isinstance(value, list) and value:
-        return tuple(value)
-    if isinstance(value, Path):
-        return (str(value),)
-    raise UnifiedDbExportCliError("signature is required")
-
-
-def _run_authority(arguments: _Arguments) -> int:
-    from wiki_spike.applications.unified_db_export_authorization_cli import (
-        PublicEnvelopeFiles,
-        assemble_authority_envelopes,
-        emit_authority_signing_bytes,
-        inspect_authority_signing_bytes,
-        verify_authority_envelopes,
-        wrap_authority_envelope,
-    )
-
-    command = arguments.command
-    if command == "authority-signing-bytes":
-        return emit_authority_signing_bytes(arguments.body, arguments.out)
-    if command == "authority-inspect":
-        return inspect_authority_signing_bytes(arguments.signing_bytes)
-    if command == "authority-envelope":
-        signature = arguments.signature
-        if not isinstance(signature, Path):
-            raise UnifiedDbExportCliError("signature must be a public file")
-        return wrap_authority_envelope(
-            PublicEnvelopeFiles(
-                arguments.role, arguments.key_id, arguments.public_key, signature
-            )
-        )
-    if command == "authority-assemble":
-        return assemble_authority_envelopes(
-            arguments.body, _signature_paths(arguments.signature), arguments.out
-        )
-    if command == "authority-verify":
-        return verify_authority_envelopes(
-            arguments.body, _signature_paths(arguments.signature)
-        )
-    raise UnifiedDbExportCliError("unknown authority command")
 
 
 def _sanitized(message: str) -> str:
@@ -192,11 +141,24 @@ def main() -> int:
     arguments = _arguments()
     try:
         from wiki_spike.applications.unified_db_export_authorization_cli import (
+            AuthorityCliPaths,
             is_authority_command,
+            run_authority_command,
         )
 
         if is_authority_command(arguments.command):
-            return _run_authority(arguments)
+            return run_authority_command(
+                arguments.command,
+                AuthorityCliPaths(
+                    arguments.body,
+                    arguments.out,
+                    arguments.signing_bytes,
+                    arguments.role,
+                    arguments.key_id,
+                    arguments.public_key,
+                    arguments.signature,
+                ),
+            )
         from wiki_spike.applications.unified_db_live_export_cli import (
             LiveExportCliPaths,
             is_live_contract_command,
@@ -218,6 +180,21 @@ def main() -> int:
                     arguments.authorization,
                 ),
             )
+        from wiki_spike.applications.unified_db_postgres_capture_cli import (
+            CaptureCliPaths,
+            is_capture_contract_command,
+            run_capture_contract_command,
+        )
+        if is_capture_contract_command(arguments.command):
+            return run_capture_contract_command(arguments.command, CaptureCliPaths(
+                arguments.kind, arguments.input_path, arguments.plan,
+                arguments.identity, arguments.catalog, arguments.query_manifest,
+            ))
+        if arguments.command == "capture":
+            from wiki_spike.composition.unified_db_postgres_capture import (
+                refuse_postgres_identity_capture,
+            )
+            return refuse_postgres_identity_capture(dsn_fd=arguments.dsn_fd)
         if arguments.command == "export":
             from wiki_spike.composition.unified_db_live_export import (
                 refuse_live_unified_db_export,
