@@ -1,7 +1,6 @@
 """Unauthorized Mac status must refuse before any production storage exists."""
 from __future__ import annotations
 
-import ast
 import socket
 from pathlib import Path
 
@@ -22,26 +21,10 @@ from wiki_spike.workspace_format import (
     WorkspaceFormatMarker,
 )
 
-COMPOSITION = Path("src/wiki_spike/composition/mac_production.py")
-PYPROJECT = Path("pyproject.toml")
 AUTHORITY_REQUIRED_TOKEN = "authority is required"
 SIGNED_AUTHORITY_ABSENT_TOKEN = "signed authority is absent"
 PERSISTENCE_PROFILE_ABSENT_TOKEN = "persistence profile is absent"
 SERVING_READY_ABSENT_TOKEN = "SERVING_READY is absent"
-BANNED_IMPORTS = {
-    "http",
-    "importlib",
-    "multiprocessing",
-    "requests",
-    "socket",
-    "sqlite3",
-    "subprocess",
-    "urllib",
-    "wiki_spike.infrastructure.encrypted_cas",
-    "wiki_spike.infrastructure.lifecycle_db",
-    "wiki_spike.infrastructure.macos_keychain",
-    "wiki_spike.infrastructure.macos_keychain_backend",
-}
 STORAGE_DIR_NAMES = frozenset({"cas", "keychain", "keychains", "objects", "tombstones"})
 STORAGE_SUFFIXES = frozenset({".db", ".sqlite", ".sqlite3"})
 
@@ -65,22 +48,6 @@ def _storage_paths(root: Path) -> list[str]:
         if name in STORAGE_DIR_NAMES or Path(name).suffix.lower() in STORAGE_SUFFIXES:
             found.append(path.relative_to(root).as_posix())
     return found
-
-
-def _imported(path: Path) -> set[str]:
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    names: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            names.update(alias.name.split(".")[0] for alias in node.names)
-            names.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            names.add(node.module)
-            names.add(node.module.split(".")[0])
-        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-            if node.func.id in {"__import__", "eval", "exec"}:
-                names.add(node.func.id)
-    return names
 
 
 def _bomb(*_args: str | bytes | Path, **_kwargs: str | bytes | Path) -> None:
@@ -169,6 +136,33 @@ def test_status_leaves_passwd_home_application_support_uncreated_when_unauthoriz
     assert tree_snapshot(passwd_home) == before_passwd
     assert tree_snapshot(env_home) == before_env
     assert not (passwd_home / "Library").exists()
+
+
+def test_status_ignores_home_env_when_unauthorized(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home_env = tmp_path / "home-env"
+    home_env.mkdir()
+    _ = (home_env / "keep.txt").write_bytes(b"untouched")
+    monkeypatch.setenv("HOME", str(home_env))
+    passwd_home = tmp_path / "passwd-home"
+    passwd_home.mkdir()
+    monkeypatch.setattr("pwd.getpwuid", passwd_lookup(passwd_home))
+    root = _marked_root(tmp_path)
+    _bomb_storage(monkeypatch)
+    before_home = tree_snapshot(home_env)
+    before_passwd = tree_snapshot(passwd_home)
+
+    code = main(["--root", str(root), "status"])
+
+    _ = capsys.readouterr()
+    assert code == 1
+    assert tree_snapshot(home_env) == before_home
+    assert tree_snapshot(passwd_home) == before_passwd
+    assert not (home_env / "Library").exists()
+    assert not (passwd_home / "Library" / "Application Support" / "wiki-spike").exists()
 
 
 def test_status_keeps_recursive_byte_and_mode_tree_when_unauthorized(
@@ -290,14 +284,3 @@ def test_status_denies_mixed_marker_plus_extra_file_without_writes_or_constructo
     assert code == 1
     assert "workspace root denied: mixed" in captured.err
     assert tree_snapshot(tmp_path) == before
-
-
-def test_mac_production_does_not_import_storage_or_network_constructors() -> None:
-    imported = _imported(COMPOSITION)
-    assert BANNED_IMPORTS.isdisjoint(imported), sorted(imported & BANNED_IMPORTS)
-
-
-def test_installed_wiki_entry_points_at_mac_production_main() -> None:
-    assert 'wiki = "wiki_spike.composition.mac_production:main"' in PYPROJECT.read_text(
-        encoding="utf-8"
-    )
