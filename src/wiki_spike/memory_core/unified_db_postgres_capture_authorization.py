@@ -11,6 +11,9 @@ from .errors import InvalidContractValue, UnsupportedContractVersion
 from .second_brain_ledger_contracts import canonical_ledger_digest
 from .snapshot_import_parse import parse_digest, parse_string, strict_fields
 from .unified_db_export_authorization import parse_authorization_id, parse_utc
+from .unified_db_postgres_capture_destination import (
+    PostgresMetadataCaptureDestinationV1,
+)
 from .unified_db_snapshot_export import parse_const, parse_false
 
 AUTHORIZATION_VERSION: Final = (
@@ -33,6 +36,7 @@ _FIELDS: Final = frozenset(
         "query_manifest_digest",
         "capture_plan_digest",
         "output_digest",
+        "destination",
         "max_captures",
         "application_row_allowed",
         "source_body_read_allowed",
@@ -63,6 +67,7 @@ class UnifiedDbMetadataCaptureOnlyAuthorizationV1:
     query_manifest_digest: str
     capture_plan_digest: str
     output_digest: str
+    destination: PostgresMetadataCaptureDestinationV1
     max_captures: str
     application_row_allowed: bool
     source_body_read_allowed: bool
@@ -96,6 +101,9 @@ class UnifiedDbMetadataCaptureOnlyAuthorizationV1:
             raise InvalidContractValue("authorization window is not ordered")
         if expires - issued > MAX_CAPTURE_WINDOW:
             raise InvalidContractValue("authorization window exceeds 15 minutes")
+        raw_destination = data["destination"]
+        if not isinstance(raw_destination, dict):
+            raise InvalidContractValue("destination must be an object")
         parsed = cls(
             version,
             parse_const(data["authorization_kind"], "authorization_kind", AUTHORIZATION_KIND),
@@ -110,6 +118,7 @@ class UnifiedDbMetadataCaptureOnlyAuthorizationV1:
             ),
             parse_digest(data["capture_plan_digest"], "capture_plan_digest"),
             parse_digest(data["output_digest"], "output_digest"),
+            PostgresMetadataCaptureDestinationV1.from_mapping(raw_destination),
             parse_const(data["max_captures"], "max_captures", "1"),
             parse_false(data["application_row_allowed"], "application_row_allowed"),
             parse_false(data["source_body_read_allowed"], "source_body_read_allowed"),
@@ -146,6 +155,7 @@ class UnifiedDbMetadataCaptureOnlyAuthorizationV1:
             "query_manifest_digest": self.query_manifest_digest,
             "capture_plan_digest": self.capture_plan_digest,
             "output_digest": self.output_digest,
+            "destination": self.destination.to_mapping(),
             "max_captures": self.max_captures,
             "application_row_allowed": self.application_row_allowed,
             "source_body_read_allowed": self.source_body_read_allowed,

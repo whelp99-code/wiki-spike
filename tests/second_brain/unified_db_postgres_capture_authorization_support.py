@@ -8,6 +8,9 @@ from pathlib import Path
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
+from tests.second_brain.unified_db_postgres_capture_result_support import (
+    destination_body,
+)
 from wiki_spike.applications.unified_db_postgres_capture_authorization_types import (
     ExpectedMetadataCaptureDigestsV1,
     MetadataCaptureVerifyRequestV1,
@@ -47,6 +50,7 @@ NOW = datetime(2026, 8, 18, 12, 5, tzinfo=UTC)
 QUERY_MANIFEST_DIGEST = CLOSED_QUERY_MANIFEST_DIGEST
 CAPTURE_PLAN_DIGEST = "bb" * 32
 OUTPUT_DIGEST = "cc" * 32
+DESTINATION_DIGEST = str(destination_body()["destination_digest"])
 
 
 def public_b64(key: Ed25519PrivateKey) -> str:
@@ -65,6 +69,7 @@ def authorization_body(**overrides: JsonValue) -> dict[str, JsonValue]:
         "query_manifest_digest": QUERY_MANIFEST_DIGEST,
         "capture_plan_digest": CAPTURE_PLAN_DIGEST,
         "output_digest": OUTPUT_DIGEST,
+        "destination": destination_body(),
         "max_captures": "1",
         "application_row_allowed": False,
         "source_body_read_allowed": False,
@@ -138,6 +143,7 @@ def expected_digests() -> ExpectedMetadataCaptureDigestsV1:
         QUERY_MANIFEST_DIGEST,
         CAPTURE_PLAN_DIGEST,
         OUTPUT_DIGEST,
+        DESTINATION_DIGEST,
     )
 
 

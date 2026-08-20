@@ -16,6 +16,10 @@ from tests.second_brain.unified_db_postgres_capture_authorization_support import
     authorization_body,
     expected_digests,
 )
+from tests.second_brain.unified_db_postgres_capture_result_support import (
+    DESTINATION_PATH,
+    destination_body,
+)
 from wiki_spike.memory_core.contracts import JsonValue, canonical_bytes
 from wiki_spike.memory_core.errors import (
     InvalidContractValue,
@@ -65,6 +69,17 @@ def test_body_binds_metadata_capture_only_identity_and_one_shot_window() -> None
     assert parsed.authorization_digest == parsed.computed_digest()
 
 
+def test_body_binds_embedded_destination() -> None:
+    dest = destination_body()
+    parsed = UnifiedDbMetadataCaptureOnlyAuthorizationV1.from_mapping(
+        authorization_body(destination=dest)
+    )
+    assert parsed.destination.destination_path == DESTINATION_PATH
+    assert parsed.destination.destination_digest == dest["destination_digest"]
+    assert parsed.destination.destination_digest == parsed.destination.computed_digest()
+    assert expected_digests().destination_digest == parsed.destination.destination_digest
+
+
 def test_signing_bytes_are_domain_separated_from_export() -> None:
     body = authorization_body()
     payload = metadata_capture_authorization_signing_bytes(body)
@@ -74,11 +89,18 @@ def test_signing_bytes_are_domain_separated_from_export() -> None:
     )
     assert METADATA_CAPTURE_ONLY_AUTHORIZATION_DOMAIN != EXPORT_ONLY_AUTHORIZATION_DOMAIN
     assert payload == METADATA_CAPTURE_ONLY_AUTHORIZATION_DOMAIN + canonical_bytes(body)
+    destination = body["destination"]
+    assert isinstance(destination, dict)
+    digest = destination["destination_digest"]
+    assert isinstance(digest, str)
+    assert digest.encode("ascii") in payload
     reordered = dict(reversed(list(body.items())))
     assert metadata_capture_authorization_signing_bytes(reordered) == payload
 
 
-@pytest.mark.parametrize("field", ["authorization_id", "nonce", "authorization_digest"])
+@pytest.mark.parametrize(
+    "field", ["authorization_id", "nonce", "authorization_digest", "destination"]
+)
 def test_body_rejects_missing_and_extra_fields(field: str) -> None:
     missing = authorization_body()
     del missing[field]
@@ -87,6 +109,39 @@ def test_body_rejects_missing_and_extra_fields(field: str) -> None:
     extra = authorization_body() | {"extra": "no"}
     with pytest.raises(UnknownContractField):
         _ = UnifiedDbMetadataCaptureOnlyAuthorizationV1.from_mapping(extra)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "captured/out",
+        "./captured",
+        "/captured/../postgres-metadata",
+        "/captured/./out",
+        "/captured/foo/..",
+    ],
+)
+def test_body_refuses_relative_symlink_or_dot_dot_destination(path: str) -> None:
+    with pytest.raises(InvalidContractValue, match="absolute|canonical"):
+        _ = UnifiedDbMetadataCaptureOnlyAuthorizationV1.from_mapping(
+            authorization_body(destination=destination_body(path))
+        )
+
+
+def test_body_refuses_extra_destination_fields() -> None:
+    with pytest.raises(UnknownContractField):
+        _ = UnifiedDbMetadataCaptureOnlyAuthorizationV1.from_mapping(
+            authorization_body(destination=destination_body() | {"extra": "no"})
+        )
+
+
+def test_body_refuses_destination_digest_mismatch() -> None:
+    dest = destination_body()
+    dest["destination_digest"] = "ab" * 32
+    with pytest.raises(InvalidContractValue, match="destination_digest"):
+        _ = UnifiedDbMetadataCaptureOnlyAuthorizationV1.from_mapping(
+            authorization_body(destination=dest)
+        )
 
 
 @pytest.mark.parametrize(
@@ -193,6 +248,9 @@ def test_schema_and_body_free_conformance_use_draft_2020_12() -> None:
     assert evidence.get("production_capture_authorized") is False
     assert "body" not in evidence
     assert _draft_status(SCHEMA, authorization_body() | {"extra": "no"}) != 0
+    assert _draft_status(
+        SCHEMA, authorization_body(destination=destination_body() | {"extra": "no"})
+    ) != 0
     assert _draft_status(CONFORMANCE_SCHEMA, evidence | {"extra": "no"}) != 0
 
 

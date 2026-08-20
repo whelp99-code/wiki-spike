@@ -17,6 +17,7 @@ from tests.second_brain.unified_db_export_authorization_support import (
 )
 from tests.second_brain.unified_db_postgres_capture_authorization_support import (
     CAPTURE_PLAN_DIGEST,
+    DESTINATION_DIGEST,
     NOW,
     OUTPUT_DIGEST,
     QUERY_MANIFEST_DIGEST,
@@ -159,6 +160,7 @@ def test_verifier_rejects_body_or_signature_swap() -> None:
         ("query_manifest_digest", "11" * 32),
         ("capture_plan_digest", "22" * 32),
         ("output_digest", "33" * 32),
+        ("destination_digest", "44" * 32),
     ],
 )
 def test_verifier_rejects_digest_output_or_manifest_swap(
@@ -168,11 +170,13 @@ def test_verifier_rejects_digest_output_or_manifest_swap(
         QUERY_MANIFEST_DIGEST,
         CAPTURE_PLAN_DIGEST,
         OUTPUT_DIGEST,
+        DESTINATION_DIGEST,
     )
     mutated = ExpectedMetadataCaptureDigestsV1(
         value if field == "query_manifest_digest" else expected.query_manifest_digest,
         value if field == "capture_plan_digest" else expected.capture_plan_digest,
         value if field == "output_digest" else expected.output_digest,
+        value if field == "destination_digest" else expected.destination_digest,
     )
     request, nonces = signed_request(expected=mutated)
     with pytest.raises(InvalidContractValue, match="digest"):

@@ -41,6 +41,11 @@ def bind_expected_digests(
             expected.capture_plan_digest,
         ),
         ("output", authorization.output_digest, expected.output_digest),
+        (
+            "destination",
+            authorization.destination.destination_digest,
+            expected.destination_digest,
+        ),
     )
     for name, actual, wanted in pairs:
         if actual != wanted:

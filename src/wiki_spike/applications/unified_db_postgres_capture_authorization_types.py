@@ -15,6 +15,7 @@ class ExpectedMetadataCaptureDigestsV1:
     query_manifest_digest: str
     capture_plan_digest: str
     output_digest: str
+    destination_digest: str
 
 
 @dataclass(frozen=True, slots=True)
