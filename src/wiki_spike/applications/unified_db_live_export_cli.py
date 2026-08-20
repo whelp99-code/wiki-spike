@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Final, Protocol
+from typing import Final, Protocol, assert_never
 
 from wiki_spike.applications.unified_db_live_export_preflight import (
     preflight_live_export,
@@ -101,15 +101,13 @@ def register_live_parsers(sub: SubparserRegistrar) -> None:
 
 
 def run_live_contract_command(command: str, paths: LiveExportCliPaths) -> int:
-    match command:  # noqa: MATCH_OK
-        case "live-inspect":
-            return inspect_live_contract(paths.kind, paths.input_path)
-        case "live-verify":
-            return verify_live_contracts(paths)
-        case "live-preflight":
-            return preflight_live_contracts(paths)
-        case _ as unreachable:
-            raise UnifiedDbExportError(f"unknown live contract command: {unreachable}")
+    if command == "live-inspect":
+        return inspect_live_contract(paths.kind, paths.input_path)
+    if command == "live-verify":
+        return verify_live_contracts(paths)
+    if command == "live-preflight":
+        return preflight_live_contracts(paths)
+    raise UnifiedDbExportError(f"unknown live contract command: {command}")
 
 
 def inspect_live_contract(kind: str, path: Path) -> int:
@@ -155,25 +153,23 @@ def _load(path: Path) -> dict[str, JsonValue]:
 
 
 def _inspect_kind(raw: str) -> LiveExportInspectKind:
-    match raw:  # noqa: MATCH_OK
-        case "identity":
-            return LiveExportInspectKind.IDENTITY
-        case "mapping":
-            return LiveExportInspectKind.MAPPING
-        case "adapter":
-            return LiveExportInspectKind.ADAPTER
-        case "destination":
-            return LiveExportInspectKind.DESTINATION
-        case "quiescence":
-            return LiveExportInspectKind.QUIESCENCE
-        case "plan":
-            return LiveExportInspectKind.PLAN
-        case _:
-            raise UnifiedDbExportError("unknown live inspect kind")
+    if raw == "identity":
+        return LiveExportInspectKind.IDENTITY
+    if raw == "mapping":
+        return LiveExportInspectKind.MAPPING
+    if raw == "adapter":
+        return LiveExportInspectKind.ADAPTER
+    if raw == "destination":
+        return LiveExportInspectKind.DESTINATION
+    if raw == "quiescence":
+        return LiveExportInspectKind.QUIESCENCE
+    if raw == "plan":
+        return LiveExportInspectKind.PLAN
+    raise UnifiedDbExportError("unknown live inspect kind")
 
 
 def _parse_kind(kind: LiveExportInspectKind, data: dict[str, JsonValue]) -> dict[str, JsonValue]:
-    match kind:  # noqa: MATCH_OK
+    match kind:
         case LiveExportInspectKind.IDENTITY:
             return PostgresIdentityReceiptV1.from_mapping(data).to_mapping()
         case LiveExportInspectKind.MAPPING:
@@ -186,3 +182,5 @@ def _parse_kind(kind: LiveExportInspectKind, data: dict[str, JsonValue]) -> dict
             return UnifiedDbWriterQuiescenceV1.from_mapping(data).to_mapping()
         case LiveExportInspectKind.PLAN:
             return UnifiedDbLiveExportPlanV1.from_mapping(data).to_mapping()
+        case _:
+            assert_never(kind)

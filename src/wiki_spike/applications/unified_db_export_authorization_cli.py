@@ -65,28 +65,26 @@ def _signature_paths(value: Path | list[str] | None) -> tuple[str, ...]:
 
 
 def run_authority_command(command: str, paths: AuthorityCliPaths) -> int:
-    match command:  # noqa: MATCH_OK
-        case "authority-signing-bytes":
-            return emit_authority_signing_bytes(paths.body, paths.out)
-        case "authority-inspect":
-            return inspect_authority_signing_bytes(paths.signing_bytes)
-        case "authority-envelope":
-            signature = paths.signature
-            if not isinstance(signature, Path):
-                raise UnifiedDbExportError("signature must be a public file")
-            return wrap_authority_envelope(
-                PublicEnvelopeFiles(paths.role, paths.key_id, paths.public_key, signature)
-            )
-        case "authority-assemble":
-            return assemble_authority_envelopes(
-                paths.body, _signature_paths(paths.signature), paths.out
-            )
-        case "authority-verify":
-            return verify_authority_envelopes(
-                paths.body, _signature_paths(paths.signature)
-            )
-        case _ as unreachable:
-            raise UnifiedDbExportError(f"unknown authority command: {unreachable}")
+    if command == "authority-signing-bytes":
+        return emit_authority_signing_bytes(paths.body, paths.out)
+    if command == "authority-inspect":
+        return inspect_authority_signing_bytes(paths.signing_bytes)
+    if command == "authority-envelope":
+        signature = paths.signature
+        if not isinstance(signature, Path):
+            raise UnifiedDbExportError("signature must be a public file")
+        return wrap_authority_envelope(
+            PublicEnvelopeFiles(paths.role, paths.key_id, paths.public_key, signature)
+        )
+    if command == "authority-assemble":
+        return assemble_authority_envelopes(
+            paths.body, _signature_paths(paths.signature), paths.out
+        )
+    if command == "authority-verify":
+        return verify_authority_envelopes(
+            paths.body, _signature_paths(paths.signature)
+        )
+    raise UnifiedDbExportError(f"unknown authority command: {command}")
 
 
 def _load_body(path: Path) -> dict[str, JsonValue]:
