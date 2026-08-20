@@ -13,7 +13,9 @@ from .unified_db_postgres_capture_destination import (
     PostgresMetadataCaptureDestinationV1,
 )
 from .unified_db_postgres_capture_output import (
+    CAPTURE_ARTIFACT_NAMES,
     PostgresMetadataCaptureOutputManifestV1,
+    verify_capture_artifact_bytes,
 )
 from .unified_db_snapshot_export import parse_const, parse_decimal, parse_false
 
@@ -203,6 +205,7 @@ def bind_capture_receipt(
     destination: PostgresMetadataCaptureDestinationV1,
     manifest: PostgresMetadataCaptureOutputManifestV1,
     receipt: PostgresMetadataCaptureReceiptV1,
+    files: Mapping[str, bytes] | None = None,
 ) -> None:
     if receipt.destination_digest != destination.destination_digest:
         raise InvalidContractValue("receipt destination_digest does not bind destination")
@@ -222,3 +225,9 @@ def bind_capture_receipt(
         or receipt.query_manifest_digest != digests["query-manifest.json"]
     ):
         raise InvalidContractValue("receipt artifact digests do not bind manifest entries")
+    if files is None:
+        return
+    verify_capture_artifact_bytes(manifest, files)
+    tree = str(sum(len(files[name]) for name in CAPTURE_ARTIFACT_NAMES))
+    if receipt.byte_count != tree:
+        raise InvalidContractValue("byte_count does not bind the six-file tree")

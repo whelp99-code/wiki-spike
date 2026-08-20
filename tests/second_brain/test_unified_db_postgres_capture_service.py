@@ -170,8 +170,14 @@ def test_capture_writes_six_file_tree_and_receipt_binds_when_claimed(
     assert parsed.receipt_digest == receipt.receipt_digest
     bind_capture_receipt(destination, manifest, parsed)
     hashed = {entry.relative_path: entry.content_digest for entry in manifest.entries}
-    for name in ("capture-plan.json", "catalog.json", "identity.json", "query-manifest.json"):
+    sized = {entry.relative_path: entry.size_bytes for entry in manifest.entries}
+    for name in CAPTURE_ARTIFACT_NAMES:
+        assert sized[name] == str(len(files[name]))
+        if name in {"output-manifest.json", "receipt.json"}:
+            assert hashed[name] != sha256(b"\n").hexdigest()
+            continue
         assert sha256(files[name]).hexdigest() == hashed[name]
+    assert parsed.byte_count == str(sum(len(files[name]) for name in CAPTURE_ARTIFACT_NAMES))
 
 
 def test_capture_refuses_when_authority_is_unclaimed_and_leaves_dest_and_dsn_unread(

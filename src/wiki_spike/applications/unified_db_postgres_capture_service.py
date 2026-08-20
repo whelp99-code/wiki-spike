@@ -140,18 +140,30 @@ def _artifact_bytes(
         "capture-plan.json": canonical_bytes(bundle.plan.to_mapping()) + b"\n",
         "catalog.json": canonical_bytes(bundle.catalog.to_mapping()) + b"\n",
         "identity.json": canonical_bytes(bundle.identity.to_mapping()) + b"\n",
-        "output-manifest.json": b"\n",
         "query-manifest.json": canonical_bytes(bundle.queries.to_mapping()) + b"\n",
-        "receipt.json": b"\n",
     }
-    manifest = PostgresMetadataCaptureOutputManifestV1.create(
-        bundle.destination.destination_digest, files
-    )
-    receipt = PostgresMetadataCaptureReceiptV1.create(bundle.destination, manifest)
-    bind_capture_receipt(bundle.destination, manifest, receipt)
-    files["output-manifest.json"] = canonical_bytes(manifest.to_mapping()) + b"\n"
-    files["receipt.json"] = canonical_bytes(receipt.to_mapping()) + b"\n"
-    return files, receipt
+    receipt_bytes = canonical_bytes(bundle.destination.to_mapping()) + b"\n"
+    manifest_bytes = receipt_bytes
+    destination = bundle.destination
+    for _ in range(8):
+        files["output-manifest.json"] = manifest_bytes
+        files["receipt.json"] = receipt_bytes
+        manifest = PostgresMetadataCaptureOutputManifestV1.create(
+            destination.destination_digest, files
+        )
+        receipt = PostgresMetadataCaptureReceiptV1.create(destination, manifest)
+        next_receipt = canonical_bytes(receipt.to_mapping()) + b"\n"
+        next_manifest = canonical_bytes(manifest.to_mapping()) + b"\n"
+        if len(next_manifest) == len(manifest_bytes) and len(next_receipt) == len(
+            receipt_bytes
+        ):
+            files["output-manifest.json"] = next_manifest
+            files["receipt.json"] = next_receipt
+            bind_capture_receipt(destination, manifest, receipt)
+            return files, receipt
+        receipt_bytes = next_receipt
+        manifest_bytes = next_manifest
+    raise InvalidContractValue("capture artifacts did not bind")
 
 
 def _write_tree(path: str, files: Mapping[str, bytes]) -> None:
