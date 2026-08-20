@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Callable
 from pathlib import Path
 from typing import final
 
@@ -41,12 +42,24 @@ class SqliteExportAuthorizationNonceStore:
 
     _path: Path
     _con: sqlite3.Connection
+    _digest_nonce: Callable[[str], str]
 
-    def __init__(self, path: Path) -> None:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        digest_nonce: Callable[[str], str] = export_authorization_nonce_digest,
+        allow_create: bool = True,
+    ) -> None:
         self._path = path
-        created = precreate_private_db(path)
-        if not created:
+        self._digest_nonce = digest_nonce
+        if allow_create:
+            created = precreate_private_db(path)
+            if not created:
+                require_existing_sqlite(path)
+        else:
             require_existing_sqlite(path)
+            created = False
         preexisting = sidecar_snapshot(path)
         try:
             self._con = sqlite3.connect(str(path), isolation_level=None)
@@ -93,7 +106,7 @@ class SqliteExportAuthorizationNonceStore:
             issued = parse_utc(authorization_issued_at, "authorization_issued_at")
         except InvalidContractValue as exc:
             raise UnifiedDbExportError(str(exc)) from exc
-        digest = export_authorization_nonce_digest(nonce)
+        digest = self._digest_nonce(nonce)
         preexisting = sidecar_snapshot(self._path)
         try:
             run_sql(self._con, "BEGIN IMMEDIATE")

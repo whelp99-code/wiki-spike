@@ -17,6 +17,7 @@ from tests.second_brain.unified_db_postgres_capture_support import (
     CONFORMANCE_SCHEMA,
 )
 from wiki_spike.composition.unified_db_postgres_capture import (
+    open_production_metadata_capture_nonce_store,
     refuse_postgres_identity_capture,
 )
 from wiki_spike.memory_core.unified_db_live_export_registry import (
@@ -82,6 +83,11 @@ def test_production_composition_has_no_dsn_query_or_mapper_override() -> None:
     assert "getenv" not in text
     assert "sys.argv" not in text
     assert "PRODUCTION_MAPPER_REGISTRY" not in text
+    assert "getpwuid" in text
+    assert "pw_dir" in text
+    assert "Path.home" not in text
+    opener = inspect.signature(open_production_metadata_capture_nonce_store)
+    assert list(opener.parameters) == []
     refuse = inspect.signature(refuse_postgres_identity_capture)
     assert "registry" not in refuse.parameters
     assert "sql" not in refuse.parameters
