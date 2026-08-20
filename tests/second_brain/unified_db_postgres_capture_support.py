@@ -15,6 +15,7 @@ from tests.second_brain.unified_db_live_export_support import (
     identity_body,
 )
 from wiki_spike.memory_core.contracts import JsonValue, canonical_bytes
+from wiki_spike.memory_core.errors import InvalidContractValue
 from wiki_spike.memory_core.second_brain_ledger_contracts import canonical_ledger_digest
 from wiki_spike.memory_core.unified_db_postgres_capture_catalog import (
     CatalogRowV1,
@@ -24,6 +25,7 @@ from wiki_spike.memory_core.unified_db_postgres_capture_plan import (
     PostgresIdentityInputsV1,
     produce_postgres_identity_receipt,
 )
+from wiki_spike.memory_core.unified_db_postgres_capture_query import CLOSED_QUERY_SQL
 from wiki_spike.memory_core.unified_db_postgres_identity import (
     PostgresIdentityReceiptV1,
 )
@@ -176,6 +178,37 @@ class FakePostgresCatalogCapture:
         return PostgresCatalogSnapshotV1.from_rows(rows)
 
 
+def closed_catalog_query_results() -> dict[str, tuple[tuple[str, ...], ...]]:
+    sql = dict(CLOSED_QUERY_SQL)
+    return {
+        sql["system_identifier"]: ((SYSTEM_IDENTIFIER,),),
+        sql["database_oid"]: ((DATABASE_OID,),),
+        sql["server_version_num"]: ((SERVER_VERSION_NUM,),),
+        sql["schemas"]: (("public", "2200"),),
+        sql["tables"]: (("public", "notes", "16385", "r"),),
+        sql["columns"]: (("public", "notes", "id", "1", "int8", "true"),),
+        sql["constraints"]: (("public", "notes", "notes_pkey", "p"),),
+        sql["indexes"]: (("public", "notes", "notes_pkey", "true"),),
+    }
+
+
+class FakePostgresCatalogQuery:
+    """Records executed SQL in order. Mutation is the test spy."""
+
+    executed: list[str]
+    _results: dict[str, tuple[tuple[str, ...], ...]]
+
+    def __init__(self, results: dict[str, tuple[tuple[str, ...], ...]]) -> None:
+        self.executed = []
+        self._results = results
+
+    def execute_closed_query(self, sql: str) -> tuple[tuple[str, ...], ...]:
+        self.executed.append(sql)
+        if sql not in self._results:
+            raise InvalidContractValue("query is not in the closed manifest")
+        return self._results[sql]
+
+
 __all__ = (
     "APPLICATION_TABLE_SQL",
     "CAPTURED_AT",
@@ -200,11 +233,13 @@ __all__ = (
     "STALE_CAPTURED_AT",
     "SYSTEM_IDENTIFIER",
     "FakePostgresCatalogCapture",
+    "FakePostgresCatalogQuery",
     "FakePostgresIdentityCapture",
     "bound_identity_body",
     "capture_plan_body",
     "catalog_body",
     "catalog_byte_count",
     "catalog_row_dicts",
+    "closed_catalog_query_results",
     "identity_inputs_body",
 )

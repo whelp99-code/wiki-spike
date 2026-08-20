@@ -22,3 +22,10 @@ class PostgresCatalogCapturePort(Protocol):
     """Normalize typed catalog rows into a digest-bound snapshot."""
 
     def capture_catalog(self, rows: tuple[CatalogRowV1, ...]) -> PostgresCatalogSnapshotV1: ...
+
+
+@runtime_checkable
+class PostgresCatalogQueryPort(Protocol):
+    """Execute one closed catalog statement. Fake in tests; never a live DSN."""
+
+    def execute_closed_query(self, sql: str) -> tuple[tuple[str, ...], ...]: ...
