@@ -105,6 +105,11 @@ def _arguments() -> _Arguments:
 
     register_live_parsers(sub)
     register_capture_parsers(sub)
+    from wiki_spike.applications.unified_db_postgres_capture_authorization_cli import (
+        register_capture_authority_parsers,
+    )
+
+    register_capture_authority_parsers(sub)
     arguments = _Arguments()
     _ = parser.parse_args(namespace=arguments)
     return arguments
@@ -180,16 +185,41 @@ def main() -> int:
                     arguments.authorization,
                 ),
             )
+        from wiki_spike.applications.unified_db_postgres_capture_authorization_cli import (
+            CaptureAuthorityCliPaths,
+            is_capture_authority_command,
+            run_capture_authority_command,
+        )
+        if is_capture_authority_command(arguments.command):
+            return run_capture_authority_command(
+                arguments.command,
+                CaptureAuthorityCliPaths(
+                    arguments.body,
+                    arguments.out,
+                    arguments.signing_bytes,
+                    arguments.role,
+                    arguments.key_id,
+                    arguments.public_key,
+                    arguments.signature,
+                ),
+            )
         from wiki_spike.applications.unified_db_postgres_capture_cli import (
             CaptureCliPaths,
             is_capture_contract_command,
             run_capture_contract_command,
         )
         if is_capture_contract_command(arguments.command):
-            return run_capture_contract_command(arguments.command, CaptureCliPaths(
-                arguments.kind, arguments.input_path, arguments.plan,
-                arguments.identity, arguments.catalog, arguments.query_manifest,
-            ))
+            return run_capture_contract_command(
+                arguments.command,
+                CaptureCliPaths(
+                    arguments.kind,
+                    arguments.input_path,
+                    arguments.plan,
+                    arguments.identity,
+                    arguments.catalog,
+                    arguments.query_manifest,
+                ),
+            )
         if arguments.command == "capture":
             from wiki_spike.composition.unified_db_postgres_capture import (
                 refuse_postgres_identity_capture,

@@ -1,0 +1,18 @@
+{
+  "application_row_query": false,
+  "body_present": false,
+  "cutover_eligible": false,
+  "decision_record_semantics_unchanged": true,
+  "evidence_version": "second-brain-unified-db-postgres-metadata-capture-only-authorization-conformance-v1",
+  "fixture_importer_semantics_unchanged": true,
+  "import_invoked": false,
+  "live_export_authorized": false,
+  "max_captures": "1",
+  "nonce_store_persisted": false,
+  "operation": "METADATA_CAPTURE_ONLY",
+  "private_key_material": false,
+  "production_capture_authorized": false,
+  "serving_promotion": false,
+  "source_mutation": false,
+  "source_name": "unified-db"
+}
