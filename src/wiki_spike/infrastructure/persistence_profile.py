@@ -1,11 +1,9 @@
 """Fail-closed verifier for the signed macOS field-AEAD persistence profile."""
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import final
+from typing import final, override
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -13,15 +11,17 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from wiki_spike.infrastructure import crypto
 from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore
 from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase
+from wiki_spike.infrastructure.persistence_profile_checks import (
+    PersistenceProfileAuthorizationError,
+    parse_sqlcipher_artifact,
+)
 from wiki_spike.memory_core.second_brain_persistence import (
     PERSISTENCE_PROFILE_SIGNATURE_DOMAIN,
     MacPersistenceProfileV1,
     PersistenceProfileReceiptV1,
 )
 
-
-class PersistenceProfileAuthorizationError(ValueError):
-    """The signed persistence profile cannot authorize serving components."""
+__all__ = ("PersistenceProfileAuthorizationError",)
 
 
 @final
@@ -30,6 +30,69 @@ class _PersistenceProfileMint:
 
 
 _PROFILE_MINT = _PersistenceProfileMint()
+
+
+@final
+class _PersistenceAuthorizationMint:
+    __slots__ = ()
+
+
+_AUTHORIZATION_MINT = _PersistenceAuthorizationMint()
+
+
+@final
+class VerifiedPersistenceAuthorization:
+    """Pure two-party authorization, not yet bound to live storage."""
+
+    __slots__ = ("__mint", "__profile_digest", "__receipt_digest")
+
+    def __init__(
+        self,
+        mint: _PersistenceAuthorizationMint,
+        profile_digest: str,
+        receipt_digest: str,
+    ) -> None:
+        if mint is not _AUTHORIZATION_MINT:
+            raise PersistenceProfileAuthorizationError(
+                "verified persistence authorizations must be minted by the verifier"
+            )
+        self.__mint = mint
+        self.__profile_digest = profile_digest
+        self.__receipt_digest = receipt_digest
+
+    @property
+    def profile_digest(self) -> str:
+        return self.__profile_digest
+
+    @property
+    def receipt_digest(self) -> str:
+        return self.__receipt_digest
+
+    def verified_digests(
+        self, mint: _PersistenceAuthorizationMint
+    ) -> tuple[str, str]:
+        if mint is not _AUTHORIZATION_MINT or self.__mint is not _AUTHORIZATION_MINT:
+            raise PersistenceProfileAuthorizationError(
+                "persistence authorization is not verifier-minted"
+            )
+        return self.__profile_digest, self.__receipt_digest
+
+    def __copy__(self) -> VerifiedPersistenceAuthorization:
+        raise PersistenceProfileAuthorizationError(
+            "verified persistence authorization cannot be copied"
+        )
+
+    def __deepcopy__(
+        self, memo: dict[int, object]
+    ) -> VerifiedPersistenceAuthorization:
+        _ = memo
+        raise PersistenceProfileAuthorizationError(
+            "verified persistence authorization cannot be copied"
+        )
+
+    @override
+    def __reduce__(self) -> str | tuple[object, ...]:
+        raise TypeError("verified persistence authorization cannot be serialized")
 
 
 @final
@@ -98,75 +161,17 @@ class VerifiedPersistenceProfile:
             return False
 
 
-type _JsonValue = None | bool | str | list[_JsonValue] | _JsonObject
-
-
-@dataclass(frozen=True, slots=True)
-class _JsonObject:
-    pairs: tuple[tuple[str, _JsonValue], ...]
-
-
-def _parse_sqlcipher_artifact(raw: bytes) -> None:
-    objects: list[_JsonObject] = []
-
-    def parse_object(items: list[tuple[str, _JsonValue]]) -> _JsonObject:
-        keys = tuple(key for key, _value in items)
-        if len(keys) != len(set(keys)):
-            raise PersistenceProfileAuthorizationError(
-                "SQLCipher artifact contains duplicate JSON fields"
-            )
-        parsed = _JsonObject(tuple(items))
-        objects.append(parsed)
-        return parsed
-
-    try:
-        if not isinstance(
-            json.loads(raw, object_pairs_hook=parse_object), _JsonObject
-        ):
-            raise PersistenceProfileAuthorizationError(
-                "SQLCipher artifact must be a JSON object"
-            )
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise PersistenceProfileAuthorizationError(
-            "SQLCipher artifact must be valid JSON"
-        ) from exc
-    value = dict(objects[-1].pairs)
-    expected: dict[str, _JsonValue] = {
-        "schema": "wiki-sqlcipher-feasibility-v1",
-        "platform": "darwin/arm64",
-        "status": "platform_unavailable",
-        "must_verdict": "NOT_RUN",
-        "library": None,
-        "checks": [],
-    }
-    if any(
-        value.get(field) != expected_value
-        for field, expected_value in expected.items()
-    ):
-        raise PersistenceProfileAuthorizationError(
-            "SQLCipher artifact must record darwin/arm64 platform_unavailable and NOT_RUN"
-        )
-
-
-def verify_mac_persistence_profile(
+def verify_mac_persistence_authorization(
     *,
     profile: MacPersistenceProfileV1,
     receipt: PersistenceProfileReceiptV1,
+    owner_key_id: str,
     owner_public_key: Ed25519PublicKey,
+    approver_key_id: str,
     approver_public_key: Ed25519PublicKey,
-    sqlcipher_artifact_path: Path,
-    database: LifecycleDatabase,
-    cas: EncryptedContentStore,
-) -> VerifiedPersistenceProfile:
-    """Verify two-party authorization and mint an identity-bound capability."""
-    if type(database) is not LifecycleDatabase or database.con is None:
-        raise PersistenceProfileAuthorizationError(
-            "an initialized exact LifecycleDatabase is required"
-        )
-    if type(cas) is not EncryptedContentStore:
-        raise PersistenceProfileAuthorizationError(
-            "an exact EncryptedContentStore is required"
-        )
+    sqlcipher_artifact_bytes: bytes,
+) -> VerifiedPersistenceAuthorization:
+    """Verify profile, evidence, and signatures without touching live storage."""
     parsed_profile = MacPersistenceProfileV1.from_mapping(profile.to_mapping())
     parsed_receipt = PersistenceProfileReceiptV1.from_mapping(receipt.to_mapping())
     if parsed_receipt.profile_digest != parsed_profile.profile_digest:
@@ -177,21 +182,25 @@ def verify_mac_persistence_profile(
         raise PersistenceProfileAuthorizationError(
             "owner and approver key ids must be distinct"
         )
+    if (
+        parsed_receipt.owner_key_id != owner_key_id
+        or parsed_receipt.approver_key_id != approver_key_id
+    ):
+        raise PersistenceProfileAuthorizationError(
+            "persistence receipt key ids do not match pinned identities"
+        )
     if owner_public_key.public_bytes_raw() == approver_public_key.public_bytes_raw():
         raise PersistenceProfileAuthorizationError(
             "owner and approver public keys must be distinct"
         )
-    try:
-        artifact_bytes = sqlcipher_artifact_path.read_bytes()
-    except OSError as exc:
-        raise PersistenceProfileAuthorizationError(
-            "SQLCipher artifact could not be read"
-        ) from exc
-    if sha256(artifact_bytes).hexdigest() != parsed_profile.sqlcipher_artifact_digest:
+    if (
+        sha256(sqlcipher_artifact_bytes).hexdigest()
+        != parsed_profile.sqlcipher_artifact_digest
+    ):
         raise PersistenceProfileAuthorizationError(
             "SQLCipher artifact digest does not match the signed profile"
         )
-    _parse_sqlcipher_artifact(artifact_bytes)
+    parse_sqlcipher_artifact(sqlcipher_artifact_bytes)
     payload = parsed_receipt.signature_payload()
     try:
         crypto.verify(
@@ -210,10 +219,70 @@ def verify_mac_persistence_profile(
         raise PersistenceProfileAuthorizationError(
             "persistence profile signature verification failed"
         ) from exc
+    return VerifiedPersistenceAuthorization(
+        _AUTHORIZATION_MINT,
+        parsed_profile.profile_digest,
+        parsed_receipt.receipt_digest,
+    )
+
+
+def bind_mac_persistence_profile(
+    authorization: object,
+    *,
+    database: LifecycleDatabase,
+    cas: EncryptedContentStore,
+) -> VerifiedPersistenceProfile:
+    """Bind a pure authorization to exact initialized live component instances."""
+    if type(database) is not LifecycleDatabase or database.con is None:
+        raise PersistenceProfileAuthorizationError(
+            "an initialized exact LifecycleDatabase is required"
+        )
+    if type(cas) is not EncryptedContentStore:
+        raise PersistenceProfileAuthorizationError(
+            "an exact EncryptedContentStore is required"
+        )
+    if type(authorization) is not VerifiedPersistenceAuthorization:
+        raise PersistenceProfileAuthorizationError(
+            "an exact verified persistence authorization is required"
+        )
+    profile_digest, receipt_digest = authorization.verified_digests(_AUTHORIZATION_MINT)
     return VerifiedPersistenceProfile(
         _PROFILE_MINT,
         database,
         cas,
-        parsed_profile.profile_digest,
-        parsed_receipt.receipt_digest,
+        profile_digest,
+        receipt_digest,
+    )
+
+
+def verify_mac_persistence_profile(
+    *,
+    profile: MacPersistenceProfileV1,
+    receipt: PersistenceProfileReceiptV1,
+    owner_public_key: Ed25519PublicKey,
+    approver_public_key: Ed25519PublicKey,
+    sqlcipher_artifact_path: Path,
+    database: LifecycleDatabase,
+    cas: EncryptedContentStore,
+) -> VerifiedPersistenceProfile:
+    """Compatibility wrapper for pure authorization followed by live binding."""
+    try:
+        artifact_bytes = sqlcipher_artifact_path.read_bytes()
+    except OSError as exc:
+        raise PersistenceProfileAuthorizationError(
+            "SQLCipher artifact could not be read"
+        ) from exc
+    authorization = verify_mac_persistence_authorization(
+        profile=profile,
+        receipt=receipt,
+        owner_key_id=receipt.owner_key_id,
+        owner_public_key=owner_public_key,
+        approver_key_id=receipt.approver_key_id,
+        approver_public_key=approver_public_key,
+        sqlcipher_artifact_bytes=artifact_bytes,
+    )
+    return bind_mac_persistence_profile(
+        authorization,
+        database=database,
+        cas=cas,
     )
