@@ -23,6 +23,9 @@ from wiki_spike.workspace_format import (
 COMPOSITION = Path("src/wiki_spike/composition/mac_production.py")
 PYPROJECT = Path("pyproject.toml")
 AUTHORITY_REQUIRED_TOKEN = "authority is required"
+SIGNED_AUTHORITY_ABSENT_TOKEN = "signed authority is absent"
+PERSISTENCE_PROFILE_ABSENT_TOKEN = "persistence profile is absent"
+SERVING_READY_ABSENT_TOKEN = "SERVING_READY is absent"
 BANNED_IMPORTS = {
     "http",
     "importlib",
@@ -114,6 +117,16 @@ def _isolate_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HOME", str(home))
 
 
+def _bomb_storage(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(LifecycleDatabase, "__init__", _bomb)
+    monkeypatch.setattr(EncryptedContentStore, "__init__", _bomb)
+    monkeypatch.setattr(MacOSKeychainKeyStore, "__init__", _bomb)
+    monkeypatch.setattr(SecurityCliKeychainBackend, "_run", _bomb)
+    monkeypatch.setattr(SecurityCliKeychainBackend, "add", _bomb)
+    monkeypatch.setattr(SecurityCliKeychainBackend, "read", _bomb)
+    monkeypatch.setattr(SecurityCliKeychainBackend, "delete", _bomb)
+
+
 def test_status_exits_with_authority_required_when_marker_only_root_has_no_authority(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -127,6 +140,31 @@ def test_status_exits_with_authority_required_when_marker_only_root_has_no_autho
     captured = capsys.readouterr()
     assert code == 1
     assert AUTHORITY_REQUIRED_TOKEN in captured.err
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        SIGNED_AUTHORITY_ABSENT_TOKEN,
+        PERSISTENCE_PROFILE_ABSENT_TOKEN,
+        SERVING_READY_ABSENT_TOKEN,
+    ],
+)
+def test_status_refuses_when_production_artifact_is_absent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    token: str,
+) -> None:
+    _isolate_home(tmp_path, monkeypatch)
+    root = _marked_root(tmp_path)
+    _bomb_storage(monkeypatch)
+
+    code = main(["--root", str(root), "status"])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert token in captured.err
 
 
 def test_status_keeps_recursive_byte_and_mode_tree_when_unauthorized(
@@ -167,13 +205,7 @@ def test_status_refuses_before_constructing_db_cas_or_keychain(
 ) -> None:
     _isolate_home(tmp_path, monkeypatch)
     root = _marked_root(tmp_path)
-    monkeypatch.setattr(LifecycleDatabase, "__init__", _bomb)
-    monkeypatch.setattr(EncryptedContentStore, "__init__", _bomb)
-    monkeypatch.setattr(MacOSKeychainKeyStore, "__init__", _bomb)
-    monkeypatch.setattr(SecurityCliKeychainBackend, "_run", _bomb)
-    monkeypatch.setattr(SecurityCliKeychainBackend, "add", _bomb)
-    monkeypatch.setattr(SecurityCliKeychainBackend, "read", _bomb)
-    monkeypatch.setattr(SecurityCliKeychainBackend, "delete", _bomb)
+    _bomb_storage(monkeypatch)
 
     code = main(["--root", str(root), "status"])
 
