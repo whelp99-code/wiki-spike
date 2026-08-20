@@ -201,6 +201,7 @@ def main() -> int:
                     arguments.key_id,
                     arguments.public_key,
                     arguments.signature,
+                    arguments.destination,
                 ),
             )
         from wiki_spike.applications.unified_db_postgres_capture_cli import (

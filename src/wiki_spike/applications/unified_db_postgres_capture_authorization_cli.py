@@ -12,6 +12,10 @@ from typing import Final
 from wiki_spike.applications.unified_db_export_authorization_publish import (
     publish_exclusive_bytes,
 )
+from wiki_spike.applications.unified_db_postgres_capture_authorization_create import (
+    DEFAULT_CAPTURE_AUTHORITY_BODY_PATH,
+    run_capture_authority_create,
+)
 from wiki_spike.applications.unified_db_postgres_capture_cli import SubparserRegistrar
 from wiki_spike.applications.unified_db_snapshot_export_io import (
     HARD_CAP,
@@ -33,6 +37,7 @@ from wiki_spike.memory_core.unified_db_snapshot_export_json import decode_json_o
 
 AUTHORITY_COMMANDS: Final = frozenset(
     {
+        "capture-authority-create",
         "capture-authority-signing-bytes",
         "capture-authority-inspect",
         "capture-authority-envelope",
@@ -47,6 +52,13 @@ def is_capture_authority_command(command: str) -> bool:
 
 
 def register_capture_authority_parsers(sub: SubparserRegistrar) -> None:
+    create = sub.add_parser(
+        "capture-authority-create", help="write an unsigned metadata-capture body"
+    )
+    _ = create.add_argument("--destination", required=True, type=Path)
+    _ = create.add_argument(
+        "--out", type=Path, default=DEFAULT_CAPTURE_AUTHORITY_BODY_PATH
+    )
     signing = sub.add_parser(
         "capture-authority-signing-bytes", help="emit metadata-capture signing bytes"
     )
@@ -85,6 +97,7 @@ class CaptureAuthorityCliPaths:
     key_id: str
     public_key: Path
     signature: Path | list[str] | None
+    destination: Path
 
 
 def _signature_paths(value: Path | list[str] | None) -> tuple[str, ...]:
@@ -97,6 +110,8 @@ def _signature_paths(value: Path | list[str] | None) -> tuple[str, ...]:
 
 def run_capture_authority_command(command: str, paths: CaptureAuthorityCliPaths) -> int:
     match command:
+        case "capture-authority-create":
+            return run_capture_authority_create(paths.destination, paths.out)
         case "capture-authority-signing-bytes":
             return emit_authority_signing_bytes(paths.body, paths.out)
         case "capture-authority-inspect":

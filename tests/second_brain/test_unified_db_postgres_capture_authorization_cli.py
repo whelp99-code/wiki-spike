@@ -38,6 +38,7 @@ def test_help_lists_capture_authority_commands_without_private_key_flags() -> No
     completed = _run(["--help"])
     assert completed.returncode == 0, completed.stderr
     text = completed.stdout.decode("utf-8")
+    assert "capture-authority-create" in text
     assert "capture-authority-signing-bytes" in text
     assert "capture-authority-inspect" in text
     assert "capture-authority-envelope" in text

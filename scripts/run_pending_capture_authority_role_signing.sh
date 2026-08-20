@@ -77,6 +77,10 @@ fi
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 body="$root/artifacts/product-release/second-brain-v1/capture-authority-signing/POSTGRES_METADATA_CAPTURE_ONLY.body.json"
+if [[ ! -f "$body" ]]; then
+  printf 'unsigned body is missing\n' >&2
+  exit 2
+fi
 umask 077
 uv run python "$root/scripts/sign_second_brain_capture_authority_role.py" \
   --role "$role" \

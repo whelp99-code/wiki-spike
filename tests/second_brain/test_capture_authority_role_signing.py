@@ -108,6 +108,18 @@ def test_runner_refuses_when_role_unknown(tmp_path: Path) -> None:
     assert str(key_path) not in combined
 
 
+def test_runner_refuses_when_unsigned_body_is_missing(tmp_path: Path) -> None:
+    key_path = tmp_path / "owner.pem"
+    _ = key_path.write_text("unused", encoding="utf-8")
+    result = _run_runner("owner", str(key_path), str(tmp_path / "out"))
+    combined = result.stdout + result.stderr
+    assert result.returncode == 2
+    assert "unsigned body is missing" in result.stderr
+    assert str(key_path) not in combined
+    assert "BEGIN" not in combined
+    assert "PRIVATE KEY" not in combined
+
+
 def test_runner_refuses_when_output_is_symlink(tmp_path: Path) -> None:
     output_directory = tmp_path / "out"
     output_directory.mkdir()
