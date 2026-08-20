@@ -2,13 +2,15 @@
 from __future__ import annotations
 
 import ast
-import os
 import socket
-import stat
 from pathlib import Path
 
 import pytest
 
+from tests.second_brain.mac_production_status_support import (
+    passwd_lookup,
+    tree_snapshot,
+)
 from wiki_spike.composition.mac_production import main
 from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore
 from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase
@@ -56,32 +58,6 @@ def _marked_root(tmp_path: Path) -> Path:
     return root
 
 
-def _tree_snapshot(root: Path) -> dict[str, tuple[str, int, bytes | None]]:
-    snapshot: dict[str, tuple[str, int, bytes | None]] = {}
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
-        directory = Path(dirpath)
-        relative_dir = directory.relative_to(root).as_posix()
-        if relative_dir != ".":
-            meta = os.lstat(directory)
-            snapshot[relative_dir] = ("dir", stat.S_IMODE(meta.st_mode), None)
-        for name in sorted(dirnames + filenames):
-            path = directory / name
-            relative = path.relative_to(root).as_posix()
-            if relative in snapshot:
-                continue
-            meta = os.lstat(path)
-            mode = stat.S_IMODE(meta.st_mode)
-            if stat.S_ISLNK(meta.st_mode):
-                snapshot[relative] = ("lnk", mode, os.readlink(path).encode())
-            elif stat.S_ISDIR(meta.st_mode):
-                snapshot[relative] = ("dir", mode, None)
-            elif stat.S_ISREG(meta.st_mode):
-                snapshot[relative] = ("reg", mode, path.read_bytes())
-            else:
-                snapshot[relative] = ("other", mode, None)
-    return snapshot
-
-
 def _storage_paths(root: Path) -> list[str]:
     found: list[str] = []
     for path in root.rglob("*"):
@@ -115,6 +91,7 @@ def _isolate_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr("pwd.getpwuid", passwd_lookup(home))
 
 
 def _bomb_storage(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -167,6 +144,33 @@ def test_status_refuses_when_production_artifact_is_absent(
     assert token in captured.err
 
 
+def test_status_leaves_passwd_home_application_support_uncreated_when_unauthorized(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _isolate_home(tmp_path, monkeypatch)
+    passwd_home = tmp_path / "passwd-home"
+    passwd_home.mkdir()
+    monkeypatch.setattr("pwd.getpwuid", passwd_lookup(passwd_home))
+    root = _marked_root(tmp_path)
+    _bomb_storage(monkeypatch)
+    env_home = tmp_path / "home"
+    before_passwd = tree_snapshot(passwd_home)
+    before_env = tree_snapshot(env_home)
+
+    code = main(["--root", str(root), "status"])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert SIGNED_AUTHORITY_ABSENT_TOKEN in captured.err
+    assert PERSISTENCE_PROFILE_ABSENT_TOKEN in captured.err
+    assert SERVING_READY_ABSENT_TOKEN in captured.err
+    assert tree_snapshot(passwd_home) == before_passwd
+    assert tree_snapshot(env_home) == before_env
+    assert not (passwd_home / "Library").exists()
+
+
 def test_status_keeps_recursive_byte_and_mode_tree_when_unauthorized(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -174,12 +178,12 @@ def test_status_keeps_recursive_byte_and_mode_tree_when_unauthorized(
 ) -> None:
     _isolate_home(tmp_path, monkeypatch)
     root = _marked_root(tmp_path)
-    before = _tree_snapshot(tmp_path)
+    before = tree_snapshot(tmp_path)
 
     code = main(["--root", str(root), "status"])
 
     assert code == 1
-    assert _tree_snapshot(tmp_path) == before
+    assert tree_snapshot(tmp_path) == before
     _ = capsys.readouterr()
 
 
@@ -239,14 +243,14 @@ def test_status_denies_symlink_root_without_writes(
     target.mkdir()
     root = tmp_path / "root-link"
     root.symlink_to(target, target_is_directory=True)
-    before = _tree_snapshot(tmp_path)
+    before = tree_snapshot(tmp_path)
 
     code = main(["--root", str(root), "status"])
 
     captured = capsys.readouterr()
     assert code == 1
     assert "workspace root denied: unknown" in captured.err
-    assert _tree_snapshot(tmp_path) == before
+    assert tree_snapshot(tmp_path) == before
     assert list(target.iterdir()) == []
 
 
@@ -258,14 +262,14 @@ def test_status_denies_mixed_root_without_writes(
     _isolate_home(tmp_path, monkeypatch)
     root = _marked_root(tmp_path)
     _ = (root / "control.sqlite").write_bytes(b"legacy plaintext")
-    before = _tree_snapshot(tmp_path)
+    before = tree_snapshot(tmp_path)
 
     code = main(["--root", str(root), "status"])
 
     captured = capsys.readouterr()
     assert code == 1
     assert "workspace root denied: mixed" in captured.err
-    assert _tree_snapshot(tmp_path) == before
+    assert tree_snapshot(tmp_path) == before
     assert _storage_paths(tmp_path) == ["mac-root/control.sqlite"]
 
 
@@ -278,14 +282,14 @@ def test_status_denies_mixed_marker_plus_extra_file_without_writes_or_constructo
     root = _marked_root(tmp_path)
     _ = (root / "extra").write_bytes(b"foreign extra")
     _bomb_storage(monkeypatch)
-    before = _tree_snapshot(tmp_path)
+    before = tree_snapshot(tmp_path)
 
     code = main(["--root", str(root), "status"])
 
     captured = capsys.readouterr()
     assert code == 1
     assert "workspace root denied: mixed" in captured.err
-    assert _tree_snapshot(tmp_path) == before
+    assert tree_snapshot(tmp_path) == before
 
 
 def test_mac_production_does_not_import_storage_or_network_constructors() -> None:
