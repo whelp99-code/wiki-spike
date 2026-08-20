@@ -22,6 +22,7 @@ RESERVED_REVIEW_ACTIONS: Final = frozenset(
     }
 )
 _REF: Final = re.compile(r"^[a-z][a-z0-9_-]{0,63}:[0-9a-f]{64}$")
+_DECIMAL: Final = re.compile(r"^(0|[1-9][0-9]*)$")
 _POSITIVE: Final = re.compile(r"^[1-9][0-9]*$")
 _ACTION: Final = re.compile(r"^[a-z][a-z0-9_.-]{0,63}$")
 _DOMAIN: Final = b"wiki-spike.second-brain.identity-auth.v2/"
@@ -55,6 +56,13 @@ def parse_positive(value: JsonValue, field: str) -> str:
     parsed = parse_string(value, field)
     if _POSITIVE.fullmatch(parsed) is None:
         raise InvalidContractValue(f"{field} must be a canonical positive decimal")
+    return parsed
+
+
+def parse_decimal(value: JsonValue, field: str) -> str:
+    parsed = parse_string(value, field)
+    if _DECIMAL.fullmatch(parsed) is None:
+        raise InvalidContractValue(f"{field} must be a canonical decimal")
     return parsed
 
 
