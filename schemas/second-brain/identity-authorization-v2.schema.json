@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/identity-authorization-v2.schema.json",
+  "title": "Second Brain Identity Authorization V2",
+  "oneOf": [
+    {"$ref": "#/$defs/WorkspaceTrustRootV2"},
+    {"$ref": "#/$defs/TrustedDeviceEnrollmentV2"},
+    {"$ref": "#/$defs/DeviceRevocationV2"},
+    {"$ref": "#/$defs/DelegatedReviewGrantV2"},
+    {"$ref": "#/$defs/DelegatedReviewRevocationV2"},
+    {"$ref": "#/$defs/CapabilityRequestV2"}
+  ],
+  "$defs": {
+    "version": {"const": "second-brain-identity-auth-v2"},
+    "ref": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}:[0-9a-f]{64}$"},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "positive": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "instant": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "actions": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,63}$"}
+    },
+    "WorkspaceTrustRootV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity_auth_version", "trust_root_ref", "root_revision", "workspace_ref", "profile_ref", "owner_key_ref", "approver_key_ref", "root_digest"],
+      "properties": {
+        "identity_auth_version": {"$ref": "#/$defs/version"},
+        "trust_root_ref": {"$ref": "#/$defs/ref"},
+        "root_revision": {"$ref": "#/$defs/positive"},
+        "workspace_ref": {"$ref": "#/$defs/ref"},
+        "profile_ref": {"$ref": "#/$defs/ref"},
+        "owner_key_ref": {"$ref": "#/$defs/ref"},
+        "approver_key_ref": {"$ref": "#/$defs/ref"},
+        "root_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "TrustedDeviceEnrollmentV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity_auth_version", "enrollment_ref", "trust_root_ref", "workspace_ref", "profile_ref", "device_key_ref", "subject_key_ref", "enrolled_by_key_ref", "enrolled_at", "expires_at", "enrollment_digest"],
+      "properties": {
+        "identity_auth_version": {"$ref": "#/$defs/version"},
+        "enrollment_ref": {"$ref": "#/$defs/ref"},
+        "trust_root_ref": {"$ref": "#/$defs/ref"},
+        "workspace_ref": {"$ref": "#/$defs/ref"},
+        "profile_ref": {"$ref": "#/$defs/ref"},
+        "device_key_ref": {"$ref": "#/$defs/ref"},
+        "subject_key_ref": {"$ref": "#/$defs/ref"},
+        "enrolled_by_key_ref": {"$ref": "#/$defs/ref"},
+        "enrolled_at": {"$ref": "#/$defs/instant"},
+        "expires_at": {"$ref": "#/$defs/instant"},
+        "enrollment_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "DeviceRevocationV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity_auth_version", "revocation_ref", "trust_root_ref", "workspace_ref", "profile_ref", "device_key_ref", "revoked_by_key_ref", "revoked_at", "reason_code", "revocation_epoch", "revocation_digest"],
+      "properties": {
+        "identity_auth_version": {"$ref": "#/$defs/version"},
+        "revocation_ref": {"$ref": "#/$defs/ref"},
+        "trust_root_ref": {"$ref": "#/$defs/ref"},
+        "workspace_ref": {"$ref": "#/$defs/ref"},
+        "profile_ref": {"$ref": "#/$defs/ref"},
+        "device_key_ref": {"$ref": "#/$defs/ref"},
+        "revoked_by_key_ref": {"$ref": "#/$defs/ref"},
+        "revoked_at": {"$ref": "#/$defs/instant"},
+        "reason_code": {"enum": ["lost", "compromised", "retired"]},
+        "revocation_epoch": {"$ref": "#/$defs/positive"},
+        "revocation_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "DelegatedReviewGrantV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity_auth_version", "grant_ref", "grant_revision", "trust_root_ref", "workspace_ref", "profile_ref", "grantor_key_ref", "reviewer_key_ref", "actions", "granted_at", "expires_at", "grant_digest"],
+      "properties": {
+        "identity_auth_version": {"$ref": "#/$defs/version"},
+        "grant_ref": {"$ref": "#/$defs/ref"},
+        "grant_revision": {"$ref": "#/$defs/positive"},
+        "trust_root_ref": {"$ref": "#/$defs/ref"},
+        "workspace_ref": {"$ref": "#/$defs/ref"},
+        "profile_ref": {"$ref": "#/$defs/ref"},
+        "grantor_key_ref": {"$ref": "#/$defs/ref"},
+        "reviewer_key_ref": {"$ref": "#/$defs/ref"},
+        "actions": {
+          "allOf": [
+            {"$ref": "#/$defs/actions"},
+            {"not": {"contains": {"enum": ["device.enroll", "device.revoke", "delegation.grant", "delegation.revoke", "workspace.owner.transfer"]}}}
+          ]
+        },
+        "granted_at": {"$ref": "#/$defs/instant"},
+        "expires_at": {"$ref": "#/$defs/instant"},
+        "grant_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "DelegatedReviewRevocationV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity_auth_version", "revocation_ref", "grant_ref", "trust_root_ref", "workspace_ref", "profile_ref", "revoked_by_key_ref", "revoked_at", "reason_code", "revocation_digest"],
+      "properties": {
+        "identity_auth_version": {"$ref": "#/$defs/version"},
+        "revocation_ref": {"$ref": "#/$defs/ref"},
+        "grant_ref": {"$ref": "#/$defs/ref"},
+        "trust_root_ref": {"$ref": "#/$defs/ref"},
+        "workspace_ref": {"$ref": "#/$defs/ref"},
+        "profile_ref": {"$ref": "#/$defs/ref"},
+        "revoked_by_key_ref": {"$ref": "#/$defs/ref"},
+        "revoked_at": {"$ref": "#/$defs/instant"},
+        "reason_code": {"const": "owner_revoked"},
+        "revocation_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "CapabilityRequestV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity_auth_version", "request_ref", "capability_ref", "workspace_ref", "profile_ref", "subject_key_ref", "device_key_ref", "actions", "requested_at", "request_digest"],
+      "properties": {
+        "identity_auth_version": {"$ref": "#/$defs/version"},
+        "request_ref": {"$ref": "#/$defs/ref"},
+        "capability_ref": {"$ref": "#/$defs/ref"},
+        "workspace_ref": {"$ref": "#/$defs/ref"},
+        "profile_ref": {"$ref": "#/$defs/ref"},
+        "subject_key_ref": {"$ref": "#/$defs/ref"},
+        "device_key_ref": {"$ref": "#/$defs/ref"},
+        "actions": {"$ref": "#/$defs/actions"},
+        "requested_at": {"$ref": "#/$defs/instant"},
+        "request_digest": {"$ref": "#/$defs/digest"}
+      }
+    }
+  }
+}
