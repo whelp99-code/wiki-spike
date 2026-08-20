@@ -179,6 +179,26 @@ def test_verifier_rejects_digest_output_or_manifest_swap(
         _ = verify_metadata_capture_authorization(request, nonces)
 
 
+def test_verifier_burns_junk_envelopes_before_signature_checks() -> None:
+    owner = Ed25519PrivateKey.generate()
+    approver = Ed25519PrivateKey.generate()
+    body = authorization_body()
+    envelopes = sign_body(authorization_body(authorization_id="capture-auth-002"), owner, approver)
+    junk = MetadataCaptureVerifyRequestV1(
+        canonical_bytes(body),
+        envelopes,
+        trusted_pair(owner, approver),
+        expected_digests(),
+        NOW,
+    )
+    nonces = InMemoryMetadataCaptureNonceStore()
+    with pytest.raises((InvalidContractValue, UnifiedDbExportError)):
+        _ = verify_metadata_capture_authorization(junk, nonces)
+    retry, _ignored = signed_request()
+    with pytest.raises(UnifiedDbExportError, match="nonce"):
+        _ = verify_metadata_capture_authorization(retry, nonces)
+
+
 def test_verifier_rejects_expired_and_not_yet_valid_windows() -> None:
     expired, nonces = signed_request(
         now=datetime(2026, 8, 18, 12, 15, 1, tzinfo=UTC)

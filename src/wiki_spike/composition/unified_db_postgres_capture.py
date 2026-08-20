@@ -6,6 +6,13 @@ import pwd
 from pathlib import Path
 from typing import NoReturn
 
+from wiki_spike.applications.unified_db_postgres_capture_authorization_types import (
+    MetadataCaptureVerifyRequestV1,
+)
+from wiki_spike.applications.unified_db_postgres_capture_authorization_verify import (
+    VerifiedUnifiedDbMetadataCaptureAuthorityV1,
+    verify_metadata_capture_authorization,
+)
 from wiki_spike.infrastructure.export_authorization_nonce_capture import (
     SqliteMetadataCaptureNonceStore,
 )
@@ -20,6 +27,23 @@ def open_production_metadata_capture_nonce_store() -> SqliteMetadataCaptureNonce
     """Open the passwd-home nonce DB. Missing or corrupt state is never created."""
     home = Path(pwd.getpwuid(os.getuid()).pw_dir)
     return SqliteMetadataCaptureNonceStore(home / _PRODUCTION_RELATIVE)
+
+
+def verify_production_metadata_capture_authorization(
+    request: MetadataCaptureVerifyRequestV1,
+    *,
+    dsn_fd: int | None = None,
+) -> VerifiedUnifiedDbMetadataCaptureAuthorityV1:
+    """Parse body, consume the passwd-home nonce, then bind digest/time/signatures.
+
+    ``dsn_fd`` is ignored and never read. Failures after consume stay consumed.
+    """
+    _ = dsn_fd
+    store = open_production_metadata_capture_nonce_store()
+    try:
+        return verify_metadata_capture_authorization(request, store)
+    finally:
+        store.close()
 
 
 def refuse_postgres_identity_capture(*, dsn_fd: int | None = None) -> NoReturn:

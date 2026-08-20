@@ -19,6 +19,7 @@ from tests.second_brain.unified_db_postgres_capture_support import (
 from wiki_spike.composition.unified_db_postgres_capture import (
     open_production_metadata_capture_nonce_store,
     refuse_postgres_identity_capture,
+    verify_production_metadata_capture_authorization,
 )
 from wiki_spike.memory_core.unified_db_live_export_registry import (
     PRODUCTION_APPROVED_MAPPING_COUNT,
@@ -92,6 +93,10 @@ def test_production_composition_has_no_dsn_query_or_mapper_override() -> None:
     assert "registry" not in refuse.parameters
     assert "sql" not in refuse.parameters
     assert "query" not in refuse.parameters
+    verify = inspect.signature(verify_production_metadata_capture_authorization)
+    assert list(verify.parameters) == ["request", "dsn_fd"]
+    assert "sql" not in verify.parameters
+    assert "query" not in verify.parameters
     imported = _imported(COMPOSITION)
     assert BANNED.isdisjoint(imported)
     assert get_type_hints(refuse_postgres_identity_capture)["return"] is NoReturn
