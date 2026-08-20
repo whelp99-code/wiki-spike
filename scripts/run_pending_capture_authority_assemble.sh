@@ -23,6 +23,22 @@ approver_envelope="$2"
 owner_envelope="$3"
 dest="$4"
 
+path_has_symlink() {
+  local current="$1"
+  while [[ -n "$current" && "$current" != "/" && "$current" != "." ]]; do
+    if [[ -L "$current" ]]; then
+      return 0
+    fi
+    current="$(dirname "$current")"
+  done
+  return 1
+}
+
+if path_has_symlink "$body" || path_has_symlink "$approver_envelope" || path_has_symlink "$owner_envelope"; then
+  printf 'metadata capture assemble refused: input would be a symlink\n' >&2
+  exit 2
+fi
+
 if [[ ! -f "$body" ]]; then
   printf 'unsigned body is missing\n' >&2
   exit 2
@@ -35,17 +51,6 @@ if [[ ! -f "$owner_envelope" ]]; then
   printf 'owner envelope is missing\n' >&2
   exit 2
 fi
-
-path_has_symlink() {
-  local current="$1"
-  while [[ -n "$current" && "$current" != "/" && "$current" != "." ]]; do
-    if [[ -L "$current" ]]; then
-      return 0
-    fi
-    current="$(dirname "$current")"
-  done
-  return 1
-}
 
 refuse_symlink_output() {
   printf 'metadata capture assemble refused: output would be a symlink\n' >&2

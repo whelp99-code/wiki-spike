@@ -147,6 +147,36 @@ def test_runner_refuses_when_envelope_order_is_reversed(tmp_path: Path) -> None:
     assert not paths.dest.exists()
 
 
+def test_runner_refuses_when_body_is_symlink(tmp_path: Path) -> None:
+    paths = _signed_inputs(tmp_path)
+    linked = tmp_path / "body-link.json"
+    linked.symlink_to(paths.body)
+    result = _run_runner(
+        str(linked), str(paths.approver), str(paths.owner), str(paths.dest)
+    )
+    combined = result.stdout + result.stderr
+    assert result.returncode == 2
+    assert "symlink" in result.stderr
+    assert not paths.dest.exists()
+    assert "BEGIN" not in combined
+    assert "PRIVATE KEY" not in combined
+
+
+def test_runner_refuses_when_envelope_is_symlink(tmp_path: Path) -> None:
+    paths = _signed_inputs(tmp_path)
+    linked = tmp_path / "approver-link.json"
+    linked.symlink_to(paths.approver)
+    result = _run_runner(
+        str(paths.body), str(linked), str(paths.owner), str(paths.dest)
+    )
+    combined = result.stdout + result.stderr
+    assert result.returncode == 2
+    assert "symlink" in result.stderr
+    assert not paths.dest.exists()
+    assert "BEGIN" not in combined
+    assert "PRIVATE KEY" not in combined
+
+
 def test_runner_refuses_when_dest_is_symlink(tmp_path: Path) -> None:
     paths = _signed_inputs(tmp_path)
     victim = tmp_path / "victim.json"
