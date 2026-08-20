@@ -5,9 +5,23 @@ import os
 import pwd
 import stat
 import sys
+from base64 import b64encode
+from datetime import UTC, datetime
 from pathlib import Path
 
+from wiki_spike.applications.mac_signed_authority_bundle_verify import (
+    verify_mac_signed_authority_bundle,
+)
 from wiki_spike.cli import main as run_authenticated_v2_cli
+from wiki_spike.composition.mac_artifact_io import (
+    MacArtifactReadError,
+    read_mac_artifact_bundle,
+)
+from wiki_spike.memory_core.errors import CoreContractError
+from wiki_spike.memory_core.second_brain_contracts import (
+    TrustedAuthorityBindingsV1,
+    TrustedDecisionKeyBindingsV1,
+)
 
 _ARTIFACT_REFUSAL_TOKENS = (
     "signed authority is absent",
@@ -19,6 +33,16 @@ _CLOSED_ARTIFACT_NAMES = (
     "persistence-profile.json",
     "persistence-receipt.json",
 )
+PINNED_TRUSTED_KEYS = TrustedDecisionKeyBindingsV1(
+    {},
+    TrustedAuthorityBindingsV1(
+        "approver",
+        b64encode(bytes(32)).decode("ascii"),
+        "owner",
+        b64encode(bytes(32 * [1])).decode("ascii"),
+    ),
+)
+PINNED_TRUSTED_NOW: datetime | None = None
 
 
 def _refuse_unauthorized(argv: list[str] | None) -> int:
@@ -51,6 +75,25 @@ def _closed_artifacts_are_regular(support: Path) -> bool:
     return valid
 
 
+def _trusted_now() -> datetime:
+    return datetime.now(UTC) if PINNED_TRUSTED_NOW is None else PINNED_TRUSTED_NOW
+
+
+def _verify_present_authority(support: Path) -> int | None:
+    """Verify a present authority bundle; return an exit code on fail-closed refusal."""
+    try:
+        artifacts = read_mac_artifact_bundle(support / "second-brain-v1")
+        _ = verify_mac_signed_authority_bundle(
+            artifacts.authority,
+            PINNED_TRUSTED_KEYS,
+            now=_trusted_now(),
+        )
+    except (MacArtifactReadError, CoreContractError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     """Refuse unauthorized Mac status before constructing DB, CAS, or Keychain."""
     support = (
@@ -67,7 +110,10 @@ def main(argv: list[str] | None = None) -> int:
         return _refuse_unauthorized(argv)
     if not _closed_artifacts_are_regular(support):
         return _refuse_unauthorized(argv)
-    return _refuse_unauthorized(argv)
+    refused = _verify_present_authority(support)
+    if refused is not None:
+        return refused
+    return run_authenticated_v2_cli(argv)
 
 
 if __name__ == "__main__":
