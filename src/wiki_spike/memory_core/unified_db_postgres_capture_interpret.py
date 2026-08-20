@@ -9,7 +9,10 @@ from .unified_db_postgres_capture_member_rows import (
     CatalogConstraintRowV1,
     CatalogIndexRowV1,
 )
-from .unified_db_postgres_capture_query import QUERY_KINDS, CaptureQueryV1
+from .unified_db_postgres_capture_query import (
+    CaptureQueryV1,
+    require_closed_capture_queries,
+)
 from .unified_db_postgres_capture_rows import (
     CatalogRowV1,
     CatalogSchemaRowV1,
@@ -34,8 +37,7 @@ def interpret_closed_catalog_results(
     """Parse exactly the closed eight query results in manifest order."""
     if len(queries) != len(results):
         raise InvalidContractValue("query result count does not match the closed manifest")
-    if tuple(query.query_kind for query in queries) != QUERY_KINDS:
-        raise InvalidContractValue("query is not in the closed manifest")
+    require_closed_capture_queries(queries)
     system_identifier = ""
     database_oid = ""
     server_version_num = ""

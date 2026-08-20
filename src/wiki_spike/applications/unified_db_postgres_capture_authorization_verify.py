@@ -51,9 +51,12 @@ _CLAIM_MINT = _ClaimMint()
 
 @final
 class ClaimedUnifiedDbMetadataCaptureAuthorityV1:
-    """Internal claimed grant. Not a public constructible authority."""
+    """Internal claimed grant. Not a public constructible authority.
 
-    __slots__: ClassVar[tuple[str, ...]] = ("__authorization",)
+    ``__consumed`` is set once when capture spends the grant.
+    """
+
+    __slots__: ClassVar[tuple[str, ...]] = ("__authorization", "__consumed")
 
     def __init__(
         self,
@@ -63,6 +66,16 @@ class ClaimedUnifiedDbMetadataCaptureAuthorityV1:
         if mint is not _CLAIM_MINT:
             raise InvalidContractValue("claimed metadata capture authority must be minted")
         self.__authorization = authorization
+        self.__consumed = False
+
+    def consume_for_capture(self) -> None:
+        """Spend this grant so capture can run at most once."""
+        with _LOCK:
+            if self.__consumed:
+                raise UnifiedDbExportError(
+                    "claimed metadata capture authority was already captured"
+                )
+            self.__consumed = True
 
     @classmethod
     def from_mapping(

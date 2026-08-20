@@ -44,6 +44,7 @@ from wiki_spike.memory_core.unified_db_postgres_capture_ports import (
 )
 from wiki_spike.memory_core.unified_db_postgres_capture_query import (
     PostgresCaptureQueryManifestV1,
+    require_closed_capture_queries,
 )
 from wiki_spike.memory_core.unified_db_postgres_capture_result import (
     PostgresMetadataCaptureReceiptV1,
@@ -76,9 +77,11 @@ class PostgresMetadataCaptureService:
     ) -> PostgresMetadataCaptureReceiptV1:
         _ = dsn_fd
         claimed = _require_claimed(authority)
+        claimed.consume_for_capture()
         destination = claimed.authorization.destination
         enforce_create_only_destination(destination.destination_path)
         queries = PostgresCaptureQueryManifestV1.closed()
+        require_closed_capture_queries(queries.queries)
         if queries.manifest_digest != claimed.query_manifest_digest:
             raise InvalidContractValue("query manifest digest does not match authorization")
         tables = tuple(

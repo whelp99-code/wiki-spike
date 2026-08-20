@@ -19,6 +19,7 @@ __all__ = (
     "CaptureQueryV1",
     "PostgresCaptureQueryManifestV1",
     "inspect_capture_sql",
+    "require_closed_capture_queries",
 )
 QUERY_MANIFEST_VERSION: Final = (
     "second-brain-unified-db-postgres-capture-query-manifest-v1"
@@ -108,6 +109,15 @@ class CaptureQueryV1:
         return {"query_kind": self.query_kind, "sql": self.sql}
 
 
+def require_closed_capture_queries(queries: tuple[CaptureQueryV1, ...]) -> None:
+    """Refuse any query tuple that is not the closed ordered SQL set."""
+    expected = tuple(CaptureQueryV1(kind, sql) for kind, sql in CLOSED_QUERY_SQL)
+    if queries != expected:
+        raise InvalidContractValue("query is not in the closed manifest")
+    for query in queries:
+        _ = inspect_capture_sql(query.sql)
+
+
 @dataclass(frozen=True, slots=True)
 class PostgresCaptureQueryManifestV1:
     manifest_version: str
@@ -137,11 +147,7 @@ class PostgresCaptureQueryManifestV1:
         )
         if len(queries) != len(raw):
             raise InvalidContractValue("every query must be an object")
-        expected = tuple(CaptureQueryV1(kind, sql) for kind, sql in CLOSED_QUERY_SQL)
-        if queries != expected:
-            raise InvalidContractValue("query is not in the closed manifest")
-        for query in queries:
-            _ = inspect_capture_sql(query.sql)
+        require_closed_capture_queries(queries)
         parsed = cls(
             version,
             queries,
