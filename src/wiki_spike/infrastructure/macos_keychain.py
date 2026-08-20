@@ -59,7 +59,7 @@ class MacOSKeychainKeyStore:
         if created_index:
             _fsync_directory(self.index_dir.parent)
         self.service: str = service
-        self._backend: KeychainBackend = backend
+        self.backend: KeychainBackend = backend
         default_directory = Path.home() / "Library/Keychains"
         self.keychain_directory: Path = Path(
             keychain_directory if keychain_directory is not None else default_directory
@@ -72,7 +72,7 @@ class MacOSKeychainKeyStore:
         _validate_digest("wrapped DEK", wrapped_dek_hex)
         _validate_digest("metadata digest", metadata_digest)
         existing = self._load(account)
-        stored_value = self._backend.read(service=self.service, account=account)
+        stored_value = self.backend.read(service=self.service, account=account)
         if existing is not None:
             if existing.destroyed:
                 raise ks.KeyDestroyed("forward-only Keychain custody was destroyed")
@@ -85,7 +85,7 @@ class MacOSKeychainKeyStore:
             return ks.CreateOnlyResult(created=False, already_exists=True)
         if stored_value is not None:
             raise ks.KeyStoreCorrupt("orphan Keychain item has no metadata index")
-        if not self._backend.add(service=self.service, account=account, secret=
+        if not self.backend.add(service=self.service, account=account, secret=
             wrapped_dek_hex):
             raise ks.KeyStoreCorrupt("Keychain item appeared during exclusive create")
         record = _IndexRecord(namespace, ark_handle, metadata_digest, None, None, False)
@@ -93,7 +93,7 @@ class MacOSKeychainKeyStore:
             _write_exclusive(self._path(account), record.payload())
         except OSError:
             try:
-                rolled_back = self._backend.delete(
+                rolled_back = self.backend.delete(
                     service=self.service,
                     account=account,
                 )
@@ -131,7 +131,7 @@ class MacOSKeychainKeyStore:
         for path in sorted(self.index_dir.glob("*.json")):
             record = _read_record(path)
             account = _account(record.namespace, record.ark_handle)
-            if not record.destroyed and self._backend.read(
+            if not record.destroyed and self.backend.read(
                 service=self.service, account=account
             ) is None:
                 raise ks.KeyStoreCorrupt("active Keychain index has no matching item")
@@ -150,9 +150,9 @@ class MacOSKeychainKeyStore:
                 raise ks.KeyStoreCorrupt("Keychain tombstone is incomplete")
             return ks.AbsenceReceipt(
                 namespace, ark_handle, record.metadata_digest, record.destroyed_at, record.receipt_digest)
-        if self._backend.read(service=self.service, account=account) is None:
+        if self.backend.read(service=self.service, account=account) is None:
             raise ks.KeyStoreCorrupt("active Keychain index has no matching item")
-        if not self._backend.delete(service=self.service, account=account):
+        if not self.backend.delete(service=self.service, account=account):
             raise ks.KeyStoreCorrupt("Keychain item disappeared during destroy")
         destroyed_at = _now()
         digest = hashlib.sha256(
@@ -172,7 +172,7 @@ class MacOSKeychainKeyStore:
             raise ks.KeyNotFound("Keychain custody metadata was not found")
         if record.destroyed:
             raise ks.KeyDestroyed("forward-only Keychain custody was destroyed")
-        stored_value = self._backend.read(service=self.service, account=account)
+        stored_value = self.backend.read(service=self.service, account=account)
         if stored_value is None:
             raise ks.KeyStoreCorrupt("active Keychain index has no matching item")
         _validate_digest("stored Keychain key", stored_value)
