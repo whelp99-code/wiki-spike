@@ -51,7 +51,7 @@
       "const": "METADATA_CAPTURE_ONLY"
     },
     "query_manifest_digest": {
-      "$ref": "#/$defs/sha256"
+      "const": "648ee2cdf9f10257d62744b39971ea528093e17515845b07e4286ed31555c4fb"
     },
     "capture_plan_digest": {
       "$ref": "#/$defs/sha256"

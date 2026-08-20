@@ -14,6 +14,7 @@ from tests.second_brain.unified_db_postgres_capture_authorization_support import
     EVIDENCE,
     SCHEMA,
     authorization_body,
+    expected_digests,
 )
 from wiki_spike.memory_core.contracts import JsonValue, canonical_bytes
 from wiki_spike.memory_core.errors import (
@@ -32,6 +33,9 @@ from wiki_spike.memory_core.unified_db_postgres_capture_authorization import (
 from wiki_spike.memory_core.unified_db_postgres_capture_authorization_sign import (
     METADATA_CAPTURE_ONLY_AUTHORIZATION_DOMAIN,
     metadata_capture_authorization_signing_bytes,
+)
+from wiki_spike.memory_core.unified_db_postgres_capture_query import (
+    PostgresCaptureQueryManifestV1,
 )
 from wiki_spike.memory_core.unified_db_snapshot_export import UnifiedDbExportError
 from wiki_spike.memory_core.unified_db_snapshot_export_json import decode_json_object
@@ -54,6 +58,10 @@ def test_body_binds_metadata_capture_only_identity_and_one_shot_window() -> None
     assert parsed.serve_allowed is False
     assert parsed.promote_allowed is False
     assert parsed.cutover_allowed is False
+    assert parsed.query_manifest_digest == (
+        PostgresCaptureQueryManifestV1.closed().manifest_digest
+    )
+    assert expected_digests().query_manifest_digest == parsed.query_manifest_digest
     assert parsed.authorization_digest == parsed.computed_digest()
 
 
@@ -79,6 +87,19 @@ def test_body_rejects_missing_and_extra_fields(field: str) -> None:
     extra = authorization_body() | {"extra": "no"}
     with pytest.raises(UnknownContractField):
         _ = UnifiedDbMetadataCaptureOnlyAuthorizationV1.from_mapping(extra)
+
+
+@pytest.mark.parametrize(
+    "digest",
+    ["aa" * 32, "11" * 32],
+)
+def test_body_refuses_dummy_or_other_query_manifest_digest(digest: str) -> None:
+    closed = PostgresCaptureQueryManifestV1.closed().manifest_digest
+    assert digest != closed
+    with pytest.raises(InvalidContractValue):
+        _ = UnifiedDbMetadataCaptureOnlyAuthorizationV1.from_mapping(
+            authorization_body(query_manifest_digest=digest)
+        )
 
 
 @pytest.mark.parametrize(
@@ -173,3 +194,13 @@ def test_schema_and_body_free_conformance_use_draft_2020_12() -> None:
     assert "body" not in evidence
     assert _draft_status(SCHEMA, authorization_body() | {"extra": "no"}) != 0
     assert _draft_status(CONFORMANCE_SCHEMA, evidence | {"extra": "no"}) != 0
+
+
+def test_schema_pins_closed_query_manifest_digest_const() -> None:
+    closed = PostgresCaptureQueryManifestV1.closed().manifest_digest
+    text = SCHEMA.read_text(encoding="utf-8")
+    assert f'"const": "{closed}"' in text
+    dummy = authorization_body(query_manifest_digest="aa" * 32)
+    other = authorization_body(query_manifest_digest="11" * 32)
+    assert _draft_status(SCHEMA, dummy) != 0
+    assert _draft_status(SCHEMA, other) != 0

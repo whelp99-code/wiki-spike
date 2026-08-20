@@ -17,6 +17,9 @@ AUTHORIZATION_VERSION: Final = (
     "second-brain-unified-db-postgres-metadata-capture-only-authorization-v1"
 )
 AUTHORIZATION_KIND: Final = "POSTGRES_METADATA_CAPTURE_ONLY"
+CLOSED_QUERY_MANIFEST_DIGEST: Final = (
+    "648ee2cdf9f10257d62744b39971ea528093e17515845b07e4286ed31555c4fb"
+)
 DIGEST_DOMAIN: Final = "unified-db-postgres-metadata-capture-only-authorization-v1"
 MAX_CAPTURE_WINDOW: Final = timedelta(minutes=15)
 _FIELDS: Final = frozenset(
@@ -100,7 +103,11 @@ class UnifiedDbMetadataCaptureOnlyAuthorizationV1:
             parse_digest(data["nonce"], "nonce"),
             parse_const(data["source_name"], "source_name", "unified-db"),
             parse_const(data["operation"], "operation", "METADATA_CAPTURE_ONLY"),
-            parse_digest(data["query_manifest_digest"], "query_manifest_digest"),
+            parse_const(
+                data["query_manifest_digest"],
+                "query_manifest_digest",
+                CLOSED_QUERY_MANIFEST_DIGEST,
+            ),
             parse_digest(data["capture_plan_digest"], "capture_plan_digest"),
             parse_digest(data["output_digest"], "output_digest"),
             parse_const(data["max_captures"], "max_captures", "1"),

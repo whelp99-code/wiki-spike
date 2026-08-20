@@ -21,6 +21,7 @@ from wiki_spike.memory_core.second_brain_ledger_contracts import canonical_ledge
 from wiki_spike.memory_core.unified_db_postgres_capture_authorization import (
     AUTHORIZATION_KIND,
     AUTHORIZATION_VERSION,
+    CLOSED_QUERY_MANIFEST_DIGEST,
 )
 from wiki_spike.memory_core.unified_db_postgres_capture_authorization_nonce import (
     InMemoryMetadataCaptureNonceStore,
@@ -43,7 +44,7 @@ EVIDENCE = Path(
 ISSUED = "2026-08-18T12:00:00Z"
 EXPIRES = "2026-08-18T12:15:00Z"
 NOW = datetime(2026, 8, 18, 12, 5, tzinfo=UTC)
-QUERY_MANIFEST_DIGEST = "aa" * 32
+QUERY_MANIFEST_DIGEST = CLOSED_QUERY_MANIFEST_DIGEST
 CAPTURE_PLAN_DIGEST = "bb" * 32
 OUTPUT_DIGEST = "cc" * 32
 
