@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from scripts.second_brain_decision import BODY_FIELDS
-from wiki_spike.memory_core.contracts import canonical_bytes
+from wiki_spike.memory_core.contracts import JsonValue, canonical_bytes
 from wiki_spike.memory_core.errors import InvalidContractValue
 from wiki_spike.memory_core.me_wiki_source_evidence import MeWikiSourceEvidenceV1
 from wiki_spike.memory_core.second_brain_contracts import DecisionRecordV1
@@ -29,11 +29,8 @@ _DECISIONS = _ROOT / "artifacts/product-release/second-brain-v1/decisions"
 _FORBIDDEN = ("BEGIN ", "PRIVATE KEY", "private_key", "signature_b64")
 
 
-def _load(path: Path) -> dict[str, object]:
-    value = json.loads(path.read_text(encoding="utf-8"))
-    assert isinstance(value, dict)
-    assert all(isinstance(key, str) for key in value)
-    return value
+def _load(path: Path) -> dict[str, JsonValue]:
+    return decode_json_object(path.read_text(encoding="utf-8"))
 
 
 def test_unsigned_body_binds_raw_source_evidence_digest_without_go_or_signatures() -> None:
@@ -70,3 +67,7 @@ def test_unsigned_body_is_not_authority_and_current_decisions_stay_fail_closed()
     assert _BODY.parent.name == "decision-signing"
     assert not (_DECISIONS / "DB-03.json").exists()
     assert not (_DECISIONS / "DB-03-me-wiki.json").exists()
+    assert all(
+        _load(path)["scope_name"] != "me-wiki"
+        for path in _DECISIONS.glob("DB-03*.json")
+    )
