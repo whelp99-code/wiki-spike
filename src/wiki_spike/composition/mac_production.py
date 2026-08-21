@@ -36,6 +36,7 @@ from wiki_spike.memory_core.second_brain_contracts import (
 from wiki_spike.memory_core.second_brain_security_contracts import (
     mint_security_context_authority,
 )
+from wiki_spike.resources import load_pinned_sqlcipher_artifact_bytes
 
 PINNED_TRUSTED_KEYS = TrustedDecisionKeyBindingsV1(
     {},
@@ -47,7 +48,7 @@ PINNED_TRUSTED_KEYS = TrustedDecisionKeyBindingsV1(
     ),
 )
 PINNED_TRUSTED_NOW: datetime | None = None
-PINNED_SQLCIPHER_ARTIFACT_BYTES: bytes = b""
+PINNED_SQLCIPHER_ARTIFACT_BYTES: bytes = load_pinned_sqlcipher_artifact_bytes()
 PINNED_WORKSPACE_REF = ""
 
 

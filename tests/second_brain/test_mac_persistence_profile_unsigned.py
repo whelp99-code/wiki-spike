@@ -5,6 +5,7 @@ import json
 from hashlib import sha256
 from pathlib import Path
 
+from wiki_spike.composition.mac_production import PINNED_SQLCIPHER_ARTIFACT_BYTES
 from wiki_spike.memory_core.contracts import JsonValue, canonical_bytes
 from wiki_spike.memory_core.second_brain_ledger_contracts import (
     canonical_ledger_digest,
@@ -17,6 +18,12 @@ _PROFILE = _RELEASE / "persistence-profile.json"
 _RECEIPT = _RELEASE / "persistence-receipt.json"
 _SQLCIPHER = (
     _ROOT / "artifacts/encrypted-lifecycle/sqlcipher-feasibility-darwin-arm64.json"
+)
+_PACKAGED_SQLCIPHER = (
+    _ROOT / "src/wiki_spike/resources/sqlcipher-feasibility-darwin-arm64.json"
+)
+_SQLCIPHER_DIGEST = (
+    "4be0904f80c46d406dc45479febcab43ef3c0fd4db184250bc927041fc97ade2"
 )
 _FIELDS = frozenset(MacPersistenceProfileV1.FIELDS)
 _FORBIDDEN = (
@@ -73,3 +80,18 @@ def test_unsigned_profile_from_mapping_matches_canonical_digest_helper() -> None
     assert parsed.to_mapping() == body
     assert parsed.sqlcipher_status == "platform_unavailable"
     assert parsed.sqlcipher_must_verdict == "NOT_RUN"
+
+
+def test_production_default_sqlcipher_bytes_match_unsigned_profile_digest() -> None:
+    artifact = _SQLCIPHER.read_bytes()
+    packaged = _PACKAGED_SQLCIPHER.read_bytes()
+    body = _load(_PROFILE)
+    assert sha256(artifact).hexdigest() == _SQLCIPHER_DIGEST
+    assert sha256(PINNED_SQLCIPHER_ARTIFACT_BYTES).hexdigest() == _SQLCIPHER_DIGEST
+    assert sha256(packaged).hexdigest() == _SQLCIPHER_DIGEST
+    assert PINNED_SQLCIPHER_ARTIFACT_BYTES == artifact
+    assert packaged == artifact
+    assert body["sqlcipher_artifact_digest"] == _SQLCIPHER_DIGEST
+    assert body["sqlcipher_status"] == "platform_unavailable"
+    assert body["sqlcipher_must_verdict"] == "NOT_RUN"
+    assert not _RECEIPT.exists()

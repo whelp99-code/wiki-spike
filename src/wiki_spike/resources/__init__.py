@@ -1,0 +1,11 @@
+"""Packaged Mac production resource bytes."""
+from __future__ import annotations
+
+from importlib.resources import files
+
+_SQLCIPHER_FEASIBILITY = "sqlcipher-feasibility-darwin-arm64.json"
+
+
+def load_pinned_sqlcipher_artifact_bytes() -> bytes:
+    """Return the committed Darwin/arm64 SQLCipher feasibility JSON bytes."""
+    return files("wiki_spike.resources").joinpath(_SQLCIPHER_FEASIBILITY).read_bytes()
