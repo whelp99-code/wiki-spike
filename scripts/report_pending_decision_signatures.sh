@@ -18,11 +18,14 @@ if [[ "$#" -gt 1 ]]; then
 fi
 
 stems=(
+  "DB-01"
   "DB-02-claude-memory-bank"
   "DB-02-codex"
   "DB-02-git"
   "DB-02-markdown"
   "DB-03-legacy-mem0-rag"
+  "DB-03-me-wiki"
+  "DB-03-unified-db"
   "DB-07"
 )
 
@@ -75,7 +78,4 @@ for stem in "${stems[@]}"; do
 done
 
 printf 'blocked UNRESOLVED:\n'
-printf 'DB-01 global\n'
 printf 'DB-05 global\n'
-printf 'DB-03 me-wiki\n'
-printf 'DB-03 unified-db\n'

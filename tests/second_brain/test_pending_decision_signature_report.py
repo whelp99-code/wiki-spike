@@ -6,19 +6,17 @@ from pathlib import Path
 
 _RUNNER = Path("scripts/report_pending_decision_signatures.sh")
 _SIGNABLE = (
+    "DB-01",
     "DB-02-claude-memory-bank",
     "DB-02-codex",
     "DB-02-git",
     "DB-02-markdown",
     "DB-03-legacy-mem0-rag",
+    "DB-03-me-wiki",
+    "DB-03-unified-db",
     "DB-07",
 )
-_BLOCKED = (
-    "DB-01 global",
-    "DB-05 global",
-    "DB-03 me-wiki",
-    "DB-03 unified-db",
-)
+_BLOCKED = ("DB-05 global",)
 
 
 def _run(*args: str) -> subprocess.CompletedProcess[str]:
