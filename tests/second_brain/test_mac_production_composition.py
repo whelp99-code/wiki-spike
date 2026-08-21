@@ -12,6 +12,8 @@ from wiki_spike.composition.mac_production import (
 from wiki_spike.memory_core.second_brain_contracts import ExpectedScopeManifestV1
 
 COMPOSITION = Path("src/wiki_spike/composition/mac_production.py")
+ADMIT = Path("src/wiki_spike/composition/mac_production_admit.py")
+COMPOSE = Path("src/wiki_spike/composition/mac_production_compose.py")
 PYPROJECT = Path("pyproject.toml")
 COMMITTED_BINDINGS = Path(
     "artifacts/product-release/second-brain-v1/governance/trusted-bindings.json"
@@ -35,6 +37,14 @@ BANNED_IMPORTS = {
     "wiki_spike.infrastructure.macos_keychain",
     "wiki_spike.infrastructure.macos_keychain_backend",
 }
+NETWORK_BANNED = {
+    "http",
+    "multiprocessing",
+    "requests",
+    "socket",
+    "subprocess",
+    "urllib",
+}
 
 
 def _imported(path: Path) -> set[str]:
@@ -56,6 +66,9 @@ def _imported(path: Path) -> set[str]:
 def test_mac_production_does_not_import_storage_or_network_constructors() -> None:
     imported = _imported(COMPOSITION)
     assert BANNED_IMPORTS.isdisjoint(imported), sorted(imported & BANNED_IMPORTS)
+    for path in (COMPOSITION, ADMIT, COMPOSE):
+        names = _imported(path)
+        assert NETWORK_BANNED.isdisjoint(names), (path, sorted(names & NETWORK_BANNED))
 
 
 def test_installed_wiki_entry_points_at_mac_production_main() -> None:
