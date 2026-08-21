@@ -26,6 +26,7 @@ _FIELDS = frozenset(
         "workspace_ref",
     }
 )
+_RESTORE_FIELDS = _FIELDS | {"backup_receipt_digest"}
 _READ = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
 _WRITE = (
     os.O_WRONLY
@@ -106,14 +107,12 @@ def _reject_number(value: str) -> int:
     raise MacBackupReceiptError("raw numbers are forbidden")
 
 
-def write_restore_receipt(
-    dest: Path,
+def _expected_restore_body(
     workspace_ref: str,
     sqlite: Path,
     cas: Path,
     backup_receipt_digest: str,
-) -> None:
-    """Write dest/restore-receipt.json create-only with string-only fields."""
+) -> dict[str, str]:
     rows = _cas_rows(cas)
     body = {
         "backup_receipt_digest": backup_receipt_digest,
@@ -127,7 +126,22 @@ def write_restore_receipt(
         "workspace_ref": workspace_ref,
     }
     body["receipt_digest"] = canonical_ledger_digest(_RESTORE_KIND, body)
-    payload = canonical_bytes(body) + b"\n"
+    return body
+
+
+def write_restore_receipt(
+    dest: Path,
+    workspace_ref: str,
+    sqlite: Path,
+    cas: Path,
+    backup_receipt_digest: str,
+) -> None:
+    """Write dest/restore-receipt.json create-only with string-only fields."""
+    payload = canonical_bytes(
+        _expected_restore_body(
+            workspace_ref, sqlite, cas, backup_receipt_digest
+        )
+    ) + b"\n"
     fd = os.open(dest / "restore-receipt.json", _WRITE, 0o444)
     try:
         written = 0
@@ -176,4 +190,48 @@ def verify_backup_receipt(backup: Path, workspace_ref: str) -> str:
     )
     if observed != expected:
         raise MacBackupReceiptError("backup receipt does not match sqlite and CAS")
+    return observed["receipt_digest"]
+
+
+def verify_restore_receipt(dest: Path, workspace_ref: str) -> str:
+    """Refuse a missing, extra-field, or digest-mismatched restore receipt."""
+    receipt_path = dest / "restore-receipt.json"
+    try:
+        meta = os.lstat(receipt_path)
+    except OSError as exc:
+        raise MacBackupReceiptError("restore receipt is absent") from exc
+    if stat.S_ISLNK(meta.st_mode) or not stat.S_ISREG(meta.st_mode):
+        raise MacBackupReceiptError("restore receipt is not a regular file")
+    fd = os.open(receipt_path, _READ)
+    try:
+        raw = b""
+        while True:
+            chunk = os.read(fd, _CHUNK)
+            if not chunk:
+                break
+            raw += chunk
+    finally:
+        os.close(fd)
+    payload: object = json.loads(
+        raw.decode("utf-8"),
+        parse_int=_reject_number,
+        parse_float=_reject_number,
+    )
+    if not isinstance(payload, dict):
+        raise MacBackupReceiptError("restore receipt must be an object")
+    unknown = set(payload) - _RESTORE_FIELDS
+    missing = _RESTORE_FIELDS - set(payload)
+    if unknown or missing:
+        raise MacBackupReceiptError("restore receipt fields are invalid")
+    observed = {key: payload[key] for key in _RESTORE_FIELDS}
+    if any(not isinstance(value, str) or not value for value in observed.values()):
+        raise MacBackupReceiptError("restore receipt fields are invalid")
+    expected = _expected_restore_body(
+        workspace_ref,
+        dest / "lifecycle.sqlite3",
+        dest / "cas",
+        observed["backup_receipt_digest"],
+    )
+    if observed != expected:
+        raise MacBackupReceiptError("restore receipt does not match sqlite and CAS")
     return observed["receipt_digest"]

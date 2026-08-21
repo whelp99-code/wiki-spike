@@ -24,6 +24,7 @@ from wiki_spike.infrastructure.lifecycle_db_existing import (
 from wiki_spike.infrastructure.mac_backup_receipt import (
     MacBackupReceiptError,
     verify_backup_receipt,
+    verify_restore_receipt,
     write_restore_receipt,
 )
 
@@ -187,6 +188,7 @@ def _restore(args: argparse.Namespace) -> None:
         copied_cas,
         backup_digest,
     )
+    verify_restore_receipt(dest, str(args.workspace_ref))
 
 
 def main(argv: list[str] | None = None) -> int:
