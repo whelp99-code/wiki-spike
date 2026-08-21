@@ -8,8 +8,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from wiki_spike.cli import _root_from_argv
-from wiki_spike.cli import main as run_authenticated_v2_cli
 from wiki_spike.composition.mac_artifact_io import (
     MacArtifactReadError,
     read_mac_artifact_bundle,
@@ -47,17 +45,41 @@ PINNED_EXPECTED_SCOPE_MANIFEST = load_pinned_expected_scope_manifest()
 PINNED_WORKSPACE_REF: str | None = ""
 
 
+def _root_from_argv(argv: list[str]) -> str:
+    """Return argparse's effective root option without validating the command."""
+    root = ".wiki-spike"
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        option, separator, value = token.partition("=")
+        if len(option) > 2 and "--root".startswith(option):
+            if separator:
+                root = value
+            elif index + 1 < len(argv):
+                index += 1
+                root = argv[index]
+        index += 1
+    return root
+
+
+def _argv_root(argv: list[str] | None) -> Path:
+    return Path(_root_from_argv(list(sys.argv[1:] if argv is None else argv)))
+
+
 def _resolved_workspace_ref(argv: list[str] | None) -> str:
     if PINNED_WORKSPACE_REF:
         return PINNED_WORKSPACE_REF
-    admitted = V2WorkspaceRoot.inspect(
-        Path(_root_from_argv(list(sys.argv[1:] if argv is None else argv)))
-    )
+    admitted = V2WorkspaceRoot.inspect(_argv_root(argv))
     return mac_workspace_ref(admitted.marker.workspace_id)
 
 
 def main(argv: list[str] | None = None) -> int:
     """Admit existing Mac stores after SERVING_READY; refuse closed otherwise."""
+    try:
+        V2WorkspaceRoot.inspect(_argv_root(argv))
+    except WorkspaceRootError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     support = (
         Path(pwd.getpwuid(os.getuid()).pw_dir)
         / "Library"
@@ -120,7 +142,13 @@ def main(argv: list[str] | None = None) -> int:
         except MacProductionComposeError as exc:
             print(str(exc), file=sys.stderr)
             return 1
-        return run_authenticated_v2_cli(argv, product=product)
+        try:
+            product.authority.require()
+        except (AttributeError, PermissionError, TypeError, ValueError):
+            print("authenticated V2 product authority is required", file=sys.stderr)
+            return 1
+        print("authenticated V2 product ready")
+        return 0
     finally:
         database.close()
 

@@ -15,7 +15,6 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from wiki_spike.applications.mac_signed_authority_bundle_verify import (
     verify_mac_signed_authority_bundle,
 )
-from wiki_spike.cli import main as run_authenticated_v2_cli
 from wiki_spike.composition.mac_artifact_io import MacArtifactBundle
 from wiki_spike.infrastructure.lifecycle_db_existing import (
     ExistingLifecycleDatabase,
@@ -62,10 +61,11 @@ def mac_workspace_ref(workspace_id: str) -> str:
 
 
 def refuse_unauthorized(argv: list[str] | None) -> int:
-    """Print absent-artifact tokens, then run the authenticated CLI."""
+    """Print absent-artifact tokens and refuse without re-entering CLI dispatch."""
     for token in _ARTIFACT_REFUSAL_TOKENS:
         print(token, file=sys.stderr)
-    return run_authenticated_v2_cli(argv)
+    print("authenticated V2 product authority is required", file=sys.stderr)
+    return 1
 
 
 def closed_artifacts_are_regular(support: Path) -> bool:
