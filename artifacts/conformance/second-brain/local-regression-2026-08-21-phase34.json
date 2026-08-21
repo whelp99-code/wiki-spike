@@ -1,0 +1,7 @@
+{
+  "implementation_commit": "7ab3446da5725adf90a2d410bc3f99f20ef5317b",
+  "kind": "second-brain-local-regression-phase34-v1",
+  "phase3_and_phase4_tests_passed": "445",
+  "pythonhashseed": "0",
+  "wiki_console_script": "wiki_spike.cli:main"
+}
