@@ -112,3 +112,25 @@ def test_restore_dest_inside_backup_refuses(
     assert identity_snapshot(backup) == before
     assert tree_snapshot(backup) == before_tree
     _assert_no_real_home_writes(decoy)
+
+
+def test_restore_dest_inside_existing_lifecycle_tree_refuses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    decoy = _decoy_home(tmp_path, monkeypatch)
+    live = tmp_path / "live-v1"
+    backup = tmp_path / "backup"
+    dest = live / "nested-restore"
+    _write_backup(live)
+    _write_backup(backup)
+    arm_bombs(monkeypatch)
+    live_before = identity_snapshot(live)
+    backup_before = identity_snapshot(backup)
+
+    code = run_restore(backup, dest)
+
+    assert code != 0
+    assert not dest.exists()
+    assert identity_snapshot(live) == live_before
+    assert identity_snapshot(backup) == backup_before
+    _assert_no_real_home_writes(decoy)

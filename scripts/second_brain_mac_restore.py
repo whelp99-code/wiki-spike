@@ -65,6 +65,28 @@ def _refuse_dest_inside(source: Path, dest: Path) -> None:
     raise RestoreError("destination is inside the backup tree")
 
 
+def _refuse_dest_inside_existing_lifecycle(dest: Path) -> None:
+    current = Path(os.path.abspath(dest)).parent
+    while True:
+        candidate = current / "lifecycle.sqlite3"
+        try:
+            meta = os.lstat(candidate)
+        except OSError:
+            meta = None
+        if (
+            meta is not None
+            and not stat.S_ISLNK(meta.st_mode)
+            and stat.S_ISREG(meta.st_mode)
+        ):
+            raise RestoreError(
+                "destination is inside an existing lifecycle tree"
+            )
+        parent = current.parent
+        if parent == current:
+            return
+        current = parent
+
+
 def _require_absent_dest(path: Path) -> None:
     absolute = Path(os.path.abspath(path))
     current = Path(absolute.anchor)
@@ -186,6 +208,7 @@ def _restore(args: argparse.Namespace) -> None:
     _assert_tree_copyable(cas)
     backup_digest = verify_backup_receipt(backup, str(args.workspace_ref))
     _refuse_dest_inside(backup, dest)
+    _refuse_dest_inside_existing_lifecycle(dest)
     _require_absent_dest(dest)
     _mkdir_private(dest, 0o700)
     copied_sqlite = dest / "lifecycle.sqlite3"
