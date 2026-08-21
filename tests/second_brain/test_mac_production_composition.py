@@ -9,6 +9,7 @@ from wiki_spike.composition.mac_production import (
     PINNED_EXPECTED_SCOPE_MANIFEST,
     PINNED_TRUSTED_KEYS,
 )
+from wiki_spike.memory_core.contracts import canonical_bytes
 from wiki_spike.memory_core.second_brain_contracts import ExpectedScopeManifestV1
 
 COMPOSITION = Path("src/wiki_spike/composition/mac_production.py")
@@ -103,6 +104,12 @@ def test_production_default_pin_parses_committed_expected_scopes() -> None:
     assert PINNED_EXPECTED_SCOPE_MANIFEST.digest == parsed.digest
     assert PINNED_EXPECTED_SCOPE_MANIFEST == parsed
     assert PACKAGED_SCOPES.read_bytes() == raw
+
+
+def test_packaged_trust_files_are_canonical() -> None:
+    for path in (PACKAGED_BINDINGS, PACKAGED_SCOPES, COMMITTED_BINDINGS, COMMITTED_SCOPES):
+        raw = path.read_bytes()
+        assert raw == canonical_bytes(json.loads(raw))
 
 
 def test_compose_uses_fixed_keychain_service_and_ark_handle() -> None:
