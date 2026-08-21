@@ -22,11 +22,14 @@ from tests.second_brain.test_mac_signed_authority_bundle import (
     NOW,
     TRUSTED,
     bundle_bytes,
+    bundle_mapping,
+    expected_mapping,
 )
 from wiki_spike.applications.mac_signed_authority_bundle_verify import (
     verify_mac_signed_authority_bundle,
 )
 from wiki_spike.composition.mac_production import main
+from wiki_spike.memory_core.contracts import JsonValue
 
 SIGNED_AUTHORITY_ABSENT_TOKEN = "signed authority is absent"
 PERSISTENCE_PROFILE_ABSENT_TOKEN = "persistence profile is absent"
@@ -93,6 +96,49 @@ def test_status_refuses_untrusted_present_authority_before_storage(
     assert code == 1
     assert minted == []
     assert UNTRUSTED_TOKEN in captured.err
+    assert SIGNED_AUTHORITY_ABSENT_TOKEN not in captured.err
+    assert tree_snapshot(tmp_path) == before
+    assert "authenticated V2 product ready" not in captured.out
+
+
+def _mismatched_expected_mapping() -> dict[str, JsonValue]:
+    expected = expected_mapping()
+    scopes = expected["expected_scopes"]
+    if not isinstance(scopes, list):
+        raise TypeError("expected_scopes must be an array")
+    rewritten: list[JsonValue] = []
+    for entry in scopes:
+        if not isinstance(entry, dict):
+            raise TypeError("expected_scopes entries must be objects")
+        item: dict[str, JsonValue] = dict(entry)
+        if item.get("decision_id") == "DB-06":
+            item["scope_name"] = "model-b"
+        rewritten.append(item)
+    expected["expected_scopes"] = rewritten
+    return expected
+
+
+def test_status_refuses_mismatched_expected_scope_before_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    isolate_home(tmp_path, monkeypatch)
+    home = tmp_path / "home"
+    authority = bundle_bytes(bundle_mapping(expected=_mismatched_expected_mapping()))
+    _write_closed_artifacts(home, authority)
+    root = marked_root(tmp_path)
+    bomb_storage(monkeypatch)
+    pin_trusted(monkeypatch)
+    minted = track_mint(monkeypatch)
+    before = tree_snapshot(tmp_path)
+
+    code = main(["--root", str(root), "status"])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert minted == []
+    assert "expected scope" in captured.err
     assert SIGNED_AUTHORITY_ABSENT_TOKEN not in captured.err
     assert tree_snapshot(tmp_path) == before
     assert "authenticated V2 product ready" not in captured.out

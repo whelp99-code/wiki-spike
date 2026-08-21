@@ -298,10 +298,12 @@ def receipt_mapping(
 
 def bundle_mapping(
     items: list[dict[str, JsonValue]] | None = None,
+    *,
+    expected: dict[str, JsonValue] | None = None,
 ) -> dict[str, JsonValue]:
     decisions = records() if items is None else items
     scope = scope_mapping()
-    expected = expected_mapping()
+    expected = expected_mapping() if expected is None else expected
     entries = [(f"{index:02d}.json", record) for index, record in enumerate(decisions)]
     aggregate = aggregate_mapping(decisions, scope, expected)
     evidence = evidence_mapping(decisions)

@@ -24,7 +24,10 @@ from wiki_spike.composition.mac_production_compose import (
     MacProductionComposeError,
     compose_existing_mac_product,
 )
-from wiki_spike.composition.mac_production_trusted import load_pinned_trusted_keys
+from wiki_spike.composition.mac_production_trusted import (
+    load_pinned_expected_scope_manifest,
+    load_pinned_trusted_keys,
+)
 from wiki_spike.infrastructure.lifecycle_db_existing import (
     inspect_existing_serving_ready,
     open_existing_lifecycle_database,
@@ -37,6 +40,7 @@ from wiki_spike.resources import load_pinned_sqlcipher_artifact_bytes
 PINNED_TRUSTED_KEYS = load_pinned_trusted_keys()
 PINNED_TRUSTED_NOW: datetime | None = None
 PINNED_SQLCIPHER_ARTIFACT_BYTES: bytes = load_pinned_sqlcipher_artifact_bytes()
+PINNED_EXPECTED_SCOPE_MANIFEST = load_pinned_expected_scope_manifest()
 PINNED_WORKSPACE_REF = ""
 
 
@@ -66,6 +70,7 @@ def main(argv: list[str] | None = None) -> int:
         trusted_keys=PINNED_TRUSTED_KEYS,
         trusted_now=PINNED_TRUSTED_NOW,
         mint_authority=mint_security_context_authority,
+        expected_scope_manifest=PINNED_EXPECTED_SCOPE_MANIFEST,
     )
     if refused is not None or authority is None:
         return 1 if refused is None else refused

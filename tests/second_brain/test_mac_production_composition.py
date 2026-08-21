@@ -5,7 +5,11 @@ import ast
 import json
 from pathlib import Path
 
-from wiki_spike.composition.mac_production import PINNED_TRUSTED_KEYS
+from wiki_spike.composition.mac_production import (
+    PINNED_EXPECTED_SCOPE_MANIFEST,
+    PINNED_TRUSTED_KEYS,
+)
+from wiki_spike.memory_core.second_brain_contracts import ExpectedScopeManifestV1
 
 COMPOSITION = Path("src/wiki_spike/composition/mac_production.py")
 PYPROJECT = Path("pyproject.toml")
@@ -13,6 +17,10 @@ COMMITTED_BINDINGS = Path(
     "artifacts/product-release/second-brain-v1/governance/trusted-bindings.json"
 )
 PACKAGED_BINDINGS = Path("src/wiki_spike/resources/trusted-bindings.json")
+COMMITTED_SCOPES = Path(
+    "artifacts/product-release/second-brain-v1/governance/expected-scopes.json"
+)
+PACKAGED_SCOPES = Path("src/wiki_spike/resources/expected-scopes.json")
 BANNED_IMPORTS = {
     "http",
     "importlib",
@@ -76,3 +84,11 @@ def test_production_default_pinned_trusted_keys_match_committed_public_bindings(
         identities.add(identity)
     assert set(PINNED_TRUSTED_KEYS.decision_bindings) == identities
     assert PACKAGED_BINDINGS.read_bytes() == raw
+
+
+def test_production_default_pin_parses_committed_expected_scopes() -> None:
+    raw = COMMITTED_SCOPES.read_bytes()
+    parsed = ExpectedScopeManifestV1.from_mapping(json.loads(raw))
+    assert PINNED_EXPECTED_SCOPE_MANIFEST.digest == parsed.digest
+    assert PINNED_EXPECTED_SCOPE_MANIFEST == parsed
+    assert PACKAGED_SCOPES.read_bytes() == raw

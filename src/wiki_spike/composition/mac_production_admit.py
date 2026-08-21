@@ -26,7 +26,10 @@ from wiki_spike.infrastructure.persistence_profile import (
     verify_mac_persistence_authorization,
 )
 from wiki_spike.memory_core.errors import CoreContractError, InvalidContractValue
-from wiki_spike.memory_core.second_brain_contracts import TrustedDecisionKeyBindingsV1
+from wiki_spike.memory_core.second_brain_contracts import (
+    ExpectedScopeManifestV1,
+    TrustedDecisionKeyBindingsV1,
+)
 from wiki_spike.memory_core.second_brain_persistence import (
     MacPersistenceProfileV1,
     PersistenceProfileReceiptV1,
@@ -89,6 +92,7 @@ def verify_present_authority(
     trusted_keys: TrustedDecisionKeyBindingsV1,
     trusted_now: datetime | None,
     mint_authority: Callable[..., SecurityContextAuthority],
+    expected_scope_manifest: ExpectedScopeManifestV1,
 ) -> tuple[SecurityContextAuthority | None, int | None]:
     """Verify a present authority bundle and mint opaque Stage-0 authority."""
     try:
@@ -97,6 +101,10 @@ def verify_present_authority(
             trusted_keys,
             now=_trusted_now(trusted_now),
         )
+        if bundle.aggregate.contract.expected_scope_manifest != expected_scope_manifest:
+            raise InvalidContractValue(
+                "expected scope manifest does not match the pinned inventory"
+            )
         return mint_authority(
             tuple(item.record for item in bundle.decision_records),
             bundle.aggregate.contract.resolved_scope,

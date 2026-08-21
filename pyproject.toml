@@ -18,6 +18,7 @@ where = ["src"]
 "wiki_spike.resources" = [
     "sqlcipher-feasibility-darwin-arm64.json",
     "trusted-bindings.json",
+    "expected-scopes.json",
 ]
 
 [tool.pytest.ini_options]

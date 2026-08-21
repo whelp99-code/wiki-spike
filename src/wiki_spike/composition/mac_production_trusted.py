@@ -8,10 +8,14 @@ from typing import NoReturn
 from wiki_spike.memory_core.contracts import JsonValue
 from wiki_spike.memory_core.errors import InvalidContractValue, UnknownContractField
 from wiki_spike.memory_core.second_brain_contracts import (
+    ExpectedScopeManifestV1,
     TrustedAuthorityBindingsV1,
     TrustedDecisionKeyBindingsV1,
 )
-from wiki_spike.resources import load_pinned_trusted_bindings_bytes
+from wiki_spike.resources import (
+    load_pinned_expected_scopes_bytes,
+    load_pinned_trusted_bindings_bytes,
+)
 
 _VERSION = "second-brain-trusted-decision-key-bindings-v1"
 _ROOT_FIELDS = frozenset(
@@ -106,3 +110,16 @@ def load_pinned_trusted_keys() -> TrustedDecisionKeyBindingsV1:
             {field: item[field] for field in _AUTHORITY_FIELDS}
         )
     return TrustedDecisionKeyBindingsV1(bindings, _authority(aggregate))
+
+
+def load_pinned_expected_scope_manifest() -> ExpectedScopeManifestV1:
+    """Parse packaged public expected-scopes into the production pin."""
+    payload: object = json.loads(
+        load_pinned_expected_scopes_bytes().decode("utf-8"),
+        parse_int=_reject_number,
+        parse_float=_reject_number,
+        object_pairs_hook=_no_duplicates,
+    )
+    if not isinstance(payload, dict):
+        raise InvalidContractValue("expected scopes must be an object")
+    return ExpectedScopeManifestV1.from_mapping(payload)
