@@ -54,6 +54,7 @@ def pin_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
 def write_lifecycle_database(
     path: Path,
     *,
+    workspace_ref: str = PINNED_WORKSPACE,
     authority_state: str | None = "ACTIVE",
     migration_state: str | None = "SERVING_READY",
 ) -> None:
@@ -65,7 +66,7 @@ def write_lifecycle_database(
         _ = database.con.execute(
             "INSERT INTO ledger_authority VALUES(?,?,?,?,?)",
             (
-                PINNED_WORKSPACE,
+                workspace_ref,
                 "capability:test",
                 "1",
                 authority_state,
@@ -77,7 +78,7 @@ def write_lifecycle_database(
             "INSERT INTO ledger_migration VALUES(?,?,?,?,?)",
             (
                 "migration:test",
-                PINNED_WORKSPACE,
+                workspace_ref,
                 migration_state,
                 "cd" * 32,
                 "2026-08-21T00:00:01Z",

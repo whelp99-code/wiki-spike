@@ -7,6 +7,7 @@ import sys
 from base64 import b64decode
 from collections.abc import Callable
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -50,6 +51,14 @@ _CLOSED_ARTIFACT_NAMES = (
     "persistence-profile.json",
     "persistence-receipt.json",
 )
+
+
+def mac_workspace_ref(workspace_id: str) -> str:
+    """Derive Mac workspace_ref from an authenticated V2 marker workspace_id."""
+    return "workspace:" + sha256(
+        b"wiki-spike.second-brain.mac-workspace.v1\0"
+        + workspace_id.encode("utf-8")
+    ).hexdigest()
 
 
 def refuse_unauthorized(argv: list[str] | None) -> int:

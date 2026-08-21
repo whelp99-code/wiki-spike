@@ -35,11 +35,11 @@ def passwd_lookup(home: Path) -> Callable[[int], PasswdRecord]:
     return lookup
 
 
-def marked_root(tmp_path: Path) -> Path:
+def marked_root(tmp_path: Path, workspace_id: str = "mac-root") -> Path:
     root = tmp_path / "mac-root"
     root.mkdir()
     marker = WorkspaceFormatMarker.create(
-        workspace_id="mac-root",
+        workspace_id=workspace_id,
         profile_selection=ProfileSelection.FIELD_AEAD,
         encrypted_lifecycle_enabled=True,
     )

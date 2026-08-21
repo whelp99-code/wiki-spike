@@ -1,6 +1,7 @@
 """Present Mac lifecycle DB is inspected for ACTIVE + SERVING_READY before composition."""
 from __future__ import annotations
 
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -34,6 +35,14 @@ SIGNED_AUTHORITY_ABSENT_TOKEN = "signed authority is absent"
 PERSISTENCE_PROFILE_ABSENT_TOKEN = "persistence profile is absent"
 SERVING_READY_ABSENT_TOKEN = "SERVING_READY is absent"
 PRODUCT_READY = "authenticated V2 product ready"
+FOREIGN_WORKSPACE = "workspace:" + "cd" * 32
+
+
+def _derived_workspace_ref(workspace_id: str) -> str:
+    return "workspace:" + sha256(
+        b"wiki-spike.second-brain.mac-workspace.v1\0"
+        + workspace_id.encode("utf-8")
+    ).hexdigest()
 
 
 def _status(root: Path) -> int:
@@ -109,7 +118,7 @@ def test_status_refuses_non_regular_sqlite_after_persistence_verifies(
         ("not_serving", "not SERVING_READY"),
         ("schema", "schema"),
         ("wal", "WAL"),
-        ("unpinned", "invalid workspace ref"),
+        ("unpinned", "lifecycle authority is absent"),
     ],
 )
 def test_status_refuses_existing_sqlite_that_is_not_serving_ready(
@@ -227,4 +236,74 @@ def test_status_inspects_passwd_home_sqlite_and_ignores_home_env(
     assert SIGNED_AUTHORITY_ABSENT_TOKEN not in captured.err
     assert tree_snapshot(home_env) == before_home
     assert tree_snapshot(passwd_home) == before_passwd
+    assert PRODUCT_READY not in captured.out
+
+
+def test_status_inspects_derived_workspace_ref_when_pin_is_empty(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    isolate_home(tmp_path, monkeypatch)
+    home = tmp_path / "home"
+    write_verified_artifacts(home)
+    workspace_id = "derived-mac"
+    derived = _derived_workspace_ref(workspace_id)
+    write_lifecycle_database(sqlite_path(home), workspace_ref=derived)
+    root = marked_root(tmp_path, workspace_id=workspace_id)
+    bomb_product_constructors(monkeypatch)
+    pin_trusted(monkeypatch)
+    seen: list[str] = []
+
+    def recording(
+        database: ExistingLifecycleDatabase, workspace_ref: str
+    ) -> object:
+        seen.append(workspace_ref)
+        return real_inspect(database, workspace_ref)
+
+    monkeypatch.setattr(
+        "wiki_spike.composition.mac_production.inspect_existing_serving_ready",
+        recording,
+        raising=False,
+    )
+    before = tree_snapshot(tmp_path)
+
+    code = _status(root)
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert seen == [derived]
+    assert "existing CAS" in captured.err
+    assert AUTHORITY_REQUIRED_TOKEN not in captured.err
+    assert SERVING_READY_ABSENT_TOKEN not in captured.err
+    assert SIGNED_AUTHORITY_ABSENT_TOKEN not in captured.err
+    assert PERSISTENCE_PROFILE_ABSENT_TOKEN not in captured.err
+    assert PRODUCT_READY not in captured.out
+    assert tree_snapshot(tmp_path) == before
+
+
+def test_status_refuses_serving_ready_row_for_foreign_workspace_ref(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    isolate_home(tmp_path, monkeypatch)
+    home = tmp_path / "home"
+    write_verified_artifacts(home)
+    write_lifecycle_database(sqlite_path(home), workspace_ref=FOREIGN_WORKSPACE)
+    root = marked_root(tmp_path, workspace_id="derived-mac")
+    bomb_product_constructors(monkeypatch)
+    pin_trusted(monkeypatch)
+    before = tree_snapshot(tmp_path)
+
+    code = _status(root)
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "lifecycle authority is absent" in captured.err
+    assert "existing CAS" not in captured.err
+    assert AUTHORITY_REQUIRED_TOKEN not in captured.err
+    assert SIGNED_AUTHORITY_ABSENT_TOKEN not in captured.err
+    assert PERSISTENCE_PROFILE_ABSENT_TOKEN not in captured.err
+    assert tree_snapshot(tmp_path) == before
     assert PRODUCT_READY not in captured.out
