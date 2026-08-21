@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,11 +30,19 @@ class AssembleInputs:
     dest: Path
 
 
-def _run_runner(*args: str) -> subprocess.CompletedProcess[str]:
+def _run_runner(
+    *args: str,
+    without_uv: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    if without_uv:
+        env["PATH"] = "/usr/bin:/bin"
+        env["PYTHON"] = sys.executable
     return subprocess.run(
         ["bash", str(_RUNNER), *args],
         capture_output=True,
         check=False,
+        env=env,
         text=True,
     )
 
@@ -231,6 +241,21 @@ def test_runner_writes_create_only_assembled_envelope_when_order_is_approver_the
     )
     assert second.returncode == 2
     assert "already exists" in second.stderr
+
+
+def test_runner_uses_supplied_python_when_uv_is_absent(tmp_path: Path) -> None:
+    paths = _signed_inputs(tmp_path)
+
+    result = _run_runner(
+        str(paths.body),
+        str(paths.approver),
+        str(paths.owner),
+        str(paths.dest),
+        without_uv=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert paths.dest.is_file()
 
 
 def test_runner_wraps_public_assemble_and_verify_without_private_keys_or_dsn() -> None:

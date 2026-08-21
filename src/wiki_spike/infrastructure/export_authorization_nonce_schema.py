@@ -217,9 +217,9 @@ def read_metadata(connection: sqlite3.Connection) -> tuple[NonceStoreState, str]
     kind, version, state, floor = cells
     if kind != STORE_KIND or version != SCHEMA_VERSION:
         raise UnifiedDbExportError("authorization nonce store schema is unknown")
-    parsed_floor = parse_utc(floor, "authorization_floor_at").strftime("%Y-%m-%dT%H:%M:%SZ")
+    _ = parse_utc(floor, "authorization_floor_at")
     try:
         parsed_state = NonceStoreState(state)
     except ValueError as exc:
         raise UnifiedDbExportError("authorization nonce store schema is unknown") from exc
-    return parsed_state, parsed_floor
+    return parsed_state, floor

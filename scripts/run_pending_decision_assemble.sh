@@ -56,6 +56,10 @@ if [[ ! -d "$owner_dir" ]]; then
 fi
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+python_bin="${PYTHON:-$root/.venv/bin/python}"
+if [[ ! -x "$python_bin" ]]; then
+  python_bin="$(command -v python3 || command -v python)"
+fi
 for stem in "${stems[@]}"; do
   body="$root/artifacts/product-release/second-brain-v1/decision-signing/$stem.body.json"
   approver="$approver_dir/$stem.approver-envelope.json"
@@ -99,7 +103,7 @@ for stem in "${stems[@]}"; do
     printf 'pending decision assemble refused: output already exists\n' >&2
     exit 2
   fi
-  uv run --directory "$root" python "$root/scripts/second_brain_decision.py" assemble \
+  "$python_bin" "$root/scripts/second_brain_decision.py" assemble \
     --body "$body" \
     --signature "$approver_dir/$stem.approver-envelope.json" \
     --signature "$owner_dir/$stem.owner-envelope.json" \

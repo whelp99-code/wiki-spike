@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import stat
 from pathlib import Path
+from types import SimpleNamespace
+from typing import ClassVar
 
 import pytest
 
@@ -33,6 +35,62 @@ def _export(dest: Path) -> None:
         writer=LocalSnapshotPackageWriter(),
     )
     _ = service.export_fixture(authority(), exported, plan_for(exported), str(dest))
+
+
+def test_linux_publish_uses_renameat2_noreplace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[int, bytes, int, bytes, int]] = []
+
+    class RenameAt2:
+        argtypes: ClassVar[list[object]] = []
+        restype: object | None = None
+
+        def __call__(
+            self,
+            old_dir: int,
+            source: bytes,
+            new_dir: int,
+            destination: bytes,
+            flags: int,
+        ) -> int:
+            calls.append((old_dir, source, new_dir, destination, flags))
+            return 0
+
+    class ExposedWriter(LocalSnapshotPackageWriter):
+        def exclusive_rename(self, source: str, destination: str) -> None:
+            self._exclusive_rename(source, destination)
+
+    renameat2 = RenameAt2()
+
+    def fake_cdll(
+        _name: str | None,
+        *,
+        use_errno: bool,
+    ) -> SimpleNamespace:
+        _ = use_errno
+        return SimpleNamespace(renameat2=renameat2)
+
+    monkeypatch.setattr(
+        "wiki_spike.infrastructure.local_snapshot_package_writer.sys.platform",
+        "linux",
+    )
+    monkeypatch.setattr(
+        "wiki_spike.infrastructure.local_snapshot_package_writer.ctypes.CDLL",
+        fake_cdll,
+    )
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+
+    ExposedWriter().exclusive_rename(
+        str(source),
+        str(destination),
+    )
+
+    assert calls == [
+        (-100, os.fsencode(source), -100, os.fsencode(destination), 1)
+    ]
 
 
 def test_package_is_atomic_private_and_receipt_last(tmp_path: Path) -> None:

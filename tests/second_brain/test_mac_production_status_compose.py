@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -42,7 +41,12 @@ from tests.second_brain.mac_production_status_support import (
 )
 from wiki_spike.composition.mac_production import main
 from wiki_spike.composition.mac_production_compose import compose_existing_mac_product
+from wiki_spike.composition.second_brain_product import SecondBrainProductV2
 from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore
+from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase
+from wiki_spike.memory_core.second_brain_security_contracts import (
+    SecurityContextAuthority,
+)
 
 
 def _status(root: Path) -> int:
@@ -92,7 +96,7 @@ def test_status_refuses_missing_keychain_after_cas_without_constructors(
     isolate_home(tmp_path, monkeypatch)
     home = tmp_path / "home"
     write_serving_ready(home)
-    write_cas_layout(home)
+    _ = write_cas_layout(home)
     root = marked_root(tmp_path)
     pin_and_bomb(monkeypatch)
     before = tree_snapshot(tmp_path)
@@ -114,14 +118,33 @@ def test_status_refuses_unset_stage3_pins_after_existing_cas_keychain_bind(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setattr(
+        "wiki_spike.infrastructure.macos_keychain_existing.sys.platform",
+        "linux",
+    )
     root = ready_cas_keychain_root(tmp_path, monkeypatch)
     minted = track_mint(monkeypatch)
     seen: dict[str, object] = {}
     real_compose = compose_existing_mac_product
 
-    def wrapping(**kwargs: Any) -> Any:
-        seen.update(kwargs)
-        return real_compose(**kwargs)
+    def wrapping(
+        *,
+        v1_dir: Path,
+        database: LifecycleDatabase,
+        authorization: object,
+        workspace_ref: str,
+        keychain_directory: Path,
+        authority: SecurityContextAuthority,
+    ) -> SecondBrainProductV2:
+        seen["authority"] = authority
+        return real_compose(
+            v1_dir=v1_dir,
+            database=database,
+            authorization=authorization,
+            workspace_ref=workspace_ref,
+            keychain_directory=keychain_directory,
+            authority=authority,
+        )
 
     monkeypatch.setattr(
         "wiki_spike.composition.mac_production.compose_existing_mac_product",
@@ -159,8 +182,8 @@ def test_status_does_not_open_cas_or_keychain_when_serving_inspect_fails(
     home = tmp_path / "home"
     write_verified_artifacts(home)
     write_lifecycle_database(sqlite_path(home), authority_state="INACTIVE")
-    write_cas_layout(home)
-    write_keychain_layout(home)
+    _ = write_cas_layout(home)
+    _ = write_keychain_layout(home)
     root = marked_root(tmp_path)
     pin_and_bomb(monkeypatch)
     bomb_existing_opens(monkeypatch)
@@ -185,8 +208,8 @@ def test_status_ignores_home_env_cas_and_keychain_after_serving_ready(
     home_env = tmp_path / "home-env"
     home_env.mkdir()
     write_serving_ready(home_env)
-    write_cas_layout(home_env)
-    write_keychain_layout(home_env)
+    _ = write_cas_layout(home_env)
+    _ = write_keychain_layout(home_env)
     monkeypatch.setenv("HOME", str(home_env))
     passwd_home = tmp_path / "passwd-home"
     passwd_home.mkdir()
@@ -214,6 +237,10 @@ def test_status_prints_product_ready_when_stage3_pins_are_set(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setattr(
+        "wiki_spike.infrastructure.macos_keychain_existing.sys.platform",
+        "linux",
+    )
     root = ready_cas_keychain_root(tmp_path, monkeypatch)
     pin_stage3(monkeypatch)
     freeze_trusted_now(monkeypatch)

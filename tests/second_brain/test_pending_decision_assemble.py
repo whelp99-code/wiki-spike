@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import subprocess
+import sys
 from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
@@ -114,11 +115,7 @@ def test_assemble_writes_six_create_only_records_when_public_envelopes_exist(
             output = dest_dir / f"{stem}.{role}-envelope.json"
             signed = subprocess.run(
                 [
-                    "uv",
-                    "run",
-                    "--python",
-                    "3.12",
-                    "python",
+                    sys.executable,
                     str(_SIGNER),
                     "--role",
                     role,

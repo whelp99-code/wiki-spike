@@ -16,6 +16,8 @@ from wiki_spike.memory_core.unified_db_snapshot_export import (
 )
 
 _RENAME_EXCL = 0x00000004
+_RENAME_NOREPLACE = 1
+_AT_FDCWD = -100
 
 _DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
 _FILE_FLAGS = (
@@ -182,14 +184,53 @@ class LocalSnapshotPackageWriter:
         _seal_tree(staging)
 
     def _exclusive_rename(self, source: str, destination: str) -> None:
-        if sys.platform != "darwin":
-            raise UnifiedDbExportError("exclusive publish is unsupported on this platform")
-        library = ctypes.CDLL("/usr/lib/libSystem.B.dylib", use_errno=True)
-        proto = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint)
-        renamex = proto(("renamex_np", library))
-        outcome = cast(
-            int, renamex(os.fsencode(source), os.fsencode(destination), _RENAME_EXCL)
-        )
+        if sys.platform == "darwin":
+            library = ctypes.CDLL("/usr/lib/libSystem.B.dylib", use_errno=True)
+            proto = ctypes.CFUNCTYPE(
+                ctypes.c_int,
+                ctypes.c_char_p,
+                ctypes.c_char_p,
+                ctypes.c_uint,
+            )
+            renamex = proto(("renamex_np", library))
+            outcome = cast(
+                int,
+                renamex(
+                    os.fsencode(source),
+                    os.fsencode(destination),
+                    _RENAME_EXCL,
+                ),
+            )
+        elif sys.platform == "linux":
+            library = ctypes.CDLL(None, use_errno=True)
+            try:
+                renameat2 = library.renameat2
+            except AttributeError as exc:
+                raise UnifiedDbExportError(
+                    "exclusive publish is unsupported on this platform"
+                ) from exc
+            renameat2.argtypes = [
+                ctypes.c_int,
+                ctypes.c_char_p,
+                ctypes.c_int,
+                ctypes.c_char_p,
+                ctypes.c_uint,
+            ]
+            renameat2.restype = ctypes.c_int
+            outcome = cast(
+                int,
+                renameat2(
+                    _AT_FDCWD,
+                    os.fsencode(source),
+                    _AT_FDCWD,
+                    os.fsencode(destination),
+                    _RENAME_NOREPLACE,
+                ),
+            )
+        else:
+            raise UnifiedDbExportError(
+                "exclusive publish is unsupported on this platform"
+            )
         if outcome != 0:
             code = ctypes.get_errno()
             if code == errno.EEXIST:

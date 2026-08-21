@@ -22,6 +22,11 @@ body="$1"
 approver_envelope="$2"
 owner_envelope="$3"
 dest="$4"
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+python_bin="${PYTHON:-$root/.venv/bin/python}"
+if [[ ! -x "$python_bin" ]]; then
+  python_bin="$(command -v python3 || command -v python)"
+fi
 
 path_has_symlink() {
   local current="$1"
@@ -66,7 +71,7 @@ if [[ -e "$dest" ]]; then
 fi
 
 envelope_role() {
-  uv run python -c 'import json, sys
+  "$python_bin" -c 'import json, sys
 from pathlib import Path
 path = Path(sys.argv[1])
 try:
@@ -94,13 +99,12 @@ if [[ "$first_role" != "approver" || "$second_role" != "owner" ]]; then
   exit 2
 fi
 
-root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cli="$root/scripts/second_brain_unified_db_snapshot_export.py"
-uv run python "$cli" capture-authority-verify \
+"$python_bin" "$cli" capture-authority-verify \
   --body "$body" \
   --signature "$approver_envelope" \
   --signature "$owner_envelope"
-uv run python "$cli" capture-authority-assemble \
+"$python_bin" "$cli" capture-authority-assemble \
   --body "$body" \
   --signature "$approver_envelope" \
   --signature "$owner_envelope" \

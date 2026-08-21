@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime, tzinfo
 from pathlib import Path
+from typing import override
 
 import pytest
 
@@ -31,6 +32,10 @@ from wiki_spike.applications.mac_signed_authority_bundle_verify import (
 )
 from wiki_spike.composition import mac_production_compose as compose_mod
 from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore
+from wiki_spike.infrastructure.macos_keychain import MacOSKeychainKeyStore
+from wiki_spike.infrastructure.macos_keychain_existing import (
+    open_existing_macos_keychain_store,
+)
 from wiki_spike.infrastructure.second_brain_ledger import LifecycleLedgerAuthority
 from wiki_spike.memory_core.contracts import canonical_bytes
 from wiki_spike.memory_core.second_brain_security_contracts import (
@@ -46,6 +51,38 @@ AUTHORITY_REQUIRED_TOKEN = "authority is required"
 SIGNED_AUTHORITY_ABSENT_TOKEN = "signed authority is absent"
 PERSISTENCE_PROFILE_ABSENT_TOKEN = "persistence profile is absent"
 SERVING_READY_ABSENT_TOKEN = "SERVING_READY is absent"
+
+
+class FixtureKeychainBackend:
+    def add(self, *, service: str, account: str, secret: str) -> bool:
+        _ = service, account, secret
+        raise AssertionError("status must not add Keychain material")
+
+    def read(self, *, service: str, account: str) -> str | None:
+        _ = service, account
+        raise AssertionError("status must not read Keychain material")
+
+    def delete(self, *, service: str, account: str) -> bool:
+        _ = service, account
+        raise AssertionError("status must not delete Keychain material")
+
+
+def open_fixture_keychain(
+    *,
+    index_dir: Path,
+    service: str,
+    namespace: str,
+    ark_handle: str,
+    keychain_directory: Path,
+) -> MacOSKeychainKeyStore:
+    return open_existing_macos_keychain_store(
+        index_dir=index_dir,
+        service=service,
+        namespace=namespace,
+        ark_handle=ark_handle,
+        backend=FixtureKeychainBackend(),
+        keychain_directory=keychain_directory,
+    )
 
 
 def v1_dir(home: Path) -> Path:
@@ -154,6 +191,7 @@ STAGE3_PIN_NAMES = (
 def freeze_trusted_now(monkeypatch: pytest.MonkeyPatch) -> None:
     class FrozenDateTime(datetime):
         @classmethod
+        @override
         def now(cls, tz: tzinfo | None = None) -> datetime:
             return NOW if tz is None else NOW.astimezone(tz)
 
@@ -181,10 +219,15 @@ def ready_cas_keychain_root(
 ) -> Path:
     isolate_home(tmp_path, monkeypatch)
     home = tmp_path / "home"
-    write_serving_ready(home)
-    write_cas_layout(home)
-    write_keychain_layout(home)
+    _ = write_serving_ready(home)
+    _ = write_cas_layout(home)
+    _ = write_keychain_layout(home)
     pin_and_bomb(monkeypatch)
+    monkeypatch.setattr(
+        compose_mod,
+        "open_existing_macos_keychain_store",
+        open_fixture_keychain,
+    )
     return marked_root(tmp_path)
 
 

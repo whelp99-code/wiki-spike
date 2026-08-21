@@ -2,17 +2,17 @@
 from __future__ import annotations
 
 import re
-import sqlite3
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import ClassVar
+from typing import ClassVar, Final
 
 from .contracts import JsonValue
 from .errors import InvalidContractValue, UnknownContractField
 from .second_brain_ledger_contracts import canonical_ledger_digest
 
 MAC_FIELD_AEAD_PROFILE_V1 = "mac-field-aead-profile-v1"
+MAC_SQLITE_RUNTIME: Final = "python-stdlib-sqlite3/3.45.1"
 PERSISTENCE_PROFILE_RECEIPT_V1 = "persistence-profile-receipt-v1"
 PERSISTENCE_PROFILE_SIGNATURE_DOMAIN = "second-brain-persistence-profile-v1"
 
@@ -85,7 +85,7 @@ class MacPersistenceProfileV1:
         expected = {
             "profile_version": MAC_FIELD_AEAD_PROFILE_V1,
             "profile_name": "mac-field-aead-v1",
-            "sqlite_runtime": f"python-stdlib-sqlite3/{sqlite3.sqlite_version}",
+            "sqlite_runtime": MAC_SQLITE_RUNTIME,
             "state_authority": "LifecycleDatabase",
             "content_store": "EncryptedContentStore",
             "content_cipher": "AES-256-GCM",

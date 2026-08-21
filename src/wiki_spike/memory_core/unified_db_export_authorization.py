@@ -68,7 +68,7 @@ def parse_utc(value: JsonValue, field: str) -> datetime:
     if _UTC.fullmatch(text) is None:
         raise InvalidContractValue(f"{field} must be a canonical UTC timestamp")
     try:
-        return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+        return datetime.fromisoformat(f"{text[:-1]}+00:00").astimezone(UTC)
     except ValueError as exc:
         raise InvalidContractValue(f"{field} must be a canonical UTC timestamp") from exc
 

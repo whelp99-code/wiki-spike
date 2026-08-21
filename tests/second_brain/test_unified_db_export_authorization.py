@@ -5,7 +5,9 @@ import json
 import subprocess
 import sys
 from collections.abc import Mapping
+from datetime import datetime
 from pathlib import Path
+from typing import override
 
 import pytest
 
@@ -25,6 +27,7 @@ from wiki_spike.memory_core.unified_db_export_authorization import (
     AUTHORIZATION_KIND,
     AUTHORIZATION_VERSION,
     UnifiedDbExportOnlyAuthorizationV1,
+    parse_utc,
 )
 from wiki_spike.memory_core.unified_db_export_authorization_sign import (
     EXPORT_ONLY_AUTHORIZATION_DOMAIN,
@@ -51,6 +54,26 @@ def test_body_binds_export_only_identity_and_one_shot_window() -> None:
     assert parsed.promote_allowed is False
     assert parsed.cutover_allowed is False
     assert parsed.authorization_digest == parsed.computed_digest()
+
+
+def test_parse_utc_accepts_year_one_without_platform_strptime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class PortableDateTime(datetime):
+        @classmethod
+        @override
+        def strptime(cls, date_string: str, format: str) -> datetime:
+            _ = date_string, format
+            raise AssertionError("parse_utc must not depend on platform strptime")
+
+    monkeypatch.setattr(
+        "wiki_spike.memory_core.unified_db_export_authorization.datetime",
+        PortableDateTime,
+    )
+
+    parsed = parse_utc("0001-01-01T00:00:00Z", "authorization_floor_at")
+
+    assert parsed.year == 1
 
 
 def test_signing_bytes_are_domain_plus_canonical_body() -> None:

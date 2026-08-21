@@ -156,8 +156,7 @@ class SqliteExportAuthorizationNonceStore:
         restore_nonce_store(backup, destination)
 
     def activate_restored(self, authorization_floor_at: str) -> None:
-        floor = parse_utc(authorization_floor_at, "authorization_floor_at")
-        stamped = floor.strftime("%Y-%m-%dT%H:%M:%SZ")
+        _ = parse_utc(authorization_floor_at, "authorization_floor_at")
         run_sql(self._con, "BEGIN IMMEDIATE")
         quick_check(self._con)
         validate_schema(self._con)
@@ -171,6 +170,6 @@ class SqliteExportAuthorizationNonceStore:
                 "UPDATE export_nonce_store_metadata SET store_state = ?, "
                 + "authorization_floor_at = ?"
             ),
-            (NonceStoreState.ACTIVE.value, stamped),
+            (NonceStoreState.ACTIVE.value, authorization_floor_at),
         )
         run_sql(self._con, "COMMIT")

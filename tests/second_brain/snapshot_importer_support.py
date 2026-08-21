@@ -1,7 +1,6 @@
 """Typed shared fixtures for non-serving snapshot import tests."""
 from __future__ import annotations
 
-import sqlite3
 from hashlib import sha256
 from pathlib import Path
 
@@ -21,6 +20,7 @@ from wiki_spike.memory_core.contracts import JsonValue
 from wiki_spike.memory_core.second_brain_ledger_contracts import canonical_ledger_digest
 from wiki_spike.memory_core.second_brain_persistence import (
     MAC_FIELD_AEAD_PROFILE_V1,
+    MAC_SQLITE_RUNTIME,
     PERSISTENCE_PROFILE_RECEIPT_V1,
     PERSISTENCE_PROFILE_SIGNATURE_DOMAIN,
     MacPersistenceProfileV1,
@@ -53,7 +53,7 @@ def persistence_profile() -> MacPersistenceProfileV1:
     body: dict[str, JsonValue] = {
         "profile_version": MAC_FIELD_AEAD_PROFILE_V1,
         "profile_name": "mac-field-aead-v1",
-        "sqlite_runtime": f"python-stdlib-sqlite3/{sqlite3.sqlite_version}",
+        "sqlite_runtime": MAC_SQLITE_RUNTIME,
         "state_authority": "LifecycleDatabase",
         "content_store": "EncryptedContentStore",
         "content_cipher": "AES-256-GCM",

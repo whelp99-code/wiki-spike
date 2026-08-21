@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import sys
 from base64 import b64encode
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +24,9 @@ from wiki_spike.memory_core.second_brain_persistence import (
     MacPersistenceProfileV1,
     PersistenceProfileReceiptV1,
     persistence_profile_authorization_payload,
+)
+from wiki_spike.memory_core.unified_db_snapshot_export_json import (
+    decode_json_object,
 )
 
 _RUNNER = Path("scripts/run_pending_persistence_receipt_assemble.sh")
@@ -50,11 +55,19 @@ class AssembleInputs:
     approver_key: Ed25519PrivateKey
 
 
-def _run(*args: str) -> subprocess.CompletedProcess[str]:
+def _run(
+    *args: str,
+    without_uv: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    if without_uv:
+        env["PATH"] = "/usr/bin:/bin"
+        env["PYTHON"] = sys.executable
     return subprocess.run(
         ["bash", str(_RUNNER), *args],
         capture_output=True,
         check=False,
+        env=env,
         text=True,
     )
 
@@ -100,7 +113,7 @@ def _write_envelope(
 
 def _signed_inputs(tmp_path: Path, *, untrusted: bool = False) -> AssembleInputs:
     profile = MacPersistenceProfileV1.from_mapping(
-        json.loads(_PROFILE.read_text(encoding="utf-8"))
+        decode_json_object(_PROFILE.read_text(encoding="utf-8"))
     )
     owner = Ed25519PrivateKey.generate()
     approver = Ed25519PrivateKey.generate()
@@ -198,12 +211,12 @@ def test_runner_writes_create_only_receipt_and_second_assemble_refuses(
     assert result.returncode == 0, result.stderr
     assert paths.dest.is_file() and not paths.dest.is_symlink()
     assert not _RELEASE_RECEIPT.exists()
-    body = json.loads(paths.dest.read_text(encoding="utf-8"))
+    body = decode_json_object(paths.dest.read_text(encoding="utf-8"))
     assert set(body) == PersistenceProfileReceiptV1.FIELDS
     receipt = PersistenceProfileReceiptV1.from_mapping(body)
     assert paths.dest.read_bytes() == canonical_bytes(receipt.to_mapping()) + b"\n"
     profile = MacPersistenceProfileV1.from_mapping(
-        json.loads(paths.profile.read_text(encoding="utf-8"))
+        decode_json_object(paths.profile.read_text(encoding="utf-8"))
     )
     authorization = verify_mac_persistence_authorization(
         profile=profile,
@@ -236,3 +249,19 @@ def test_runner_writes_create_only_receipt_and_second_assemble_refuses(
     assert "--private-key" not in script and "--private-key" not in cli
     assert "BEGIN" not in script and "PRIVATE KEY" not in script
     assert not _RELEASE_RECEIPT.exists()
+
+
+def test_runner_uses_supplied_python_when_uv_is_absent(tmp_path: Path) -> None:
+    paths = _signed_inputs(tmp_path)
+
+    result = _run(
+        str(paths.profile),
+        paths.authorized_at,
+        str(paths.approver),
+        str(paths.owner),
+        str(paths.dest),
+        without_uv=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert paths.dest.is_file()

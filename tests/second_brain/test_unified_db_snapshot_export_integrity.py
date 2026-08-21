@@ -98,12 +98,12 @@ def test_parent_fsync_failure_leaves_verifiable_package(tmp_path: Path) -> None:
         ).export_fixture(authority(), exported, plan_for(exported), str(dest))
 
 
-def test_non_darwin_publish_is_unsupported_and_does_not_overwrite(
+def test_unsupported_platform_publish_does_not_overwrite(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     dest = tmp_path / "pkg"
     raced = tmp_path / "raced"
-    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(sys, "platform", "win32")
     writer = LocalSnapshotPackageWriter()
     staging = writer.start(str(dest))
     writer.write_file(staging, "bounded-snapshot.json", b"{}\n")
