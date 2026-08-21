@@ -14,6 +14,7 @@ from wiki_spike.memory_core.second_brain_ledger_contracts import (
 
 _CHUNK = 1024 * 1024
 _KIND = "mac-lifecycle-backup-receipt-v1"
+_RESTORE_KIND = "mac-lifecycle-restore-receipt-v1"
 _FIELDS = frozenset(
     {
         "cas_file_count",
@@ -105,7 +106,39 @@ def _reject_number(value: str) -> int:
     raise MacBackupReceiptError("raw numbers are forbidden")
 
 
-def verify_backup_receipt(backup: Path, workspace_ref: str) -> None:
+def write_restore_receipt(
+    dest: Path,
+    workspace_ref: str,
+    sqlite: Path,
+    cas: Path,
+    backup_receipt_digest: str,
+) -> None:
+    """Write dest/restore-receipt.json create-only with string-only fields."""
+    rows = _cas_rows(cas)
+    body = {
+        "backup_receipt_digest": backup_receipt_digest,
+        "cas_file_count": str(len(rows)),
+        "cas_manifest_digest": hashlib.sha256(
+            "\n".join(rows).encode("utf-8")
+        ).hexdigest(),
+        "receipt_kind": _RESTORE_KIND,
+        "serving_ready": "true",
+        "sqlite_sha256": _digest_file(sqlite),
+        "workspace_ref": workspace_ref,
+    }
+    body["receipt_digest"] = canonical_ledger_digest(_RESTORE_KIND, body)
+    payload = canonical_bytes(body) + b"\n"
+    fd = os.open(dest / "restore-receipt.json", _WRITE, 0o444)
+    try:
+        written = 0
+        while written < len(payload):
+            written += os.write(fd, payload[written:])
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def verify_backup_receipt(backup: Path, workspace_ref: str) -> str:
     """Refuse a missing, extra-field, or digest-mismatched backup receipt."""
     receipt_path = backup / "backup-receipt.json"
     try:
@@ -143,3 +176,4 @@ def verify_backup_receipt(backup: Path, workspace_ref: str) -> None:
     )
     if observed != expected:
         raise MacBackupReceiptError("backup receipt does not match sqlite and CAS")
+    return observed["receipt_digest"]

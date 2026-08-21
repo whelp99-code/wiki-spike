@@ -1,6 +1,8 @@
 """Fail-closed Mac production restore copies sqlite+CAS only after SERVING_READY."""
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from pathlib import Path
 
@@ -221,6 +223,16 @@ def test_happy_path_backup_immutable_restored_serving_ready(
     for path in dest.rglob("*"):
         assert "keychain" not in path.name.casefold()
         assert not path.is_symlink()
+    restore_receipt = dest / "restore-receipt.json"
+    assert restore_receipt.is_file() and not restore_receipt.is_symlink()
+    payload = json.loads(restore_receipt.read_text(encoding="utf-8"))
+    assert payload["sqlite_sha256"] == hashlib.sha256(copied.read_bytes()).hexdigest()
+    assert payload["backup_receipt_digest"] == json.loads(
+        (backup / "backup-receipt.json").read_text(encoding="utf-8")
+    )["receipt_digest"]
+    assert payload["serving_ready"] == "true"
+    assert payload["workspace_ref"] == PINNED_WORKSPACE
+    assert isinstance(payload["cas_file_count"], str) and payload["cas_file_count"].isdigit()
     _assert_serving_ready(copied)
     _assert_no_real_home_writes(decoy)
     source = _CLI.read_text(encoding="utf-8")
