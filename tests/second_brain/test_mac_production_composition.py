@@ -71,10 +71,8 @@ def test_mac_production_does_not_import_storage_or_network_constructors() -> Non
         assert NETWORK_BANNED.isdisjoint(names), (path, sorted(names & NETWORK_BANNED))
 
 
-def test_installed_wiki_entry_points_at_mac_production_main() -> None:
-    assert 'wiki = "wiki_spike.composition.mac_production:main"' in PYPROJECT.read_text(
-        encoding="utf-8"
-    )
+def test_installed_wiki_entry_points_at_cli_main() -> None:
+    assert 'wiki = "wiki_spike.cli:main"' in PYPROJECT.read_text(encoding="utf-8")
 
 
 def test_production_default_pinned_trusted_keys_match_committed_public_bindings() -> None:
