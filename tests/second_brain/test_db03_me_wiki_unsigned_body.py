@@ -1,4 +1,5 @@
-"""Unsigned DB-03 me-wiki body binds source evidence without GO or signatures."""
+"""Owner-approved DB-03 me-wiki GO body binds evidence before role signing."""
+
 from __future__ import annotations
 
 import json
@@ -11,7 +12,10 @@ from scripts.second_brain_decision import BODY_FIELDS
 from wiki_spike.memory_core.contracts import JsonValue, canonical_bytes
 from wiki_spike.memory_core.errors import InvalidContractValue
 from wiki_spike.memory_core.me_wiki_source_evidence import MeWikiSourceEvidenceV1
-from wiki_spike.memory_core.second_brain_contracts import DecisionRecordV1
+from wiki_spike.memory_core.second_brain_contracts import (
+    DECISION_SIGNING_DOMAIN,
+    DecisionRecordV1,
+)
 from wiki_spike.memory_core.unified_db_snapshot_export_json import decode_json_object
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -33,7 +37,7 @@ def _load(path: Path) -> dict[str, JsonValue]:
     return decode_json_object(path.read_text(encoding="utf-8"))
 
 
-def test_unsigned_body_binds_raw_source_evidence_digest_without_go_or_signatures() -> None:
+def test_unsigned_body_binds_owner_approved_go_without_signatures() -> None:
     raw = _BODY.read_bytes()
     body = _load(_BODY)
     evidence = MeWikiSourceEvidenceV1.from_mapping(
@@ -50,12 +54,12 @@ def test_unsigned_body_binds_raw_source_evidence_digest_without_go_or_signatures
     assert body["scope_name"] == "me-wiki"
     assert body["evidence_digest"] == sha256(_EVIDENCE.read_bytes()).hexdigest()
     assert body["evidence_refs"] == [_EVIDENCE.relative_to(_ROOT).as_posix()]
-    assert body["outcome"] == "UNRESOLVED"
-    assert body["outcome"] not in {"GO", "NO_GO"}
+    assert body["decided_at"] == "2026-08-21T22:18:10Z"
+    assert body["expires_at"] == "2027-08-21T22:18:10Z"
+    assert body["outcome"] == "GO"
     serialized = json.dumps(body, sort_keys=True)
-    assert '"outcome": "GO"' not in serialized
-    assert '"outcome":"GO"' not in raw.decode("utf-8")
-    assert '"decision": "GO"' not in serialized
+    assert '"outcome": "GO"' in serialized
+    assert '"outcome":"GO"' in raw.decode("utf-8")
     for token in _FORBIDDEN:
         assert token not in serialized
         assert token.encode("ascii") not in raw
@@ -63,11 +67,17 @@ def test_unsigned_body_binds_raw_source_evidence_digest_without_go_or_signatures
         _ = DecisionRecordV1.from_mapping(body)
 
 
-def test_unsigned_body_is_not_authority_and_current_decisions_stay_fail_closed() -> None:
+def test_signed_owner_approved_record_is_authority() -> None:
     assert _BODY.parent.name == "decision-signing"
-    assert not (_DECISIONS / "DB-03.json").exists()
-    assert not (_DECISIONS / "DB-03-me-wiki.json").exists()
+    record = DecisionRecordV1.from_mapping(_load(_DECISIONS / "DB-03-me-wiki.json"))
+    assert record.decision_id == "DB-03"
+    assert record.scope_name == "me-wiki"
+    assert record.outcome == "GO"
+    assert tuple(signature.role for signature in record.signatures) == (
+        "approver",
+        "owner",
+    )
     assert all(
-        _load(path)["scope_name"] != "me-wiki"
-        for path in _DECISIONS.glob("DB-03*.json")
+        signature.verify(DECISION_SIGNING_DOMAIN, record.signing_payload())
+        for signature in record.signatures
     )

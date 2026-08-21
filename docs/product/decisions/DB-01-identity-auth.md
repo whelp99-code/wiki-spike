@@ -5,7 +5,9 @@
 - **Scope class:** Global
 - **Owner:** Product
 - **Approver:** Security
-- **Status:** UNRESOLVED — draft decision specification; no owner or approver signature, evidence digest, or dated approval is present.
+- **Status:** GO — owner and Security signatures verified in
+  `artifacts/product-release/second-brain-v1/decisions/DB-01.json`; decided
+  `2026-08-21T22:18:10Z`, expires `2027-08-21T22:18:10Z`.
 - **Decision deadline / implementation gate:** Stage 0, before any identity, capability, listener, or later implementation.
 - **Expiry:** A signed GO expires at the earlier of its stated expiry or any material change to trust roots, device enrollment, delegation authorization, or authorization UX. A replacement must be a versioned superseding record; this draft supersedes nothing.
 
@@ -30,7 +32,8 @@ A `GO` authorizes implementation only when all of the following are evidenced:
 
 - **GO:** permits only the identity/auth implementation described above and binds its evidence and expiry into the Stage-0 resolved scope and contract digest.
 - **NO_GO:** is globally fatal. It blocks product identity/capability, listeners, and all later implementation; it does not authorize a weaker identity model, shared ownership, or an implicit reviewer fallback.
-- **UNRESOLVED:** has the same blocking effect as no record for Stage-0 exit. This document is currently unresolved and is not a GO receipt.
+- **UNRESOLVED:** has the same blocking effect as no record for Stage-0 exit. The
+  current signed record is GO; this specification alone is not the receipt.
 
 ## Acceptance evidence for the implementation gate
 

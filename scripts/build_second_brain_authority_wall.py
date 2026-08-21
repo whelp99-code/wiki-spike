@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build the precise fail-closed owner-evidence wall."""
+
 from __future__ import annotations
 
 import argparse
@@ -23,11 +24,7 @@ from wiki_spike.memory_core.unified_db_snapshot_export_json import (
 )
 
 RELEASE: Final = Path("artifacts/product-release/second-brain-v1")
-EXPECTED_MISSING: Final = (
-    ("DB-01", "global", None),
-    ("DB-03", "migration_source", "me-wiki"),
-    ("DB-05", "global", None),
-)
+EXPECTED_MISSING: Final = (("DB-05", "global", None),)
 DB05_REASON: Final = (
     "Benchmark and holdout corpus evidence is absent. Owner-reviewed labels, "
     "consent, and separate benchmark and holdout digests are required before "
@@ -168,7 +165,9 @@ def build(root: Path) -> JsonObject:
     release = root / RELEASE
     expected = _expected(release)
     actual = _actual(release)
-    missing = tuple(sorted(expected - actual, key=lambda item: (item[0], item[1], item[2] or "")))
+    missing = tuple(
+        sorted(expected - actual, key=lambda item: (item[0], item[1], item[2] or ""))
+    )
     if missing != EXPECTED_MISSING:
         raise AuthorityWallError(f"unexpected missing decision identities: {missing}")
     bodies = _unresolved_bodies(release)
