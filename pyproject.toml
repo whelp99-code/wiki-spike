@@ -21,6 +21,7 @@ where = ["src"]
     "expected-scopes.json",
     "envelope-v1.schema.json",
     "deletion-state-v1.schema.json",
+    "state-delta-v1.schema.json",
 ]
 
 [tool.pytest.ini_options]

@@ -8,6 +8,7 @@ _TRUSTED_BINDINGS = "trusted-bindings.json"
 _EXPECTED_SCOPES = "expected-scopes.json"
 _ENVELOPE_SCHEMA = "envelope-v1.schema.json"
 _DELETION_STATE_SCHEMA = "deletion-state-v1.schema.json"
+_STATE_DELTA_SCHEMA = "state-delta-v1.schema.json"
 
 
 def load_pinned_sqlcipher_artifact_bytes() -> bytes:
@@ -33,3 +34,8 @@ def load_encrypted_cas_envelope_schema_bytes() -> bytes:
 def load_deletion_state_schema_bytes() -> bytes:
     """Return the committed deletion-state JSON Schema bytes."""
     return files("wiki_spike.resources").joinpath(_DELETION_STATE_SCHEMA).read_bytes()
+
+
+def load_state_delta_schema_bytes() -> bytes:
+    """Return the committed StateDelta JSON Schema bytes."""
+    return files("wiki_spike.resources").joinpath(_STATE_DELTA_SCHEMA).read_bytes()

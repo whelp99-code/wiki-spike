@@ -23,7 +23,8 @@ from wiki_spike.infrastructure.changeset import (
     build_encrypted_accepted_changeset,
     build_state_delta,
 )
-from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore, EncryptedCASError
+from wiki_spike.infrastructure.encrypted_cas import EncryptedCASError, EncryptedContentStore
+from wiki_spike.infrastructure.state_delta_schema import STATE_DELTA_SCHEMA
 from wiki_spike.infrastructure.ingestion import (
     input_content_digest,
     normalize_lifecycle_input_v1,
@@ -46,11 +47,7 @@ def _utcnow() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-_STATE_DELTA_SCHEMA_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "schemas" / "encrypted-lifecycle" / "state-delta-v1.schema.json"
-)
-_STATE_DELTA_SCHEMA = json.loads(_STATE_DELTA_SCHEMA_PATH.read_text(encoding="utf-8"))
+
 
 try:
     import jsonschema as _jsonschema  # type: ignore
@@ -74,7 +71,7 @@ def _validate_state_delta(delta: Mapping) -> None:
     PipelineError before any durable delta write."""
     if _HAVE_JSONSCHEMA:
         try:
-            _jsonschema.validate(instance=dict(delta), schema=_STATE_DELTA_SCHEMA)
+            _jsonschema.validate(instance=dict(delta), schema=STATE_DELTA_SCHEMA)
         except _jsonschema.ValidationError as exc:  # type: ignore[attr-defined]
             raise PipelineError(
                 "state_delta_schema_violation",
