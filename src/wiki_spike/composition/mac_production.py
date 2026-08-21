@@ -5,23 +5,36 @@ import os
 import pwd
 import stat
 import sys
-from base64 import b64encode
+from base64 import b64decode, b64encode
 from datetime import UTC, datetime
 from pathlib import Path
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from wiki_spike.applications.mac_signed_authority_bundle_verify import (
     verify_mac_signed_authority_bundle,
 )
 from wiki_spike.cli import main as run_authenticated_v2_cli
 from wiki_spike.composition.mac_artifact_io import (
+    MacArtifactBundle,
     MacArtifactReadError,
     read_mac_artifact_bundle,
 )
-from wiki_spike.memory_core.errors import CoreContractError
+from wiki_spike.infrastructure.persistence_profile import (
+    PersistenceProfileAuthorizationError,
+    verify_mac_persistence_authorization,
+)
+from wiki_spike.memory_core.errors import CoreContractError, InvalidContractValue
 from wiki_spike.memory_core.second_brain_contracts import (
     TrustedAuthorityBindingsV1,
     TrustedDecisionKeyBindingsV1,
 )
+from wiki_spike.memory_core.second_brain_persistence import (
+    MacPersistenceProfileV1,
+    PersistenceProfileReceiptV1,
+)
+from wiki_spike.memory_core.unified_db_snapshot_export import UnifiedDbExportError
+from wiki_spike.memory_core.unified_db_snapshot_export_json import decode_json_object
 
 _ARTIFACT_REFUSAL_TOKENS = (
     "signed authority is absent",
@@ -43,6 +56,7 @@ PINNED_TRUSTED_KEYS = TrustedDecisionKeyBindingsV1(
     ),
 )
 PINNED_TRUSTED_NOW: datetime | None = None
+PINNED_SQLCIPHER_ARTIFACT_BYTES: bytes = b""
 
 
 def _refuse_unauthorized(argv: list[str] | None) -> int:
@@ -79,16 +93,50 @@ def _trusted_now() -> datetime:
     return datetime.now(UTC) if PINNED_TRUSTED_NOW is None else PINNED_TRUSTED_NOW
 
 
-def _verify_present_authority(support: Path) -> int | None:
+def _verify_present_authority(artifacts: MacArtifactBundle) -> int | None:
     """Verify a present authority bundle; return an exit code on fail-closed refusal."""
     try:
-        artifacts = read_mac_artifact_bundle(support / "second-brain-v1")
         _ = verify_mac_signed_authority_bundle(
             artifacts.authority,
             PINNED_TRUSTED_KEYS,
             now=_trusted_now(),
         )
-    except (MacArtifactReadError, CoreContractError) as exc:
+    except CoreContractError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    return None
+
+
+def _verify_present_persistence(artifacts: MacArtifactBundle) -> int | None:
+    """Verify present profile/receipt bytes; return an exit code on refusal."""
+    try:
+        profile = MacPersistenceProfileV1.from_mapping(
+            decode_json_object(artifacts.profile.decode("utf-8"))
+        )
+        receipt = PersistenceProfileReceiptV1.from_mapping(
+            decode_json_object(artifacts.receipt.decode("utf-8"))
+        )
+        keys = PINNED_TRUSTED_KEYS.aggregate_bindings
+        _ = verify_mac_persistence_authorization(
+            profile=profile,
+            receipt=receipt,
+            owner_key_id=keys.owner_key_id,
+            owner_public_key=Ed25519PublicKey.from_public_bytes(
+                b64decode(keys.owner_public_key_b64)
+            ),
+            approver_key_id=keys.approver_key_id,
+            approver_public_key=Ed25519PublicKey.from_public_bytes(
+                b64decode(keys.approver_public_key_b64)
+            ),
+            sqlcipher_artifact_bytes=PINNED_SQLCIPHER_ARTIFACT_BYTES,
+        )
+    except (
+        UnicodeDecodeError,
+        ValueError,
+        InvalidContractValue,
+        PersistenceProfileAuthorizationError,
+        UnifiedDbExportError,
+    ) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     return None
@@ -110,7 +158,15 @@ def main(argv: list[str] | None = None) -> int:
         return _refuse_unauthorized(argv)
     if not _closed_artifacts_are_regular(support):
         return _refuse_unauthorized(argv)
-    refused = _verify_present_authority(support)
+    try:
+        artifacts = read_mac_artifact_bundle(support / "second-brain-v1")
+    except MacArtifactReadError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    refused = _verify_present_authority(artifacts)
+    if refused is not None:
+        return refused
+    refused = _verify_present_persistence(artifacts)
     if refused is not None:
         return refused
     return run_authenticated_v2_cli(argv)
