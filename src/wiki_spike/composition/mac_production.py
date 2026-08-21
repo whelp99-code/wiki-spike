@@ -77,12 +77,18 @@ def main(argv: list[str] | None = None) -> int:
     except MacArtifactReadError as exc:
         print(str(exc), file=sys.stderr)
         return 1
+    try:
+        workspace_ref = _resolved_workspace_ref(argv)
+    except WorkspaceRootError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     authority, refused = verify_present_authority(
         artifacts,
         trusted_keys=PINNED_TRUSTED_KEYS,
         trusted_now=PINNED_TRUSTED_NOW,
         mint_authority=mint_security_context_authority,
         expected_scope_manifest=PINNED_EXPECTED_SCOPE_MANIFEST,
+        workspace_ref=workspace_ref,
     )
     if refused is not None or authority is None:
         return 1 if refused is None else refused
@@ -93,11 +99,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     if refused is not None or authorization is None:
         return 1 if refused is None else refused
-    try:
-        workspace_ref = _resolved_workspace_ref(argv)
-    except WorkspaceRootError as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
     database, refused = verify_existing_serving(
         support,
         workspace_ref=workspace_ref,

@@ -12,13 +12,17 @@ from tests.second_brain.mac_production_status_persistence_support import (
     write_closed_artifacts,
 )
 from tests.second_brain.mac_production_status_support import bomb
-from tests.second_brain.test_mac_signed_authority_bundle import bundle_bytes
+from tests.second_brain.test_mac_signed_authority_bundle import (
+    WORKSPACE,
+    bundle_bytes,
+    bundle_mapping,
+)
 from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore
 from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase
 from wiki_spike.infrastructure.macos_keychain import MacOSKeychainKeyStore
 from wiki_spike.infrastructure.macos_keychain_backend import SecurityCliKeychainBackend
 
-PINNED_WORKSPACE = "workspace:" + "ab" * 32
+PINNED_WORKSPACE = WORKSPACE
 
 
 def sqlite_path(home: Path) -> Path:
@@ -32,11 +36,13 @@ def sqlite_path(home: Path) -> Path:
     )
 
 
-def write_verified_artifacts(home: Path) -> None:
+def write_verified_artifacts(
+    home: Path, *, workspace_ref: str = PINNED_WORKSPACE
+) -> None:
     profile, receipt = signed_persistence_pair()
     write_closed_artifacts(
         home,
-        authority=bundle_bytes(),
+        authority=bundle_bytes(bundle_mapping(workspace_ref=workspace_ref)),
         profile=profile,
         receipt=receipt,
     )

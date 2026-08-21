@@ -102,6 +102,7 @@ def verify_present_authority(
     trusted_now: datetime | None,
     mint_authority: Callable[..., SecurityContextAuthority],
     expected_scope_manifest: ExpectedScopeManifestV1,
+    workspace_ref: str,
 ) -> tuple[SecurityContextAuthority | None, int | None]:
     """Verify a present authority bundle and mint opaque Stage-0 authority."""
     try:
@@ -110,6 +111,10 @@ def verify_present_authority(
             trusted_keys,
             now=_trusted_now(trusted_now),
         )
+        if bundle.workspace_ref != workspace_ref:
+            raise InvalidContractValue(
+                "workspace_ref does not match the admitted workspace"
+            )
         if bundle.aggregate.contract.expected_scope_manifest != expected_scope_manifest:
             raise InvalidContractValue(
                 "expected scope manifest does not match the pinned inventory"

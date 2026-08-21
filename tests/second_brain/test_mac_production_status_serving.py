@@ -92,7 +92,7 @@ def test_status_refuses_non_regular_sqlite_after_persistence_verifies(
         path.mkdir()
     root = marked_root(tmp_path)
     bomb_storage(monkeypatch)
-    pin_trusted(monkeypatch)
+    pin_workspace(monkeypatch)
     monkeypatch.setattr(
         "wiki_spike.composition.mac_production.open_existing_lifecycle_database",
         bomb,
@@ -118,7 +118,6 @@ def test_status_refuses_non_regular_sqlite_after_persistence_verifies(
         ("not_serving", "not SERVING_READY"),
         ("schema", "schema"),
         ("wal", "WAL"),
-        ("unpinned", "lifecycle authority is absent"),
     ],
 )
 def test_status_refuses_existing_sqlite_that_is_not_serving_ready(
@@ -145,10 +144,7 @@ def test_status_refuses_existing_sqlite_that_is_not_serving_ready(
         write_lifecycle_database(path)
     root = marked_root(tmp_path)
     bomb_product_constructors(monkeypatch)
-    if kind == "unpinned":
-        pin_trusted(monkeypatch)
-    else:
-        pin_workspace(monkeypatch)
+    pin_workspace(monkeypatch)
     before = tree_snapshot(tmp_path)
 
     code = _status(root)
@@ -219,7 +215,7 @@ def test_status_inspects_passwd_home_sqlite_and_ignores_home_env(
     write_verified_artifacts(passwd_home)
     root = marked_root(tmp_path)
     bomb_storage(monkeypatch)
-    pin_trusted(monkeypatch)
+    pin_workspace(monkeypatch)
     monkeypatch.setattr(
         "wiki_spike.composition.mac_production.open_existing_lifecycle_database",
         bomb,
@@ -246,9 +242,9 @@ def test_status_inspects_derived_workspace_ref_when_pin_is_empty(
 ) -> None:
     isolate_home(tmp_path, monkeypatch)
     home = tmp_path / "home"
-    write_verified_artifacts(home)
     workspace_id = "derived-mac"
     derived = _derived_workspace_ref(workspace_id)
+    write_verified_artifacts(home, workspace_ref=derived)
     write_lifecycle_database(sqlite_path(home), workspace_ref=derived)
     root = marked_root(tmp_path, workspace_id=workspace_id)
     bomb_product_constructors(monkeypatch)
@@ -289,7 +285,8 @@ def test_status_refuses_serving_ready_row_for_foreign_workspace_ref(
 ) -> None:
     isolate_home(tmp_path, monkeypatch)
     home = tmp_path / "home"
-    write_verified_artifacts(home)
+    derived = _derived_workspace_ref("derived-mac")
+    write_verified_artifacts(home, workspace_ref=derived)
     write_lifecycle_database(sqlite_path(home), workspace_ref=FOREIGN_WORKSPACE)
     root = marked_root(tmp_path, workspace_id="derived-mac")
     bomb_product_constructors(monkeypatch)

@@ -8,10 +8,10 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from tests.second_brain.mac_production_status_persistence_support import (
     INVALID_PROFILE,
-    pin_trusted,
     signed_persistence_pair,
     write_closed_artifacts,
 )
+from tests.second_brain.mac_production_status_serving_support import pin_workspace
 from tests.second_brain.mac_production_status_support import (
     bomb_storage,
     isolate_home,
@@ -46,7 +46,7 @@ def test_status_refuses_invalid_present_profile_before_storage(
     )
     root = marked_root(tmp_path)
     bomb_storage(monkeypatch)
-    pin_trusted(monkeypatch)
+    pin_workspace(monkeypatch)
     before = tree_snapshot(tmp_path)
 
     code = main(["--root", str(root), "status"])
@@ -78,7 +78,7 @@ def test_status_refuses_untrusted_present_profile_before_storage(
     )
     root = marked_root(tmp_path)
     bomb_storage(monkeypatch)
-    pin_trusted(monkeypatch)
+    pin_workspace(monkeypatch)
     before = tree_snapshot(tmp_path)
 
     code = main(["--root", str(root), "status"])
@@ -107,7 +107,7 @@ def test_status_refuses_mismatched_present_profile_and_receipt_before_storage(
     )
     root = marked_root(tmp_path)
     bomb_storage(monkeypatch)
-    pin_trusted(monkeypatch)
+    pin_workspace(monkeypatch)
     before = tree_snapshot(tmp_path)
 
     code = main(["--root", str(root), "status"])
@@ -135,7 +135,7 @@ def test_status_does_not_compose_when_present_profile_verifies(
     )
     root = marked_root(tmp_path)
     bomb_storage(monkeypatch)
-    pin_trusted(monkeypatch)
+    pin_workspace(monkeypatch)
     before = tree_snapshot(tmp_path)
 
     code = main(["--root", str(root), "status"])
@@ -207,7 +207,7 @@ def test_status_verifies_passwd_home_profile_and_ignores_home_env(
     )
     root = marked_root(tmp_path)
     bomb_storage(monkeypatch)
-    pin_trusted(monkeypatch)
+    pin_workspace(monkeypatch)
     before_home = tree_snapshot(home_env)
     before_passwd = tree_snapshot(passwd_home)
 

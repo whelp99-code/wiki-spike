@@ -11,6 +11,7 @@ from tests.second_brain.mac_production_status_persistence_support import (
     track_mint,
     write_closed_artifacts,
 )
+from tests.second_brain.mac_production_status_serving_support import pin_workspace
 from tests.second_brain.mac_production_status_support import (
     bomb_storage,
     isolate_home,
@@ -23,13 +24,12 @@ from tests.second_brain.test_mac_signed_authority_bundle import (
     TRUSTED,
     bundle_bytes,
     bundle_mapping,
-    expected_mapping,
+    mismatched_expected_mapping,
 )
 from wiki_spike.applications.mac_signed_authority_bundle_verify import (
     verify_mac_signed_authority_bundle,
 )
 from wiki_spike.composition.mac_production import main
-from wiki_spike.memory_core.contracts import JsonValue
 
 SIGNED_AUTHORITY_ABSENT_TOKEN = "signed authority is absent"
 PERSISTENCE_PROFILE_ABSENT_TOKEN = "persistence profile is absent"
@@ -40,17 +40,7 @@ INVALID_AUTHORITY = b"{}"
 
 
 def _write_closed_artifacts(home: Path, authority: bytes) -> None:
-    closed = (
-        home
-        / "Library"
-        / "Application Support"
-        / "wiki-spike"
-        / "second-brain-v1"
-    )
-    closed.mkdir(parents=True)
-    _ = (closed / "signed-authority.json").write_bytes(authority)
-    _ = (closed / "persistence-profile.json").write_bytes(b"{}")
-    _ = (closed / "persistence-receipt.json").write_bytes(b"{}")
+    write_closed_artifacts(home, authority=authority, profile=b"{}", receipt=b"{}")
 
 
 def test_status_refuses_invalid_present_authority_before_storage(
@@ -101,23 +91,6 @@ def test_status_refuses_untrusted_present_authority_before_storage(
     assert "authenticated V2 product ready" not in captured.out
 
 
-def _mismatched_expected_mapping() -> dict[str, JsonValue]:
-    expected = expected_mapping()
-    scopes = expected["expected_scopes"]
-    if not isinstance(scopes, list):
-        raise TypeError("expected_scopes must be an array")
-    rewritten: list[JsonValue] = []
-    for entry in scopes:
-        if not isinstance(entry, dict):
-            raise TypeError("expected_scopes entries must be objects")
-        item: dict[str, JsonValue] = dict(entry)
-        if item.get("decision_id") == "DB-06":
-            item["scope_name"] = "model-b"
-        rewritten.append(item)
-    expected["expected_scopes"] = rewritten
-    return expected
-
-
 def test_status_refuses_mismatched_expected_scope_before_storage(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -125,8 +98,33 @@ def test_status_refuses_mismatched_expected_scope_before_storage(
 ) -> None:
     isolate_home(tmp_path, monkeypatch)
     home = tmp_path / "home"
-    authority = bundle_bytes(bundle_mapping(expected=_mismatched_expected_mapping()))
+    authority = bundle_bytes(bundle_mapping(expected=mismatched_expected_mapping()))
     _write_closed_artifacts(home, authority)
+    root = marked_root(tmp_path)
+    bomb_storage(monkeypatch)
+    pin_workspace(monkeypatch)
+    minted = track_mint(monkeypatch)
+    before = tree_snapshot(tmp_path)
+
+    code = main(["--root", str(root), "status"])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert minted == []
+    assert "expected scope" in captured.err
+    assert SIGNED_AUTHORITY_ABSENT_TOKEN not in captured.err
+    assert tree_snapshot(tmp_path) == before
+    assert "authenticated V2 product ready" not in captured.out
+
+
+def test_status_refuses_mismatched_workspace_ref_before_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    isolate_home(tmp_path, monkeypatch)
+    home = tmp_path / "home"
+    _write_closed_artifacts(home, bundle_bytes())
     root = marked_root(tmp_path)
     bomb_storage(monkeypatch)
     pin_trusted(monkeypatch)
@@ -138,7 +136,7 @@ def test_status_refuses_mismatched_expected_scope_before_storage(
     captured = capsys.readouterr()
     assert code == 1
     assert minted == []
-    assert "expected scope" in captured.err
+    assert "workspace" in captured.err
     assert SIGNED_AUTHORITY_ABSENT_TOKEN not in captured.err
     assert tree_snapshot(tmp_path) == before
     assert "authenticated V2 product ready" not in captured.out
@@ -159,7 +157,7 @@ def test_status_does_not_compose_when_present_authority_verifies(
     )
     root = marked_root(tmp_path)
     bomb_storage(monkeypatch)
-    pin_trusted(monkeypatch)
+    pin_workspace(monkeypatch)
     minted = track_mint(monkeypatch)
     before = tree_snapshot(tmp_path)
 

@@ -171,6 +171,23 @@ def expected_mapping() -> dict[str, JsonValue]:
     }
 
 
+def mismatched_expected_mapping() -> dict[str, JsonValue]:
+    expected = expected_mapping()
+    scopes = expected["expected_scopes"]
+    if not isinstance(scopes, list):
+        raise TypeError("expected_scopes must be an array")
+    rewritten: list[JsonValue] = []
+    for entry in scopes:
+        if not isinstance(entry, dict):
+            raise TypeError("expected_scopes entries must be objects")
+        item: dict[str, JsonValue] = dict(entry)
+        if item.get("decision_id") == "DB-06":
+            item["scope_name"] = "model-b"
+        rewritten.append(item)
+    expected["expected_scopes"] = rewritten
+    return expected
+
+
 def records() -> list[dict[str, JsonValue]]:
     return [
         *(decision(decision_id) for decision_id in ("DB-01", "DB-04", "DB-05", "DB-07")),
@@ -300,6 +317,7 @@ def bundle_mapping(
     items: list[dict[str, JsonValue]] | None = None,
     *,
     expected: dict[str, JsonValue] | None = None,
+    workspace_ref: str = WORKSPACE,
 ) -> dict[str, JsonValue]:
     decisions = records() if items is None else items
     scope = scope_mapping()
@@ -309,7 +327,7 @@ def bundle_mapping(
     evidence = evidence_mapping(decisions)
     return {
         "authority_bundle_version": AUTHORITY_BUNDLE_VERSION,
-        "workspace_ref": WORKSPACE,
+        "workspace_ref": workspace_ref,
         "decision_records": [
             {"name": name, "record": record} for name, record in entries
         ],
