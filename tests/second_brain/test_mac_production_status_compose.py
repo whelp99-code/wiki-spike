@@ -14,10 +14,16 @@ from tests.second_brain.mac_production_status_compose_support import (
     PRODUCT_READY,
     SERVING_READY_ABSENT_TOKEN,
     SIGNED_AUTHORITY_ABSENT_TOKEN,
+    STAGE3_PIN_NAMES,
     STAGE3_TOKEN,
+    assert_minted_from_bundle,
     bomb_existing_opens,
     cas_root,
+    compose_mod,
+    freeze_trusted_now,
     pin_and_bomb,
+    pin_stage3,
+    ready_cas_keychain_root,
     write_cas_layout,
     write_keychain_layout,
     write_serving_ready,
@@ -34,20 +40,9 @@ from tests.second_brain.mac_production_status_support import (
     passwd_lookup,
     tree_snapshot,
 )
-from tests.second_brain.test_mac_signed_authority_bundle import (
-    NOW,
-    TRUSTED,
-    bundle_bytes,
-)
-from wiki_spike.applications.mac_signed_authority_bundle_verify import (
-    verify_mac_signed_authority_bundle,
-)
 from wiki_spike.composition.mac_production import main
 from wiki_spike.composition.mac_production_compose import compose_existing_mac_product
 from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore
-from wiki_spike.memory_core.second_brain_security_contracts import (
-    SecurityContextAuthority,
-)
 
 
 def _status(root: Path) -> int:
@@ -119,13 +114,7 @@ def test_status_refuses_unset_stage3_pins_after_existing_cas_keychain_bind(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    isolate_home(tmp_path, monkeypatch)
-    home = tmp_path / "home"
-    write_serving_ready(home)
-    write_cas_layout(home)
-    write_keychain_layout(home)
-    root = marked_root(tmp_path)
-    pin_and_bomb(monkeypatch)
+    root = ready_cas_keychain_root(tmp_path, monkeypatch)
     minted = track_mint(monkeypatch)
     seen: dict[str, object] = {}
     real_compose = compose_existing_mac_product
@@ -144,21 +133,7 @@ def test_status_refuses_unset_stage3_pins_after_existing_cas_keychain_bind(
 
     captured = capsys.readouterr()
     assert code == 1
-    assert len(minted) == 1
-    decisions, scope, expected, aggregate, keys, now = minted[0]
-    bundle = verify_mac_signed_authority_bundle(bundle_bytes(), TRUSTED, now=NOW)
-    assert [item.to_mapping() for item in decisions] == [
-        item.record.to_mapping() for item in bundle.decision_records
-    ]
-    assert scope.to_mapping() == bundle.aggregate.contract.resolved_scope.to_mapping()
-    assert (
-        expected.to_mapping()
-        == bundle.aggregate.contract.expected_scope_manifest.to_mapping()
-    )
-    assert aggregate.to_mapping() == bundle.aggregate.to_mapping()
-    assert keys is TRUSTED
-    assert now == NOW
-    assert isinstance(seen.get("authority"), SecurityContextAuthority)
+    assert_minted_from_bundle(minted, seen.get("authority"))
     assert STAGE3_TOKEN in captured.err
     assert BIND_TOKEN not in captured.err
     assert CAS_TOKEN not in captured.err
@@ -232,3 +207,27 @@ def test_status_ignores_home_env_cas_and_keychain_after_serving_ready(
     assert PRODUCT_READY not in captured.out
     assert tree_snapshot(home_env) == before_home
     assert tree_snapshot(passwd_home) == before_passwd
+
+
+def test_status_prints_product_ready_when_stage3_pins_are_set(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = ready_cas_keychain_root(tmp_path, monkeypatch)
+    pin_stage3(monkeypatch)
+    freeze_trusted_now(monkeypatch)
+    before = tree_snapshot(tmp_path)
+
+    code = _status(root)
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert PRODUCT_READY in captured.out
+    assert STAGE3_TOKEN not in captured.err
+    assert tree_snapshot(tmp_path) == before
+
+
+def test_production_compose_stage3_pins_remain_none() -> None:
+    for name in STAGE3_PIN_NAMES:
+        assert getattr(compose_mod, name) is None
