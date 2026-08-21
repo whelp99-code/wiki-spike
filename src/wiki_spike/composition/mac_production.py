@@ -20,13 +20,19 @@ from wiki_spike.composition.mac_artifact_io import (
     MacArtifactReadError,
     read_mac_artifact_bundle,
 )
+from wiki_spike.composition.mac_production_compose import (
+    MacProductionComposeError,
+    compose_existing_mac_product,
+)
 from wiki_spike.infrastructure.lifecycle_db_existing import (
+    ExistingLifecycleDatabase,
     LifecycleDbError,
     inspect_existing_serving_ready,
     open_existing_lifecycle_database,
 )
 from wiki_spike.infrastructure.persistence_profile import (
     PersistenceProfileAuthorizationError,
+    VerifiedPersistenceAuthorization,
     verify_mac_persistence_authorization,
 )
 from wiki_spike.memory_core.errors import CoreContractError, InvalidContractValue
@@ -113,30 +119,36 @@ def _verify_present_authority(artifacts: MacArtifactBundle) -> int | None:
     return None
 
 
-def _verify_existing_serving(support: Path) -> int | None:
+def _verify_existing_serving(
+    support: Path,
+) -> tuple[ExistingLifecycleDatabase | None, int | None]:
     """Inspect an existing lifecycle DB after persistence verifies; never create."""
     sqlite_path = support / "second-brain-v1" / "lifecycle.sqlite3"
     try:
         meta = os.lstat(sqlite_path)
     except OSError:
         print(_ARTIFACT_REFUSAL_TOKENS[2], file=sys.stderr)
-        return 1
+        return None, 1
     if stat.S_ISLNK(meta.st_mode) or not stat.S_ISREG(meta.st_mode):
         print(_ARTIFACT_REFUSAL_TOKENS[2], file=sys.stderr)
-        return 1
+        return None, 1
     try:
         database = open_existing_lifecycle_database(sqlite_path)
-        try:
-            _ = inspect_existing_serving_ready(database, PINNED_WORKSPACE_REF)
-        finally:
-            database.close()
     except LifecycleDbError as exc:
         print(str(exc), file=sys.stderr)
-        return 1
-    return None
+        return None, 1
+    try:
+        _ = inspect_existing_serving_ready(database, PINNED_WORKSPACE_REF)
+    except LifecycleDbError as exc:
+        database.close()
+        print(str(exc), file=sys.stderr)
+        return None, 1
+    return database, None
 
 
-def _verify_present_persistence(artifacts: MacArtifactBundle) -> int | None:
+def _verify_present_persistence(
+    artifacts: MacArtifactBundle,
+) -> tuple[VerifiedPersistenceAuthorization | None, int | None]:
     """Verify present profile/receipt bytes; return an exit code on refusal."""
     try:
         profile = MacPersistenceProfileV1.from_mapping(
@@ -146,7 +158,7 @@ def _verify_present_persistence(artifacts: MacArtifactBundle) -> int | None:
             decode_json_object(artifacts.receipt.decode("utf-8"))
         )
         keys = PINNED_TRUSTED_KEYS.aggregate_bindings
-        _ = verify_mac_persistence_authorization(
+        authorization = verify_mac_persistence_authorization(
             profile=profile,
             receipt=receipt,
             owner_key_id=keys.owner_key_id,
@@ -167,12 +179,12 @@ def _verify_present_persistence(artifacts: MacArtifactBundle) -> int | None:
         UnifiedDbExportError,
     ) as exc:
         print(str(exc), file=sys.stderr)
-        return 1
-    return None
+        return None, 1
+    return authorization, None
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Refuse unauthorized Mac status before constructing DB, CAS, or Keychain."""
+    """Admit existing Mac stores after SERVING_READY; refuse closed otherwise."""
     support = (
         Path(pwd.getpwuid(os.getuid()).pw_dir)
         / "Library"
@@ -195,13 +207,27 @@ def main(argv: list[str] | None = None) -> int:
     refused = _verify_present_authority(artifacts)
     if refused is not None:
         return refused
-    refused = _verify_present_persistence(artifacts)
-    if refused is not None:
-        return refused
-    refused = _verify_existing_serving(support)
-    if refused is not None:
-        return refused
-    return run_authenticated_v2_cli(argv)
+    authorization, refused = _verify_present_persistence(artifacts)
+    if refused is not None or authorization is None:
+        return 1 if refused is None else refused
+    database, refused = _verify_existing_serving(support)
+    if refused is not None or database is None:
+        return 1 if refused is None else refused
+    try:
+        try:
+            product = compose_existing_mac_product(
+                v1_dir=support / "second-brain-v1",
+                database=database,
+                authorization=authorization,
+                workspace_ref=PINNED_WORKSPACE_REF,
+                keychain_directory=support.parent.parent / "Keychains",
+            )
+        except MacProductionComposeError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        return run_authenticated_v2_cli(argv, product=product)
+    finally:
+        database.close()
 
 
 if __name__ == "__main__":

@@ -185,7 +185,8 @@ def test_status_does_not_compose_when_serving_ready_inspects(
     captured = capsys.readouterr()
     assert code == 1
     assert seen == [PINNED_WORKSPACE]
-    assert AUTHORITY_REQUIRED_TOKEN in captured.err
+    assert "existing CAS" in captured.err
+    assert AUTHORITY_REQUIRED_TOKEN not in captured.err
     assert SERVING_READY_ABSENT_TOKEN not in captured.err
     assert SIGNED_AUTHORITY_ABSENT_TOKEN not in captured.err
     assert PERSISTENCE_PROFILE_ABSENT_TOKEN not in captured.err
