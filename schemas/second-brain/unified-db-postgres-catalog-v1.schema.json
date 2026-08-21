@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/unified-db-postgres-catalog-v1.schema.json",
+  "title": "Second Brain Unified-DB PostgreSQL Catalog V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "catalog_version",
+    "rows",
+    "row_count",
+    "byte_count",
+    "catalog_digest"
+  ],
+  "properties": {
+    "catalog_version": {
+      "const": "second-brain-unified-db-postgres-catalog-v1"
+    },
+    "rows": {
+      "type": "array",
+      "maxItems": 4096,
+      "uniqueItems": true,
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/schemaRow" },
+          { "$ref": "#/$defs/tableRow" },
+          { "$ref": "#/$defs/columnRow" },
+          { "$ref": "#/$defs/constraintRow" },
+          { "$ref": "#/$defs/indexRow" }
+        ]
+      }
+    },
+    "row_count": {
+      "$ref": "#/$defs/canonicalDecimal"
+    },
+    "byte_count": {
+      "$ref": "#/$defs/canonicalDecimal"
+    },
+    "catalog_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "canonicalDecimal": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ident": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "schemaRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_name", "schema_oid"],
+      "properties": {
+        "kind": { "const": "schema" },
+        "schema_name": { "$ref": "#/$defs/ident" },
+        "schema_oid": { "$ref": "#/$defs/canonicalDecimal" }
+      }
+    },
+    "tableRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_name", "table_name", "table_oid", "relkind"],
+      "properties": {
+        "kind": { "const": "table" },
+        "schema_name": { "$ref": "#/$defs/ident" },
+        "table_name": { "$ref": "#/$defs/ident" },
+        "table_oid": { "$ref": "#/$defs/canonicalDecimal" },
+        "relkind": { "const": "r" }
+      }
+    },
+    "columnRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_name",
+        "table_name",
+        "column_name",
+        "ordinal",
+        "type_name",
+        "not_null"
+      ],
+      "properties": {
+        "kind": { "const": "column" },
+        "schema_name": { "$ref": "#/$defs/ident" },
+        "table_name": { "$ref": "#/$defs/ident" },
+        "column_name": { "$ref": "#/$defs/ident" },
+        "ordinal": { "$ref": "#/$defs/canonicalDecimal" },
+        "type_name": { "$ref": "#/$defs/ident" },
+        "not_null": { "enum": ["true", "false"] }
+      }
+    },
+    "constraintRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "schema_name",
+        "table_name",
+        "constraint_name",
+        "constraint_type"
+      ],
+      "properties": {
+        "kind": { "const": "constraint" },
+        "schema_name": { "$ref": "#/$defs/ident" },
+        "table_name": { "$ref": "#/$defs/ident" },
+        "constraint_name": { "$ref": "#/$defs/ident" },
+        "constraint_type": { "enum": ["p", "f", "u", "c"] }
+      }
+    },
+    "indexRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "schema_name", "table_name", "index_name", "unique"],
+      "properties": {
+        "kind": { "const": "index" },
+        "schema_name": { "$ref": "#/$defs/ident" },
+        "table_name": { "$ref": "#/$defs/ident" },
+        "index_name": { "$ref": "#/$defs/ident" },
+        "unique": { "enum": ["true", "false"] }
+      }
+    }
+  }
+}

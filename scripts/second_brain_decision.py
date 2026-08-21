@@ -221,11 +221,8 @@ def cmd_assemble(args: argparse.Namespace) -> int:
                 f"(signing bytes sha256 {sha256(payload).hexdigest()}); "
                 "the body changed after it was signed, or the wrong key signed it"
             )
-    DecisionRecordV1.from_mapping(record)
-    Path(args.out).write_text(
-        json.dumps(record, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    loaded = DecisionRecordV1.from_mapping(record)
+    Path(args.out).write_bytes(canonical_bytes(loaded.to_mapping()))
     print(json.dumps({"written_to": args.out, "decision_id": body["decision_id"]}, indent=2))
     return 0
 

@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/source-discovery-manifest-v1.schema.json",
+  "title": "Second Brain Source Discovery Manifest V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifest_version",
+    "request_version",
+    "source_name",
+    "source_root",
+    "entry_count",
+    "body_reads",
+    "entries",
+    "manifest_digest"
+  ],
+  "properties": {
+    "manifest_version": {
+      "const": "second-brain-source-discovery-manifest-v1"
+    },
+    "request_version": {
+      "const": "second-brain-source-discovery-request-v1"
+    },
+    "source_name": {
+      "enum": ["me-wiki", "unified-db", "legacy Mem0/RAG"]
+    },
+    "source_root": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^/"
+    },
+    "entry_count": {
+      "$ref": "#/$defs/canonicalDecimal"
+    },
+    "body_reads": {
+      "const": "0"
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    },
+    "manifest_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "canonicalDecimal": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relative_path",
+        "kind",
+        "size_bytes",
+        "mtime_ns",
+        "mode",
+        "path_digest"
+      ],
+      "properties": {
+        "relative_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?($|/))(?!.*\\\\).+$"
+        },
+        "kind": {
+          "const": "file"
+        },
+        "size_bytes": {
+          "$ref": "#/$defs/canonicalDecimal"
+        },
+        "mtime_ns": {
+          "$ref": "#/$defs/canonicalDecimal"
+        },
+        "mode": {
+          "$ref": "#/$defs/canonicalDecimal"
+        },
+        "path_digest": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    }
+  }
+}

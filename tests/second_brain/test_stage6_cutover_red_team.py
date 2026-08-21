@@ -8,15 +8,20 @@ tamper. No src edits.
 """
 from __future__ import annotations
 
+from typing import Literal, TypedDict, Unpack, cast
+
 import pytest
-from test_decision_contracts import scope
-from test_stage3_ledger_persistence import digest, ref
+
+from tests.second_brain.test_decision_contracts import scope
+from tests.second_brain.test_stage3_ledger_persistence import digest, ref
 from wiki_spike.memory_core.errors import InvalidContractValue
 from wiki_spike.memory_core.second_brain_contracts import ResolvedScopeV1
 from wiki_spike.memory_core.second_brain_cutover import (
     COHORT_MANIFEST_V1,
     CUTOVER_DECISION_V1,
+    MIN_OBSERVATION_DAYS,
     CutoverDecisionV1,
+    JsonValue,
     MigrationCohortManifestV1,
     assert_cohort_subset_of_enabled_migration_sources,
     assert_cohort_transition,
@@ -61,27 +66,60 @@ _REQUIRED_APPROVER_ROLES = ("migration", "quality", "security", "product")
 
 _POST_MUTATION_STATES = ("CANONICAL_MUTATED", "ROLLBACK_CLOSED", "DECOMMISSIONED")
 
+type JsonObject = dict[str, JsonValue]
+type UnderflowField = Literal[
+    "availability_lower",
+    "citation_lower",
+    "completeness_lower",
+    "e2e",
+    "holdout_changed",
+    "observation_days",
+    "parity_cases",
+    "parity_lower",
+    "safety",
+]
+
+
+class _ScopeOverrides(TypedDict, total=False):
+    capability_manifest_digest: str
+    disabled_migration_sources: dict[str, str]
+    enabled_migration_sources: list[str]
+
+
+class _DecisionOverrides(TypedDict, total=False):
+    observation_days: int
+    parity_cases: int
+    e2e: int
+    safety: int
+    parity_lower: int
+    citation_lower: int
+    completeness_lower: int
+    availability_lower: int
+    parity_min_bps: int
+    citation_min_bps: int
+    completeness_min_bps: int
+    availability_min_bps: int
+    holdout_changed: bool
+    formula_pass: bool | None
+    contract_digest: str | None
+    approver_roles: list[str] | None
+    resolved_scope_digest_value: str | None
+    source_manifest_digest: str | None
+    capability_manifest_digest: str | None
+    cohort_manifest_digest: str | None
+    decision_id: str
+
 
 # ---------------------------------------------------------------------------
 # Builders
 # ---------------------------------------------------------------------------
 
 
-def _scope(**overrides: object) -> ResolvedScopeV1:
+def _scope(**overrides: Unpack[_ScopeOverrides]) -> ResolvedScopeV1:
     raw = scope()
     raw.update(overrides)
-    # Keep list fields sorted/unique when callers override them.
-    for key in (
-        "enabled_migration_sources",
-        "enabled_source_profiles",
-        "feature_flags",
-        "egress_destinations",
-        "enabled_external_model_routes",
-        "mandatory_release_constraints",
-    ):
-        if key in overrides:
-            names = list(overrides[key])  # type: ignore[arg-type]
-            raw[key] = sorted(set(names))
+    if "enabled_migration_sources" in overrides:
+        raw["enabled_migration_sources"] = sorted(set(overrides["enabled_migration_sources"]))
     return ResolvedScopeV1.from_mapping(raw)
 
 
@@ -94,7 +132,7 @@ def _cohort(
     source_manifest_digest: str | None = None,
     workspace_ref: str | None = None,
 ) -> MigrationCohortManifestV1:
-    body = {
+    body: JsonObject = {
         "manifest_version": COHORT_MANIFEST_V1,
         "workspace_ref": workspace_ref or ref("workspace", "cutover-rt"),
         "cohort_state": state,
@@ -110,7 +148,7 @@ def _decision_body(
     scope_obj: ResolvedScopeV1,
     cohort: MigrationCohortManifestV1,
     *,
-    observation_days: int = 3,
+    observation_days: int = MIN_OBSERVATION_DAYS,
     parity_cases: int = 200,
     e2e: int = 500,
     safety: int = 0,
@@ -131,16 +169,16 @@ def _decision_body(
     capability_manifest_digest: str | None = None,
     cohort_manifest_digest: str | None = None,
     decision_id: str = "cutover-rt-2026-07-29",
-) -> dict:
-    mins = dict(
-        parity_min_bps=parity_min_bps,
-        citation_min_bps=citation_min_bps,
-        completeness_min_bps=completeness_min_bps,
-        availability_min_bps=availability_min_bps,
-    )
+) -> JsonObject:
+    mins = {
+        "parity_min_bps": parity_min_bps,
+        "citation_min_bps": citation_min_bps,
+        "completeness_min_bps": completeness_min_bps,
+        "availability_min_bps": availability_min_bps,
+    }
     computed = (
         safety == 0
-        and observation_days >= 3
+        and observation_days >= MIN_OBSERVATION_DAYS
         and parity_cases >= 200
         and e2e >= 500
         and parity_lower >= mins["parity_min_bps"]
@@ -149,7 +187,7 @@ def _decision_body(
         and availability_lower >= mins["availability_min_bps"]
         and holdout_changed is False
     )
-    body = {
+    body = cast(JsonObject, {
         "decision_version": CUTOVER_DECISION_V1,
         "decision_id": decision_id,
         "workspace_ref": ref("workspace", "cutover-rt"),
@@ -178,7 +216,7 @@ def _decision_body(
             for r in (list(_REQUIRED_APPROVER_ROLES) if approver_roles is None else approver_roles)
         ),
         "formula_pass": computed if formula_pass is None else formula_pass,
-    }
+    })
     body["decision_digest"] = canonical_ledger_digest("cutover-decision-v1", body)
     return body
 
@@ -186,9 +224,9 @@ def _decision_body(
 def _decision(
     scope_obj: ResolvedScopeV1,
     cohort: MigrationCohortManifestV1,
-    **kwargs: object,
+    **kwargs: Unpack[_DecisionOverrides],
 ) -> CutoverDecisionV1:
-    return CutoverDecisionV1.from_mapping(_decision_body(scope_obj, cohort, **kwargs))  # type: ignore[arg-type]
+    return CutoverDecisionV1.from_mapping(_decision_body(scope_obj, cohort, **kwargs))
 
 
 # ---------------------------------------------------------------------------
@@ -199,7 +237,6 @@ def _decision(
 @pytest.mark.parametrize(
     "field,value",
     [
-        ("observation_days", 2),
         ("observation_days", 0),
         ("parity_cases", 199),
         ("parity_cases", 0),
@@ -213,14 +250,56 @@ def _decision(
         ("availability_lower", 9899),
         ("holdout_changed", True),
     ],
-    ids=lambda v: f"{v}" if not isinstance(v, bool) else ("holdout_true" if v else "holdout_false"),
+    ids=[
+        "observation_days-0",
+        "parity_cases-199",
+        "parity_cases-0",
+        "e2e-499",
+        "e2e-1",
+        "safety-1",
+        "safety-99",
+        "parity_lower-8999",
+        "citation_lower-8999",
+        "completeness_lower-8999",
+        "availability_lower-9899",
+        "holdout_true",
+    ],
 )
-def test_g018_a1_formula_underflow_claiming_pass_refuses(field: str, value: object) -> None:
+def test_g018_a1_formula_underflow_claiming_pass_refuses(
+    field: UnderflowField,
+    value: int | bool,
+) -> None:
     scope_obj = _scope()
     cohort = _cohort(scope_obj)
-    kwargs = {field: value, "formula_pass": True}
     with pytest.raises(InvalidContractValue, match="formula_pass does not match"):
-        _decision(scope_obj, cohort, **kwargs)  # type: ignore[arg-type]
+        match field:
+            case "observation_days":
+                assert not isinstance(value, bool)
+                _ = _decision(scope_obj, cohort, observation_days=value, formula_pass=True)
+            case "parity_cases":
+                assert not isinstance(value, bool)
+                _ = _decision(scope_obj, cohort, parity_cases=value, formula_pass=True)
+            case "e2e":
+                assert not isinstance(value, bool)
+                _ = _decision(scope_obj, cohort, e2e=value, formula_pass=True)
+            case "safety":
+                assert not isinstance(value, bool)
+                _ = _decision(scope_obj, cohort, safety=value, formula_pass=True)
+            case "parity_lower":
+                assert not isinstance(value, bool)
+                _ = _decision(scope_obj, cohort, parity_lower=value, formula_pass=True)
+            case "citation_lower":
+                assert not isinstance(value, bool)
+                _ = _decision(scope_obj, cohort, citation_lower=value, formula_pass=True)
+            case "completeness_lower":
+                assert not isinstance(value, bool)
+                _ = _decision(scope_obj, cohort, completeness_lower=value, formula_pass=True)
+            case "availability_lower":
+                assert not isinstance(value, bool)
+                _ = _decision(scope_obj, cohort, availability_lower=value, formula_pass=True)
+            case "holdout_changed":
+                assert isinstance(value, bool)
+                _ = _decision(scope_obj, cohort, holdout_changed=value, formula_pass=True)
 
 
 def test_g018_a1_formula_pass_false_when_metrics_satisfy_is_also_refused() -> None:
@@ -228,7 +307,7 @@ def test_g018_a1_formula_pass_false_when_metrics_satisfy_is_also_refused() -> No
     scope_obj = _scope()
     cohort = _cohort(scope_obj)
     with pytest.raises(InvalidContractValue, match="formula_pass does not match"):
-        _decision(scope_obj, cohort, formula_pass=False)
+        _ = _decision(scope_obj, cohort, formula_pass=False)
 
 
 def test_g018_a1_lowered_minima_with_matching_lower_still_requires_formula_bind() -> None:
@@ -243,7 +322,7 @@ def test_g018_a1_lowered_minima_with_matching_lower_still_requires_formula_bind(
     cohort = _cohort(scope_obj)
     # parity_lower 8000 < parity_min 9000 → computed False; claiming True refuses.
     with pytest.raises(InvalidContractValue, match="formula_pass does not match"):
-        _decision(scope_obj, cohort, parity_lower=8000, formula_pass=True)
+        _ = _decision(scope_obj, cohort, parity_lower=8000, formula_pass=True)
     # Weak min + weak lower with honest formula_pass=True constructs (relative PASS).
     weak = _decision(
         scope_obj,
@@ -260,7 +339,7 @@ def test_g018_a1_compound_underflow_still_refuses() -> None:
     scope_obj = _scope()
     cohort = _cohort(scope_obj)
     with pytest.raises(InvalidContractValue, match="formula_pass does not match"):
-        _decision(
+        _ = _decision(
             scope_obj,
             cohort,
             observation_days=1,
@@ -277,7 +356,7 @@ def test_g018_a1_exact_plan_minima_constructs_with_formula_pass() -> None:
     cohort = _cohort(scope_obj)
     ok = _decision(scope_obj, cohort)
     assert ok.formula_pass is True
-    assert ok.observation_days == 3
+    assert ok.observation_days == MIN_OBSERVATION_DAYS
     assert ok.parity_cases_per_source == 200
     assert ok.cohort_e2e_queries == 500
     assert ok.safety_violations == 0
@@ -294,21 +373,21 @@ def test_g018_a2_missing_single_required_approver_refuses(missing: str) -> None:
     cohort = _cohort(scope_obj)
     roles = [r for r in _REQUIRED_APPROVER_ROLES if r != missing]
     with pytest.raises(InvalidContractValue, match="approver_roles"):
-        _decision(scope_obj, cohort, approver_roles=roles)
+        _ = _decision(scope_obj, cohort, approver_roles=roles)
 
 
 def test_g018_a2_empty_approver_roles_refuses() -> None:
     scope_obj = _scope()
     cohort = _cohort(scope_obj)
     with pytest.raises(InvalidContractValue, match="approver_roles"):
-        _decision(scope_obj, cohort, approver_roles=[])
+        _ = _decision(scope_obj, cohort, approver_roles=[])
 
 
 def test_g018_a2_extra_approver_role_refuses() -> None:
     scope_obj = _scope()
     cohort = _cohort(scope_obj)
     with pytest.raises(InvalidContractValue, match="approver_roles"):
-        _decision(
+        _ = _decision(
             scope_obj,
             cohort,
             approver_roles=list(_REQUIRED_APPROVER_ROLES) + ["executive"],
@@ -320,7 +399,7 @@ def test_g018_a2_duplicate_approver_role_refuses() -> None:
     cohort = _cohort(scope_obj)
     # set equality would pass if len not checked; duplicates shrink uniqueness.
     with pytest.raises(InvalidContractValue, match="approver_roles"):
-        _decision(
+        _ = _decision(
             scope_obj,
             cohort,
             approver_roles=["migration", "quality", "security", "migration"],
@@ -340,18 +419,26 @@ def test_g018_a2_case_normalized_roles_still_require_exact_set() -> None:
         approver_roles=["Migration", "QUALITY", "Security", "PRODUCT"],
     )
     # Rebuild digest against the normalized body that from_mapping will hash.
-    roles = sorted(r.lower() for r in body["approver_roles"])
-    body["approver_roles"] = roles
+    raw_roles = body["approver_roles"]
+    assert isinstance(raw_roles, list)
+    roles: list[str] = []
+    for role in raw_roles:
+        assert isinstance(role, str)
+        roles.append(role.lower())
+    roles.sort()
+    body["approver_roles"] = list[JsonValue](roles)
     body["decision_digest"] = canonical_ledger_digest(
         "cutover-decision-v1", {k: v for k, v in body.items() if k != "decision_digest"}
     )
     # Present mixed-case input; construction normalizes then rebinds.
-    body["approver_roles"] = ["Migration", "QUALITY", "Security", "PRODUCT"]
+    body["approver_roles"] = list[JsonValue](["Migration", "QUALITY", "Security", "PRODUCT"])
     # Digest was computed for lowercase sorted roles; from_mapping lowercases then
     # re-hashes against lowercase list — so recompute after setting mixed case by
     # matching from_mapping's body construction order.
     normalized = dict(body)
-    normalized["approver_roles"] = sorted(r.lower() for r in body["approver_roles"])
+    normalized["approver_roles"] = list[JsonValue](
+        sorted(["migration", "quality", "security", "product"])
+    )
     body["decision_digest"] = canonical_ledger_digest(
         "cutover-decision-v1", {k: v for k, v in normalized.items() if k != "decision_digest"}
     )
@@ -363,7 +450,7 @@ def test_g018_a2_lookalike_role_name_refuses() -> None:
     scope_obj = _scope()
     cohort = _cohort(scope_obj)
     with pytest.raises(InvalidContractValue, match="approver_roles"):
-        _decision(
+        _ = _decision(
             scope_obj,
             cohort,
             approver_roles=["migration", "quality", "security", "products"],
@@ -378,7 +465,7 @@ def test_g018_a2_lookalike_role_name_refuses() -> None:
 def test_g018_a3_unknown_source_not_in_enabled_refuses() -> None:
     scope_obj = _scope()
     with pytest.raises(InvalidContractValue, match="exactly one migration source"):
-        _cohort(scope_obj, sources=("unified-db", "shadow-exfil-source"))
+        _ = _cohort(scope_obj, sources=("unified-db", "shadow-exfil-source"))
     cohort = _cohort(scope_obj, sources=("shadow-exfil-source",))
     with pytest.raises(InvalidContractValue, match="not enabled"):
         assert_cohort_subset_of_enabled_migration_sources(cohort, scope_obj)
@@ -414,7 +501,7 @@ def test_g018_a3_honest_subset_of_enabled_accepted() -> None:
     scope_obj = _scope()
     # multi-source refused at construction under DB-07 one-source-at-a-time
     with pytest.raises(InvalidContractValue, match="exactly one migration source"):
-        _cohort(scope_obj, sources=("me-wiki", "unified-db"))
+        _ = _cohort(scope_obj, sources=("me-wiki", "unified-db"))
     cohort = _cohort(scope_obj, sources=("me-wiki",))
     assert_cohort_subset_of_enabled_migration_sources(cohort, scope_obj)
 
@@ -427,7 +514,7 @@ def test_g018_a3_full_enabled_roster_accepted() -> None:
 
 def test_g018_a3_duplicate_source_names_refuse_construction() -> None:
     scope_obj = _scope()
-    body = {
+    body: JsonObject = {
         "manifest_version": COHORT_MANIFEST_V1,
         "workspace_ref": ref("workspace", "cutover-rt"),
         "cohort_state": "CUTOVER_READY",
@@ -437,12 +524,12 @@ def test_g018_a3_duplicate_source_names_refuse_construction() -> None:
     }
     body["manifest_digest"] = canonical_ledger_digest("migration-cohort-manifest-v1", body)
     with pytest.raises(InvalidContractValue, match="unique"):
-        MigrationCohortManifestV1.from_mapping(body)
+        _ = MigrationCohortManifestV1.from_mapping(body)
 
 
 def test_g018_a3_empty_source_names_refuse_construction() -> None:
     scope_obj = _scope()
-    body = {
+    body: JsonObject = {
         "manifest_version": COHORT_MANIFEST_V1,
         "workspace_ref": ref("workspace", "cutover-rt"),
         "cohort_state": "CUTOVER_READY",
@@ -452,24 +539,12 @@ def test_g018_a3_empty_source_names_refuse_construction() -> None:
     }
     body["manifest_digest"] = canonical_ledger_digest("migration-cohort-manifest-v1", body)
     with pytest.raises(InvalidContractValue, match="non-empty"):
-        MigrationCohortManifestV1.from_mapping(body)
+        _ = MigrationCohortManifestV1.from_mapping(body)
 
 
 # ---------------------------------------------------------------------------
 # A4 -- illegal cohort transitions
 # ---------------------------------------------------------------------------
-
-
-def _illegal_pairs() -> list[tuple[str, str]]:
-    pairs: list[tuple[str, str]] = []
-    for cur in _COHORT_STATES:
-        allowed = _ALLOWED_TRANSITIONS[cur]
-        for nxt in _COHORT_STATES:
-            if nxt == cur:
-                continue
-            if nxt not in allowed:
-                pairs.append((cur, nxt))
-    return pairs
 
 
 _HIGH_VALUE_ILLEGAL = [
@@ -495,7 +570,7 @@ _HIGH_VALUE_ILLEGAL = [
 ]
 
 
-@pytest.mark.parametrize("current,nxt", _HIGH_VALUE_ILLEGAL, ids=lambda p: f"{p[0]}__{p[1]}" if isinstance(p, tuple) else str(p))
+@pytest.mark.parametrize("current,nxt", _HIGH_VALUE_ILLEGAL)
 def test_g018_a4_illegal_cohort_transition_refuses(current: str, nxt: str) -> None:
     with pytest.raises(InvalidContractValue, match="illegal cohort transition"):
         assert_cohort_transition(current, nxt)
@@ -520,7 +595,6 @@ def test_g018_a4_illegal_cohort_transition_refuses(current: str, nxt: str) -> No
         ("ROLLBACK_CLOSED", "DECOMMISSIONED"),
         ("ROLLED_BACK_RECONCILE", "IMPORTING"),
     ],
-    ids=lambda p: f"{p[0]}->{p[1]}" if isinstance(p, tuple) else str(p),
 )
 def test_g018_a4_legal_cohort_transition_accepted(current: str, nxt: str) -> None:
     assert_cohort_transition(current, nxt)
@@ -566,7 +640,7 @@ def test_g018_a5_live_switch_without_human_approvals_refuses() -> None:
 def test_g018_a5_live_switch_with_formula_fail_refuses_even_with_approvals() -> None:
     scope_obj = _scope()
     cohort = _cohort(scope_obj)
-    failed = _decision(scope_obj, cohort, observation_days=2, formula_pass=False)
+    failed = _decision(scope_obj, cohort, observation_days=0, formula_pass=False)
     assert failed.formula_pass is False
     with pytest.raises(InvalidContractValue, match="formula_pass is false"):
         assert_live_route_switch_authorized(failed, human_external_approvals_present=True)
@@ -852,7 +926,7 @@ def test_g018_a9_decision_digest_tamper_refuses() -> None:
     body = _decision_body(scope_obj, cohort)
     body["decision_digest"] = digest("tampered-decision")
     with pytest.raises(InvalidContractValue, match="decision_digest does not bind"):
-        CutoverDecisionV1.from_mapping(body)
+        _ = CutoverDecisionV1.from_mapping(body)
 
 
 def test_g018_a9_decision_body_field_swap_without_redigest_refuses() -> None:
@@ -861,7 +935,7 @@ def test_g018_a9_decision_body_field_swap_without_redigest_refuses() -> None:
     body = _decision_body(scope_obj, cohort)
     body["observation_days"] = 30  # leave decision_digest stale
     with pytest.raises(InvalidContractValue, match="decision_digest does not bind"):
-        CutoverDecisionV1.from_mapping(body)
+        _ = CutoverDecisionV1.from_mapping(body)
 
 
 def test_g018_a9_decision_formula_pass_flip_without_redigest_refuses() -> None:
@@ -871,7 +945,7 @@ def test_g018_a9_decision_formula_pass_flip_without_redigest_refuses() -> None:
     assert body["formula_pass"] is True
     body["formula_pass"] = False  # stale digest + formula mismatch either way
     with pytest.raises(InvalidContractValue, match="formula_pass does not match|decision_digest does not bind"):
-        CutoverDecisionV1.from_mapping(body)
+        _ = CutoverDecisionV1.from_mapping(body)
 
 
 def test_g018_a9_decision_approver_swap_without_redigest_refuses() -> None:
@@ -883,12 +957,12 @@ def test_g018_a9_decision_approver_swap_without_redigest_refuses() -> None:
     # drop a role in body while keeping stale digest.
     body["approver_roles"] = ["migration", "quality", "security"]
     with pytest.raises(InvalidContractValue, match="approver_roles|decision_digest"):
-        CutoverDecisionV1.from_mapping(body)
+        _ = CutoverDecisionV1.from_mapping(body)
 
 
 def test_g018_a9_cohort_manifest_digest_tamper_refuses() -> None:
     scope_obj = _scope()
-    body = {
+    body: JsonObject = {
         "manifest_version": COHORT_MANIFEST_V1,
         "workspace_ref": ref("workspace", "cutover-rt"),
         "cohort_state": "CUTOVER_READY",
@@ -898,12 +972,12 @@ def test_g018_a9_cohort_manifest_digest_tamper_refuses() -> None:
     }
     body["manifest_digest"] = digest("tampered-cohort")
     with pytest.raises(InvalidContractValue, match="manifest_digest does not bind"):
-        MigrationCohortManifestV1.from_mapping(body)
+        _ = MigrationCohortManifestV1.from_mapping(body)
 
 
 def test_g018_a9_cohort_body_field_swap_without_redigest_refuses() -> None:
     scope_obj = _scope()
-    body = {
+    body: JsonObject = {
         "manifest_version": COHORT_MANIFEST_V1,
         "workspace_ref": ref("workspace", "cutover-rt"),
         "cohort_state": "CUTOVER_READY",
@@ -914,7 +988,7 @@ def test_g018_a9_cohort_body_field_swap_without_redigest_refuses() -> None:
     body["manifest_digest"] = canonical_ledger_digest("migration-cohort-manifest-v1", body)
     body["cohort_state"] = "ROUTE_SWITCHED_NO_MUTATION"  # stale digest
     with pytest.raises(InvalidContractValue, match="manifest_digest does not bind"):
-        MigrationCohortManifestV1.from_mapping(body)
+        _ = MigrationCohortManifestV1.from_mapping(body)
 
 
 def test_g018_a9_decision_digest_not_sha256_hex_refuses() -> None:
@@ -923,16 +997,18 @@ def test_g018_a9_decision_digest_not_sha256_hex_refuses() -> None:
     body = _decision_body(scope_obj, cohort)
     body["decision_digest"] = "not-a-digest"
     with pytest.raises(InvalidContractValue, match="sha256"):
-        CutoverDecisionV1.from_mapping(body)
+        _ = CutoverDecisionV1.from_mapping(body)
 
 
 def test_g018_a9_decision_digest_uppercase_hex_refuses() -> None:
     scope_obj = _scope()
     cohort = _cohort(scope_obj)
     body = _decision_body(scope_obj, cohort)
-    body["decision_digest"] = body["decision_digest"].upper()
+    decision_digest = body["decision_digest"]
+    assert isinstance(decision_digest, str)
+    body["decision_digest"] = decision_digest.upper()
     with pytest.raises(InvalidContractValue, match="sha256"):
-        CutoverDecisionV1.from_mapping(body)
+        _ = CutoverDecisionV1.from_mapping(body)
 
 
 def test_g018_a9_round_trip_honest_decision_and_cohort_bind() -> None:
@@ -952,4 +1028,4 @@ def test_g018_a9_round_trip_honest_decision_and_cohort_bind() -> None:
 def test_g018_a3_multi_source_cohort_refuses_construction() -> None:
     scope_obj = _scope()
     with pytest.raises(InvalidContractValue, match="exactly one migration source"):
-        _cohort(scope_obj, sources=("unified-db", "me-wiki"))
+        _ = _cohort(scope_obj, sources=("unified-db", "me-wiki"))

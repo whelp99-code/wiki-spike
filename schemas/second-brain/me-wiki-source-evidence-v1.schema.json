@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/me-wiki-source-evidence-v1.schema.json",
+  "title": "Second Brain me-wiki Source Evidence V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "evidence_version",
+    "state",
+    "body_reads",
+    "source_mutation",
+    "import_invoked",
+    "serving_promotion",
+    "authorized_go",
+    "profile_digest",
+    "fixture_digest",
+    "evidence_digest"
+  ],
+  "properties": {
+    "evidence_version": {
+      "const": "second-brain-me-wiki-source-evidence-v1"
+    },
+    "state": {
+      "const": "CONTRACT_AND_SYNTHETIC_FIXTURE_ONLY"
+    },
+    "body_reads": {
+      "const": "0"
+    },
+    "source_mutation": {
+      "const": false
+    },
+    "import_invoked": {
+      "const": false
+    },
+    "serving_promotion": {
+      "const": false
+    },
+    "authorized_go": {
+      "const": false
+    },
+    "profile_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "fixture_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "evidence_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

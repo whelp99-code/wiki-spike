@@ -5,6 +5,24 @@
 **성격**: Encrypted Single-Memory Lifecycle의 마지막 게이트. 이월 항목 4건 + recall corpus + conformance/canary/review machinery.
 **검증**: 전체 1167 테스트 통과, architecture boundaries PASS, independent vector validator 121 checks PASS.
 
+## 현행 durable closure (2026-08-18)
+
+이 절이 현재 상태다. 아래 구현 표와 §4의 "당시 세션에서 못 돌린 항목"은 historical record다. 구 canary run `31314519580`과 당시 `in_progress` 관찰은 superseded다. 이 문서는 서빙 권한, 배포, 라이브 import, #64/#65 완료를 주장하지 않는다.
+
+확인된 체인:
+
+- implementation commit `d9176d5dd32e47fc86248fff75946e9042386fe4`
+- canary run `31950626791`
+- evidence join run `32036623702`
+- manifest digest `2e22de6de7cd17e1563c78cafbbe5d41afe8edaf00127139a25e8a15c34de285`
+- join digest `109234c7699bc1f6a422880b77082e16b7dd78a390c4eac06ddd3e6c79359b70`
+- artifact inventory digest `44774b509724ce051f935cf688ac8a957f5704c16f56e1743cd34d192f4de459`
+- fresh durable receipt SHA-256 `5a81df57a2862afae4e41acff3208b3e8e656f12691fc7ce6718b7c841fff1d9`
+- tracked receipt path `artifacts/encrypted-lifecycle/gate8-final/final-review-receipt.json`
+- #69/#70 completed and closed. #76 owns durable closure. #75 may close after commit.
+
+운영 체크리스트의 G8-02..05는 더 이상 `NOT_STARTED`가 아니다. §2의 G8-01..09는 구현 커밋 라벨이며, 그 운영 행과 번호 체계가 다르다.
+
 ---
 
 ## 1. 이번에 완료한 것
@@ -25,7 +43,9 @@
 
 ---
 
-## 2. 커밋 이력 (main, not pushed)
+## 2. 커밋 이력 (historical implementation labels)
+
+아래 G8-01..09는 구현 커밋 라벨이다. 운영 체크리스트의 G8-01..05와 다른 번호 체계다. 이 라벨을 운영 G8-02..05 `NOT_STARTED`로 읽지 말 것.
 
 ```
 G8-01  G4-CORRECTION-CONTINUITY logical-object continuity
@@ -51,21 +71,23 @@ G8-09  Gate 8 red-team report + close-out (this commit)
 
 ---
 
-## 4. 이 환경에서 완전 실행 불가한 항목 (문서화됨)
+## 4. 당시 세션에서 완전 실행 불가했던 항목 (historical)
 
-다음은 self-hosted 인프라/실시간이 필요해 이 세션에서 **코드·워크플로·runbook으로 구축**했으나 실제 실행은 CI에서 이루어진다:
+원 작성 세션은 self-hosted 인프라와 24h 창이 없어 아래를 **코드·워크플로·runbook으로만 구축**했다. 그 제한은 당시 사실이다. 현행 durable closure는 그 이후 CI에서 닫혔다. 이 절을 지금도 미실행이라고 읽지 말 것.
 
-- **정확히 24시간 canary 실제 실행** — Darwin 25, macOS 26.* self-hosted arm64 runner에서 24h 윈도우 필요(`encrypted-lifecycle-canary.yml`).
-- **세 immutable tuple의 실제 CI 산출/import** — gate1/conformance/canary bundle은 각 워크플로 실행이 산출; join은 그 산출물을 소비.
-- **두 독립 ARCHITECT/CRITIC attestation + separate receipt 서명** — 독립 키를 가진 리뷰 프로세스가 manifest_digest 위에 서명(machinery는 구축·검증 완료, 서명은 위조 불가).
+- **정확히 24시간 canary 실제 실행.** 당시에는 Darwin 25, macOS 26.* self-hosted arm64 runner와 24h 창이 필요했다. 현행 canary run은 `31950626791`.
+- **세 immutable tuple의 실제 CI 산출/import.** 당시에는 gate1/conformance/canary bundle과 join을 이 세션에서 생산하지 못했다. 현행 evidence join run은 `32036623702`.
+- **두 독립 ARCHITECT/CRITIC attestation + separate receipt 서명.** machinery는 그때도 구축·검증되었고, 서명 자체는 위조할 수 없었다. #69/#70는 이후 완료 후 닫혔다.
 
-이 항목들은 `docs/gate8-runbook.md`에 절차가 문서화되어 있다.
+절차는 `docs/gate8-runbook.md`에 남아 있다. 추적 receipt는 `artifacts/encrypted-lifecycle/gate8-final/final-review-receipt.json` (SHA-256 `5a81df57a2862afae4e41acff3208b3e8e656f12691fc7ce6718b7c841fff1d9`).
 
 ---
 
 ## 5. 프로젝트 종료 상태
 
-Gate 1~8이 순차 완료됨에 따라 Encrypted Single-Memory Lifecycle 스파이크의 승인된 게이트 시퀀스가 모두 닫혔다. Gate 9(Agent-Blackbox)는 새 ADR 없이 범위 외(owner 결정 유지).
+Encrypted Single-Memory Lifecycle의 승인된 Gate 1~8 시퀀스는 durable closure 증거까지 기록되었다. Gate 9(Agent-Blackbox)는 새 ADR 없이 범위 외(owner 결정 유지). 이 닫힘은 서빙 권한, 배포, 라이브 import, #64/#65 완료가 아니다.
+
+현행 확인 값: manifest `2e22de6de7cd17e1563c78cafbbe5d41afe8edaf00127139a25e8a15c34de285`, join `109234c7699bc1f6a422880b77082e16b7dd78a390c4eac06ddd3e6c79359b70`, inventory `44774b509724ce051f935cf688ac8a957f5704c16f56e1743cd34d192f4de459`, receipt SHA-256 `5a81df57a2862afae4e41acff3208b3e8e656f12691fc7ce6718b7c841fff1d9`. #76이 durable closure를 소유한다. #75는 이 문서 커밋 이후 닫힐 수 있다.
 
 - 전체 테스트: **1167 passed**
 - architecture boundaries: **PASS**

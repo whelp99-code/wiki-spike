@@ -32,21 +32,19 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from wiki_spike.resources import load_encrypted_cas_envelope_schema_bytes
+
 try:
-    import jsonschema  # type: ignore
+    import jsonschema as _jsonschema
+except ImportError:  # pragma: no cover - exercised only when jsonschema absent
+    _jsonschema = None
 
-    _HAVE_JSONSCHEMA = True
-except Exception:  # pragma: no cover - exercised only when jsonschema absent
-    jsonschema = None  # type: ignore
-    _HAVE_JSONSCHEMA = False
+jsonschema = _jsonschema
+_HAVE_JSONSCHEMA = _jsonschema is not None
 
-_SCHEMA_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "schemas"
-    / "encrypted-lifecycle"
-    / "envelope-v1.schema.json"
+_ENVELOPE_SCHEMA: dict[str, Any] = json.loads(
+    load_encrypted_cas_envelope_schema_bytes().decode("utf-8")
 )
-_ENVELOPE_SCHEMA: dict[str, Any] = json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))
 
 # Obvious plaintext-bearing field names. Any top-level JSON object carrying
 # one of these is rejected outright: this store persists ciphertext only.
@@ -185,10 +183,10 @@ def _validate_envelope_schema_manual(obj: dict[str, Any]) -> None:
 
 
 def _validate_envelope_schema(obj: dict[str, Any]) -> None:
-    if _HAVE_JSONSCHEMA:
+    if _HAVE_JSONSCHEMA and jsonschema is not None:
         try:
             jsonschema.validate(obj, _ENVELOPE_SCHEMA)
-        except jsonschema.ValidationError as exc:  # type: ignore[union-attr]
+        except jsonschema.ValidationError as exc:
             raise OpaqueViolation(f"not a valid envelope-v1 object: {exc.message}") from exc
     else:
         # jsonschema is an optional dev dependency; when absent this MUST
@@ -225,6 +223,24 @@ class EncryptedContentStore:
         self.tombstones = self.root / "tombstones"
         self.objects.mkdir(parents=True, exist_ok=True)
         self.tombstones.mkdir(parents=True, exist_ok=True)
+
+    @classmethod
+    def open_existing(cls, root: Path) -> EncryptedContentStore:
+        """Admit an existing private layout without provisioning or repair."""
+        from wiki_spike.infrastructure.encrypted_cas_layout import (
+            ExistingCASLayoutError,
+            validate_existing_cas_layout,
+        )
+
+        try:
+            root_path, objects, tombstones = validate_existing_cas_layout(root)
+        except ExistingCASLayoutError as exc:
+            raise EncryptedCASError(str(exc)) from exc
+        store = cls.__new__(cls)
+        store.root = root_path
+        store.objects = objects
+        store.tombstones = tombstones
+        return store
 
     def _path(self, blob_id: str) -> Path:
         return self.objects / blob_id

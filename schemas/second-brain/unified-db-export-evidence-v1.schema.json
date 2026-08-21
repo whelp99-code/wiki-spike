@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/unified-db-export-evidence-v1.schema.json",
+  "title": "Second Brain Unified-DB Export Evidence V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "evidence_version",
+    "state",
+    "coverage_scope",
+    "body_reads_in_evidence",
+    "source_mutation",
+    "source_unchanged",
+    "import_invoked",
+    "serving_promotion",
+    "cutover_eligible",
+    "live_export_authorized",
+    "plaintext_leaked",
+    "native_identity_leaked",
+    "record_count",
+    "live_record_count",
+    "tombstone_count",
+    "byte_count",
+    "snapshot_digest",
+    "payload_manifest_digest",
+    "cursor_map_digest",
+    "opening_proof_digest",
+    "closing_proof_digest",
+    "package_digest",
+    "evidence_digest"
+  ],
+  "properties": {
+    "evidence_version": {
+      "const": "second-brain-unified-db-export-evidence-v1"
+    },
+    "state": {
+      "const": "FIXTURE_EXPORTED_NOT_AUTHORIZED"
+    },
+    "coverage_scope": {
+      "const": "fixture-only"
+    },
+    "body_reads_in_evidence": {
+      "const": "0"
+    },
+    "source_mutation": {
+      "const": false
+    },
+    "source_unchanged": {
+      "const": true
+    },
+    "import_invoked": {
+      "const": false
+    },
+    "serving_promotion": {
+      "const": false
+    },
+    "cutover_eligible": {
+      "const": false
+    },
+    "live_export_authorized": {
+      "const": false
+    },
+    "plaintext_leaked": {
+      "const": false
+    },
+    "native_identity_leaked": {
+      "const": false
+    },
+    "record_count": {
+      "$ref": "#/$defs/canonicalDecimal"
+    },
+    "live_record_count": {
+      "$ref": "#/$defs/canonicalDecimal"
+    },
+    "tombstone_count": {
+      "$ref": "#/$defs/canonicalDecimal"
+    },
+    "byte_count": {
+      "$ref": "#/$defs/canonicalDecimal"
+    },
+    "snapshot_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "payload_manifest_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "cursor_map_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "opening_proof_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "closing_proof_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "package_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "evidence_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "canonicalDecimal": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

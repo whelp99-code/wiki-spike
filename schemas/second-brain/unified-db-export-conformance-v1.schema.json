@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/unified-db-export-conformance-v1.schema.json",
+  "title": "Second Brain Unified-DB Export Conformance V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body_reads_in_evidence",
+    "coverage_scope",
+    "cutover_eligible",
+    "evidence_version",
+    "import_invoked",
+    "live_export_authorized",
+    "native_identity_leaked",
+    "plaintext_leaked",
+    "serving_promotion",
+    "source_mutation",
+    "source_unchanged",
+    "state"
+  ],
+  "properties": {
+    "body_reads_in_evidence": {
+      "const": "0"
+    },
+    "coverage_scope": {
+      "const": "fixture-only"
+    },
+    "cutover_eligible": {
+      "const": false
+    },
+    "evidence_version": {
+      "const": "second-brain-unified-db-export-conformance-v1"
+    },
+    "import_invoked": {
+      "const": false
+    },
+    "live_export_authorized": {
+      "const": false
+    },
+    "native_identity_leaked": {
+      "const": false
+    },
+    "plaintext_leaked": {
+      "const": false
+    },
+    "serving_promotion": {
+      "const": false
+    },
+    "source_mutation": {
+      "const": false
+    },
+    "source_unchanged": {
+      "const": true
+    },
+    "state": {
+      "const": "FIXTURE_EXPORTED_NOT_AUTHORIZED"
+    }
+  }
+}

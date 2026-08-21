@@ -476,6 +476,52 @@ BEFORE UPDATE ON ledger_recall_cursor BEGIN SELECT RAISE(ABORT, 'ledger recall c
 CREATE TRIGGER IF NOT EXISTS ledger_recall_cursor_no_delete
 BEFORE DELETE ON ledger_recall_cursor
 BEGIN SELECT RAISE(ABORT, 'live ledger recall cursor cannot be deleted'); END;
+CREATE TABLE IF NOT EXISTS snapshot_import_cohort (
+  cohort_id TEXT PRIMARY KEY,
+  namespace_id TEXT NOT NULL,
+  source_kind TEXT NOT NULL,
+  snapshot_digest TEXT NOT NULL,
+  discovery_digest TEXT NOT NULL,
+  scope_digest TEXT NOT NULL,
+  import_state TEXT NOT NULL,
+  serving_state TEXT NOT NULL,
+  cutover_state TEXT NOT NULL,
+  record_sequence TEXT NOT NULL,
+  record_set_digest TEXT NOT NULL,
+  transition_digest TEXT NOT NULL,
+  reconciliation_digest TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS snapshot_import_record (
+  cohort_id TEXT NOT NULL,
+  record_sequence TEXT NOT NULL,
+  object_digest TEXT NOT NULL,
+  revision_digest TEXT NOT NULL,
+  watermark_digest TEXT NOT NULL,
+  tombstone_state TEXT NOT NULL,
+  payload_digest TEXT NOT NULL,
+  content_ref TEXT NOT NULL,
+  PRIMARY KEY (cohort_id, record_sequence),
+  UNIQUE (cohort_id, object_digest),
+  FOREIGN KEY (cohort_id) REFERENCES snapshot_import_cohort(cohort_id)
+);
+CREATE TABLE IF NOT EXISTS snapshot_import_transition (
+  cohort_id TEXT NOT NULL,
+  transition_sequence TEXT NOT NULL,
+  transition_state TEXT NOT NULL,
+  transition_digest TEXT NOT NULL,
+  recorded_at TEXT NOT NULL,
+  PRIMARY KEY (cohort_id, transition_sequence),
+  FOREIGN KEY (cohort_id) REFERENCES snapshot_import_cohort(cohort_id)
+);
+CREATE TABLE IF NOT EXISTS snapshot_import_reconciliation (
+  cohort_id TEXT PRIMARY KEY,
+  reconciliation_state TEXT NOT NULL,
+  reconciliation_digest TEXT NOT NULL,
+  record_set_digest TEXT NOT NULL,
+  recorded_at TEXT NOT NULL,
+  FOREIGN KEY (cohort_id) REFERENCES snapshot_import_cohort(cohort_id)
+);
 """
 
 CAPTURE_SCHEMA = """
@@ -600,6 +646,10 @@ TABLE_NAMES: tuple[str, ...] = (
     "ledger_recall_cursor",
     "ledger_sequence",
     "ledger_migration",
+    "snapshot_import_cohort",
+    "snapshot_import_record",
+    "snapshot_import_transition",
+    "snapshot_import_reconciliation",
 )
 
 EVENT_LOG_DOMAIN = "wiki-spike.lifecycle-db.event-log.v1"

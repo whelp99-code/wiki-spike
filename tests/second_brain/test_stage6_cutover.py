@@ -2,14 +2,17 @@
 from __future__ import annotations
 
 import pytest
-from test_decision_contracts import scope
-from test_stage3_ledger_persistence import digest, ref
+
+from tests.second_brain.test_decision_contracts import scope
+from tests.second_brain.test_stage3_ledger_persistence import digest, ref
 from wiki_spike.memory_core.errors import InvalidContractValue
 from wiki_spike.memory_core.second_brain_contracts import ResolvedScopeV1
 from wiki_spike.memory_core.second_brain_cutover import (
     COHORT_MANIFEST_V1,
     CUTOVER_DECISION_V1,
+    MIN_OBSERVATION_DAYS,
     CutoverDecisionV1,
+    JsonValue,
     MigrationCohortManifestV1,
     assert_cohort_subset_of_enabled_migration_sources,
     assert_cohort_transition,
@@ -28,7 +31,7 @@ def _scope() -> ResolvedScopeV1:
 
 
 def _cohort(scope_obj: ResolvedScopeV1, *, state: str = "CUTOVER_READY", sources: tuple[str, ...] | None = None) -> MigrationCohortManifestV1:
-    body = {
+    body: dict[str, JsonValue] = {
         "manifest_version": COHORT_MANIFEST_V1,
         "workspace_ref": ref("workspace", "cutover"),
         "cohort_state": state,
@@ -44,7 +47,7 @@ def _decision(
     scope_obj: ResolvedScopeV1,
     cohort: MigrationCohortManifestV1,
     *,
-    observation_days: int = 3,
+    observation_days: int = MIN_OBSERVATION_DAYS,
     parity_cases: int = 200,
     e2e: int = 500,
     safety: int = 0,
@@ -56,14 +59,14 @@ def _decision(
     formula_pass: bool | None = None,
     contract_digest: str | None = None,
 ) -> CutoverDecisionV1:
-    mins = dict(parity_min_bps=9000, citation_min_bps=9000, completeness_min_bps=9000, availability_min_bps=9900)
+    mins = {"parity_min_bps": 9000, "citation_min_bps": 9000, "completeness_min_bps": 9000, "availability_min_bps": 9900}
     computed = (
-        safety == 0 and observation_days >= 3 and parity_cases >= 200 and e2e >= 500
+        safety == 0 and observation_days >= MIN_OBSERVATION_DAYS and parity_cases >= 200 and e2e >= 500
         and parity_lower >= mins["parity_min_bps"] and citation_lower >= mins["citation_min_bps"]
         and completeness_lower >= mins["completeness_min_bps"] and availability_lower >= mins["availability_min_bps"]
         and holdout_changed is False
     )
-    body = {
+    body: dict[str, JsonValue] = {
         "decision_version": CUTOVER_DECISION_V1,
         "decision_id": "cutover-2026-07-29",
         "workspace_ref": ref("workspace", "cutover"),
@@ -85,9 +88,14 @@ def _decision(
         "citation_bps_lower": citation_lower,
         "completeness_bps_lower": completeness_lower,
         "availability_bps_lower": availability_lower,
-        **mins,
+        "parity_min_bps": mins["parity_min_bps"],
+        "citation_min_bps": mins["citation_min_bps"],
+        "completeness_min_bps": mins["completeness_min_bps"],
+        "availability_min_bps": mins["availability_min_bps"],
         "holdout_changed": holdout_changed,
-        "approver_roles": sorted(["migration", "quality", "security", "product"]),
+        "approver_roles": list[JsonValue](
+            sorted(["migration", "quality", "security", "product"])
+        ),
         "formula_pass": computed if formula_pass is None else formula_pass,
     }
     body["decision_digest"] = canonical_ledger_digest("cutover-decision-v1", body)
@@ -126,16 +134,34 @@ def test_cutover_formula_pass_requires_plan_minima() -> None:
     ok = _decision(scope_obj, cohort)
     assert ok.formula_pass is True
     with pytest.raises(InvalidContractValue, match="formula_pass does not match"):
-        _decision(scope_obj, cohort, observation_days=2, formula_pass=True)
+        _ = _decision(scope_obj, cohort, observation_days=0, formula_pass=True)
     with pytest.raises(InvalidContractValue, match="formula_pass does not match"):
-        _decision(scope_obj, cohort, safety=1, formula_pass=True)
+        _ = _decision(scope_obj, cohort, safety=1, formula_pass=True)
     with pytest.raises(InvalidContractValue, match="formula_pass does not match"):
-        _decision(scope_obj, cohort, holdout_changed=True, formula_pass=True)
+        _ = _decision(scope_obj, cohort, holdout_changed=True, formula_pass=True)
     with pytest.raises(InvalidContractValue, match="approver_roles"):
         body = ok.to_mapping()
         body["approver_roles"] = ["migration", "quality", "security"]
         body["decision_digest"] = canonical_ledger_digest("cutover-decision-v1", {k: v for k, v in body.items() if k != "decision_digest"})
-        CutoverDecisionV1.from_mapping(body)
+        _ = CutoverDecisionV1.from_mapping(body)
+
+
+def test_cutover_formula_accepts_signed_one_day_floor() -> None:
+    scope_obj = _scope()
+    cohort = _cohort(scope_obj)
+
+    decision = _decision(
+        scope_obj,
+        cohort,
+        observation_days=MIN_OBSERVATION_DAYS,
+        parity_cases=200,
+        e2e=500,
+        safety=0,
+        formula_pass=True,
+    )
+
+    assert decision.observation_days == MIN_OBSERVATION_DAYS
+    assert decision.formula_pass is True
 
 
 def test_cutover_decision_joins_scope_and_cohort() -> None:

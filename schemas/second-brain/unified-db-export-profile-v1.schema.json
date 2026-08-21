@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/unified-db-export-profile-v1.schema.json",
+  "title": "Second Brain Unified-DB Export Profile V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "profile_version",
+    "source_name",
+    "operation",
+    "source_allowlist",
+    "identity_mapping",
+    "revision_mapping",
+    "watermark_mapping",
+    "deletion_policy",
+    "history_policy",
+    "absence_policy",
+    "import_requested",
+    "serve_requested",
+    "promote_requested",
+    "cutover_requested",
+    "max_records",
+    "max_record_bytes",
+    "max_aggregate_bytes",
+    "profile_digest"
+  ],
+  "properties": {
+    "profile_version": {
+      "const": "second-brain-unified-db-export-profile-v1"
+    },
+    "source_name": {
+      "const": "unified-db"
+    },
+    "operation": {
+      "const": "EXPORT_ONLY"
+    },
+    "source_allowlist": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "identity_mapping": {
+      "const": "source_id+native_id"
+    },
+    "revision_mapping": {
+      "const": "declared_revision"
+    },
+    "watermark_mapping": {
+      "const": "explicit_cursor_map"
+    },
+    "deletion_policy": {
+      "const": "EXPLICIT_TOMBSTONE_ONLY"
+    },
+    "history_policy": {
+      "const": "DECLARED_ROWS_ONLY"
+    },
+    "absence_policy": {
+      "const": "ABSENCE_IS_NOT_DELETION"
+    },
+    "import_requested": {
+      "const": false
+    },
+    "serve_requested": {
+      "const": false
+    },
+    "promote_requested": {
+      "const": false
+    },
+    "cutover_requested": {
+      "const": false
+    },
+    "max_records": {
+      "$ref": "#/$defs/canonicalDecimal"
+    },
+    "max_record_bytes": {
+      "$ref": "#/$defs/canonicalDecimal"
+    },
+    "max_aggregate_bytes": {
+      "$ref": "#/$defs/canonicalDecimal"
+    },
+    "profile_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "canonicalDecimal": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

@@ -14,8 +14,18 @@ dev = ["pytest>=8", "setuptools>=68", "wheel>=0.43", "jsonschema>=4"]
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"wiki_spike.resources" = [
+    "sqlcipher-feasibility-darwin-arm64.json",
+    "trusted-bindings.json",
+    "expected-scopes.json",
+    "envelope-v1.schema.json",
+    "deletion-state-v1.schema.json",
+    "state-delta-v1.schema.json",
+]
+
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 testpaths = ["tests"]
 filterwarnings = ["error"]
 

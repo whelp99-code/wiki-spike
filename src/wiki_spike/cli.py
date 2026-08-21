@@ -19,7 +19,8 @@ class ProductAuthority(Protocol):
 
 
 class AuthenticatedV2Product(Protocol):
-    authority: ProductAuthority
+    @property
+    def authority(self) -> ProductAuthority: ...
 
 
 V2Dispatcher = Callable[[AuthenticatedV2Product, argparse.Namespace], int]

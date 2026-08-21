@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/unified-db-postgres-metadata-capture-only-authorization-v1.schema.json",
+  "title": "Second Brain Unified-DB Postgres Metadata-Capture-Only Authorization V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "authorization_version",
+    "authorization_kind",
+    "authorization_id",
+    "nonce",
+    "source_name",
+    "operation",
+    "query_manifest_digest",
+    "capture_plan_digest",
+    "output_digest",
+    "destination",
+    "max_captures",
+    "application_row_allowed",
+    "source_body_read_allowed",
+    "mutation_allowed",
+    "export_allowed",
+    "import_allowed",
+    "register_allowed",
+    "cohort_allowed",
+    "serve_allowed",
+    "promote_allowed",
+    "cutover_allowed",
+    "issued_at",
+    "not_before",
+    "expires_at",
+    "authorization_digest"
+  ],
+  "properties": {
+    "authorization_version": {
+      "const": "second-brain-unified-db-postgres-metadata-capture-only-authorization-v1"
+    },
+    "authorization_kind": {
+      "const": "POSTGRES_METADATA_CAPTURE_ONLY"
+    },
+    "authorization_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "nonce": {
+      "$ref": "#/$defs/sha256"
+    },
+    "source_name": {
+      "const": "unified-db"
+    },
+    "operation": {
+      "const": "METADATA_CAPTURE_ONLY"
+    },
+    "query_manifest_digest": {
+      "const": "648ee2cdf9f10257d62744b39971ea528093e17515845b07e4286ed31555c4fb"
+    },
+    "capture_plan_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "output_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "destination": {
+      "$ref": "#/$defs/destination"
+    },
+    "max_captures": {
+      "const": "1"
+    },
+    "application_row_allowed": {
+      "const": false
+    },
+    "source_body_read_allowed": {
+      "const": false
+    },
+    "mutation_allowed": {
+      "const": false
+    },
+    "export_allowed": {
+      "const": false
+    },
+    "import_allowed": {
+      "const": false
+    },
+    "register_allowed": {
+      "const": false
+    },
+    "cohort_allowed": {
+      "const": false
+    },
+    "serve_allowed": {
+      "const": false
+    },
+    "promote_allowed": {
+      "const": false
+    },
+    "cutover_allowed": {
+      "const": false
+    },
+    "issued_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "not_before": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "expires_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "authorization_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "destination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "destination_version",
+        "source_name",
+        "operation",
+        "authorization_kind",
+        "destination_path",
+        "path_policy",
+        "import_requested",
+        "serve_requested",
+        "promote_requested",
+        "cutover_requested",
+        "destination_digest"
+      ],
+      "properties": {
+        "destination_version": {
+          "const": "second-brain-unified-db-postgres-metadata-capture-destination-v1"
+        },
+        "source_name": {
+          "const": "unified-db"
+        },
+        "operation": {
+          "const": "METADATA_CAPTURE_ONLY"
+        },
+        "authorization_kind": {
+          "const": "POSTGRES_METADATA_CAPTURE_ONLY"
+        },
+        "destination_path": {
+          "type": "string",
+          "minLength": 2,
+          "pattern": "^/[^\\u0000-\\u001F\\u007F]+$"
+        },
+        "path_policy": {
+          "const": "create-only-exclusive"
+        },
+        "import_requested": {
+          "const": false
+        },
+        "serve_requested": {
+          "const": false
+        },
+        "promote_requested": {
+          "const": false
+        },
+        "cutover_requested": {
+          "const": false
+        },
+        "destination_digest": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

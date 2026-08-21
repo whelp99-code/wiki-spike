@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/unified-db-export-payload-manifest-v1.schema.json",
+  "title": "Second Brain Unified-DB Export Payload Manifest V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["manifest_version", "entry_count", "entries", "manifest_digest"],
+  "properties": {
+    "manifest_version": {
+      "const": "second-brain-unified-db-export-payload-manifest-v1"
+    },
+    "entry_count": {
+      "$ref": "#/$defs/canonicalDecimal"
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["relative_path", "size_bytes", "content_digest"],
+        "properties": {
+          "relative_path": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "$ref": "#/$defs/canonicalDecimal"
+          },
+          "content_digest": {
+            "$ref": "#/$defs/sha256"
+          }
+        }
+      }
+    },
+    "manifest_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "canonicalDecimal": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

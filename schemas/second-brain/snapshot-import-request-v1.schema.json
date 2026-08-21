@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/snapshot-import-request-v1.schema.json",
+  "title": "Second Brain Snapshot Import Request V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "request_version",
+    "cohort_id",
+    "source_name",
+    "source_root",
+    "target_namespace",
+    "resolved_scope_digest",
+    "discovery_manifest_digest",
+    "snapshot_digest",
+    "reconciliation_mode",
+    "serving_promotion_requested"
+  ],
+  "properties": {
+    "request_version": {
+      "const": "second-brain-snapshot-import-request-v1"
+    },
+    "cohort_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+    },
+    "source_name": {
+      "enum": ["me-wiki", "unified-db", "legacy Mem0/RAG"]
+    },
+    "source_root": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^/"
+    },
+    "target_namespace": {
+      "type": "string",
+      "pattern": "^second-brain:import:.+$"
+    },
+    "resolved_scope_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "discovery_manifest_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "snapshot_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "reconciliation_mode": {
+      "const": "REQUIRED"
+    },
+    "serving_promotion_requested": {
+      "const": false
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

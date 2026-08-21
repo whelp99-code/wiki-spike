@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/unified-db-live-export-destination-v1.schema.json",
+  "title": "Second Brain Unified-DB Live Export Destination V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "destination_version",
+    "destination_id",
+    "commitment_kind",
+    "path_policy",
+    "import_requested",
+    "serve_requested",
+    "promote_requested",
+    "cutover_requested",
+    "destination_digest"
+  ],
+  "properties": {
+    "destination_version": {
+      "const": "second-brain-unified-db-live-export-destination-v1"
+    },
+    "destination_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "commitment_kind": {
+      "const": "LOCAL_PACKAGE_TREE"
+    },
+    "path_policy": {
+      "const": "create-only-exclusive"
+    },
+    "import_requested": {
+      "const": false
+    },
+    "serve_requested": {
+      "const": false
+    },
+    "promote_requested": {
+      "const": false
+    },
+    "cutover_requested": {
+      "const": false
+    },
+    "destination_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

@@ -30,7 +30,6 @@ from dataclasses import dataclass
 from hashlib import sha256
 import re
 from enum import Enum
-from pathlib import Path
 from typing import Mapping
 from typing import TYPE_CHECKING
 
@@ -42,6 +41,7 @@ from wiki_spike.memory_core.recovery import (
     VerifiedDeletionOverlay,
 )
 from wiki_spike.memory_core.errors import InvalidContractValue
+from wiki_spike.resources import load_deletion_state_schema_bytes
 
 try:
     import jsonschema  # type: ignore
@@ -53,13 +53,9 @@ except Exception:  # pragma: no cover - exercised only when jsonschema absent
 
 DELETION_STATE_SCHEMA = "wiki-deletion-state-v1"
 
-_SCHEMA_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "schemas"
-    / "encrypted-lifecycle"
-    / "deletion-state-v1.schema.json"
+_DELETION_STATE_SCHEMA_DOC: dict[str, Any] = json.loads(
+    load_deletion_state_schema_bytes().decode("utf-8")
 )
-_DELETION_STATE_SCHEMA_DOC: dict[str, Any] = json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))
 
 
 class DeletionPhase(str, Enum):

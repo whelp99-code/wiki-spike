@@ -4,23 +4,22 @@ import json
 import os
 import subprocess
 import sys
+from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
-from datetime import datetime, timezone
+from typing import Literal, cast
 from uuid import uuid4
-import pytest
 
+import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from wiki_spike.memory_core.second_brain_ledger_contracts import (
-    canonical_ledger_bytes,
-    canonical_ledger_digest,
+from tests.second_brain.test_native_shadow_measurement import (
+    IndependentMonotonicTestAuthority,
 )
-from wiki_spike.canonical import canonical_bytes
 from wiki_spike.applications.second_brain_shadow_measurement import (
-    AuthoritySnapshot,
     NativeShadowMeasurementCollector,
 )
+from wiki_spike.canonical import canonical_bytes
 from wiki_spike.composition.second_brain_shadow_measurement import (
     ShadowMeasurementCompositionError,
     open_measurement,
@@ -31,9 +30,28 @@ from wiki_spike.memory_core.second_brain_evaluation_contracts import (
     HoldoutManifestV1,
     RecallSloV1,
 )
+from wiki_spike.memory_core.second_brain_ledger_contracts import (
+    canonical_ledger_bytes,
+    canonical_ledger_digest,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 CLI = ROOT / "scripts" / "second_brain_shadow_measurement.py"
+
+type JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]
+type JsonObject = dict[str, JsonValue]
+type MutationKind = Literal["append", "replace-first", "set"]
+
+
+def _parse_json_object(text: str) -> JsonObject:
+    value = cast(JsonValue, json.loads(text))
+    if not isinstance(value, dict):
+        raise TypeError
+    return value
+
+
+def _read_json_object(path: Path) -> JsonObject:
+    return _parse_json_object(path.read_text())
 
 
 def digest(value: str) -> str:
@@ -45,9 +63,6 @@ AUTHORITY_UNAVAILABLE = (
 )
 
 
-from test_native_shadow_measurement import IndependentMonotonicTestAuthority
-
-
 class FixtureRetentionAuthority(IndependentMonotonicTestAuthority):
     """Authenticated in-memory authority used only for fixture checkpoints."""
 
@@ -57,13 +72,13 @@ class FixtureRetentionAuthority(IndependentMonotonicTestAuthority):
 
 
 
-def write_contracts(tmp_path: Path):
-    source_body = {
+def write_contracts(tmp_path: Path) -> tuple[Ed25519PrivateKey, str]:
+    source_body: JsonObject = {
         "manifest_version": "native-source-manifest-v1",
         "workspace_ref": "workspace:native",
         "profiles": ["Codex", "Claude/Memory Bank", "Git", "Markdown"],
     }
-    capability_body = {
+    capability_body: JsonObject = {
         "manifest_version": "native-capability-manifest-v1",
         "workspace_ref": "workspace:native",
         "benchmark_key_ref": "key:native",
@@ -75,16 +90,16 @@ def write_contracts(tmp_path: Path):
     }
     source_manifest_digest = sha256(canonical_bytes(source_body)).hexdigest()
     capability_manifest_digest = sha256(canonical_bytes(capability_body)).hexdigest()
-    scope = {"scope_version":"second-brain-resolved-scope-v1","enabled_source_profiles":["Claude/Memory Bank","Codex","Git","Markdown"],"disabled_source_profiles":{},"enabled_migration_sources":[],"disabled_migration_sources":{},"feature_flags":[],"egress_destinations":[],"enabled_external_model_routes":[],"disabled_external_model_routes":{},"disabled_export_destinations":{},"capability_manifest_digest":capability_manifest_digest,"source_manifest_digest":source_manifest_digest,"mandatory_release_constraints":["signed-release-baseline"]}
-    benchmark_body = {"manifest_version":"second-brain-benchmark-manifest-v1","workspace_ref":"workspace:native","corpus_key_ref":"key:native","capability_ref":"capability:native","item_digests":[digest("benchmark")],"label_review_digest":digest("labels"),"consent_digest":digest("consent")}
-    holdout_body = {"manifest_version":"second-brain-holdout-manifest-v1","workspace_ref":"workspace:native","holdout_key_ref":"key:holdout","capability_ref":"capability:holdout","item_digests":[digest("holdout")],"separation_digest":digest("separation")}
-    slo_body = {"slo_version":"second-brain-recall-slo-v1","parity_min_bps":0,"citation_min_bps":0,"completeness_min_bps":0,"availability_min_bps":0,"max_safety_violations":0,"min_shadow_days":3,"min_parity_cases_per_source":200,"min_cohort_e2e_queries":500,"confidence_method":"one-sided-wilson-95","include_invalid_in_denominator":True,"include_abstained_in_denominator":True,"include_source_unavailable_in_denominator":True}
-    files = {"scope.json": scope, "source.json": source_body | {"source_manifest_digest": source_manifest_digest}, "capability.json": capability_body | {"capability_manifest_digest": capability_manifest_digest}, "benchmark.json": benchmark_body | {"manifest_digest": canonical_ledger_digest("benchmark-manifest-v1", benchmark_body)}, "holdout.json": holdout_body | {"manifest_digest": canonical_ledger_digest("holdout-manifest-v1", holdout_body)}, "contract.json": slo_body | {"slo_digest": canonical_ledger_digest("recall-slo-v1", slo_body)}}
+    scope: JsonObject = {"scope_version":"second-brain-resolved-scope-v1","enabled_source_profiles":["Claude/Memory Bank","Codex","Git","Markdown"],"disabled_source_profiles":{},"enabled_migration_sources":[],"disabled_migration_sources":{},"feature_flags":[],"egress_destinations":[],"enabled_external_model_routes":[],"disabled_external_model_routes":{},"disabled_export_destinations":{},"capability_manifest_digest":capability_manifest_digest,"source_manifest_digest":source_manifest_digest,"mandatory_release_constraints":["signed-release-baseline"]}
+    benchmark_body: JsonObject = {"manifest_version":"second-brain-benchmark-manifest-v1","workspace_ref":"workspace:native","corpus_key_ref":"key:native","capability_ref":"capability:native","item_digests":[digest("benchmark")],"label_review_digest":digest("labels"),"consent_digest":digest("consent")}
+    holdout_body: JsonObject = {"manifest_version":"second-brain-holdout-manifest-v1","workspace_ref":"workspace:native","holdout_key_ref":"key:holdout","capability_ref":"capability:holdout","item_digests":[digest("holdout")],"separation_digest":digest("separation")}
+    slo_body: JsonObject = {"slo_version":"second-brain-recall-slo-v1","parity_min_bps":0,"citation_min_bps":0,"completeness_min_bps":0,"availability_min_bps":0,"max_safety_violations":0,"min_shadow_days":1,"min_parity_cases_per_source":200,"min_cohort_e2e_queries":500,"confidence_method":"one-sided-wilson-95","include_invalid_in_denominator":True,"include_abstained_in_denominator":True,"include_source_unavailable_in_denominator":True}
+    files: dict[str, JsonObject] = {"scope.json": scope, "source.json": source_body | {"source_manifest_digest": source_manifest_digest}, "capability.json": capability_body | {"capability_manifest_digest": capability_manifest_digest}, "benchmark.json": benchmark_body | {"manifest_digest": canonical_ledger_digest("benchmark-manifest-v1", benchmark_body)}, "holdout.json": holdout_body | {"manifest_digest": canonical_ledger_digest("holdout-manifest-v1", holdout_body)}, "contract.json": slo_body | {"slo_digest": canonical_ledger_digest("recall-slo-v1", slo_body)}}
     for name, body in files.items():
-        (tmp_path / name).write_text(json.dumps(body))
+        _ = (tmp_path / name).write_text(json.dumps(body))
     key = Ed25519PrivateKey.generate()
     raw = key.public_key().public_bytes_raw()
-    (tmp_path / "key.pub").write_text(raw.hex())
+    _ = (tmp_path / "key.pub").write_text(raw.hex())
     collector = NativeShadowMeasurementCollector(
         path=tmp_path / "cohort.json",
         authority=FixtureRetentionAuthority(),
@@ -97,10 +112,10 @@ def write_contracts(tmp_path: Path):
     )
     root = collector.checkpoint_payload(
         cohort_id=str(uuid4()),
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
         anchor_root=digest("anchor"),
     )
-    (tmp_path / "checkpoint.json").write_text(json.dumps({
+    _ = (tmp_path / "checkpoint.json").write_text(json.dumps({
         "cohort_id": root["cohort_id"],
         "started_at": root["started_at"],
         "anchor_root": root["anchor_root"],
@@ -121,7 +136,7 @@ def run(args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(args, text=True, capture_output=True, env=env, check=False)
 
 
-def test_closed_cli_requires_deployment_authority_adapter(tmp_path):
+def test_closed_cli_requires_deployment_authority_adapter(tmp_path: Path) -> None:
     _, fingerprint = write_contracts(tmp_path)
     init = run(command(tmp_path, fingerprint, "init"))
     assert init.returncode == 2
@@ -130,7 +145,7 @@ def test_closed_cli_requires_deployment_authority_adapter(tmp_path):
     assert run(command(tmp_path, fingerprint, "verify")).returncode == 2
 
 
-def test_closed_cli_rejects_roster_drift_unsigned_input_clock_and_legacy_flags(tmp_path):
+def test_closed_cli_rejects_roster_drift_unsigned_input_clock_and_legacy_flags(tmp_path: Path) -> None:
     _, fingerprint = write_contracts(tmp_path)
     no_checkpoint = command(tmp_path, fingerprint, "init")
     no_checkpoint.remove("--checkpoint")
@@ -143,85 +158,115 @@ def test_closed_cli_rejects_roster_drift_unsigned_input_clock_and_legacy_flags(t
     unsigned = {"sample_version": "second-brain-native-shadow-sample-v1", "sample_id": "bad",
                 "source_profile": "Codex", "outcome": "valid", "citation": True,
                 "completeness": True, "parity": True, "safety_violation": False}
-    (tmp_path / "unsigned.json").write_text(json.dumps(unsigned))
+    _ = (tmp_path / "unsigned.json").write_text(json.dumps(unsigned))
     assert run(command(tmp_path, fingerprint, "append", "--sample", str(tmp_path / "unsigned.json"))).returncode == 2
     assert run(command(tmp_path, "0" * 64, "status")).returncode == 2
-    scope = json.loads((tmp_path / "scope.json").read_text()); scope["enabled_source_profiles"][-1] = "unified-db"
-    (tmp_path / "scope.json").write_text(json.dumps(scope))
+    scope = _read_json_object(tmp_path / "scope.json")
+    profiles = scope["enabled_source_profiles"]
+    assert isinstance(profiles, list)
+    profiles[-1] = "unified-db"
+    _ = (tmp_path / "scope.json").write_text(json.dumps(scope))
     assert run(command(tmp_path, fingerprint, "init")).returncode == 2
 
-def test_cli_rejects_digest_consistent_manifest_semantic_conflicts(tmp_path):
-    for name, filename, mutation, digest_field, scope_field in (
+def test_cli_rejects_digest_consistent_manifest_semantic_conflicts(tmp_path: Path) -> None:
+    cases: tuple[tuple[str, str, MutationKind, str, str, str, str], ...] = (
         (
             "source-roster",
             "source.json",
-            lambda body: body["profiles"].__setitem__(0, "unified-db"),
+            "replace-first",
+            "profiles",
+            "unified-db",
             "source_manifest_digest",
             "source_manifest_digest",
         ),
         (
             "source-workspace",
             "source.json",
-            lambda body: body.__setitem__("workspace_ref", "workspace:foreign"),
+            "set",
+            "workspace_ref",
+            "workspace:foreign",
             "source_manifest_digest",
             "source_manifest_digest",
         ),
         (
             "capability-serving",
             "capability.json",
-            lambda body: body["capabilities"].append("serving"),
+            "append",
+            "capabilities",
+            "serving",
             "capability_manifest_digest",
             "capability_manifest_digest",
         ),
         (
             "capability-key",
             "capability.json",
-            lambda body: body.__setitem__("benchmark_key_ref", "key:foreign"),
+            "set",
+            "benchmark_key_ref",
+            "key:foreign",
             "capability_manifest_digest",
             "capability_manifest_digest",
         ),
         (
             "capability-workspace",
             "capability.json",
-            lambda body: body.__setitem__("workspace_ref", "workspace:foreign"),
+            "set",
+            "workspace_ref",
+            "workspace:foreign",
             "capability_manifest_digest",
             "capability_manifest_digest",
         ),
         (
             "capability-holdout-key",
             "capability.json",
-            lambda body: body.__setitem__("holdout_key_ref", "key:foreign"),
+            "set",
+            "holdout_key_ref",
+            "key:foreign",
             "capability_manifest_digest",
             "capability_manifest_digest",
         ),
         (
             "capability-benchmark-ref",
             "capability.json",
-            lambda body: body.__setitem__("benchmark_capability_ref", "capability:foreign"),
+            "set",
+            "benchmark_capability_ref",
+            "capability:foreign",
             "capability_manifest_digest",
             "capability_manifest_digest",
         ),
         (
             "capability-holdout-ref",
             "capability.json",
-            lambda body: body.__setitem__("holdout_capability_ref", "capability:foreign"),
+            "set",
+            "holdout_capability_ref",
+            "capability:foreign",
             "capability_manifest_digest",
             "capability_manifest_digest",
         ),
-    ):
+    )
+    for name, filename, mutation_kind, mutation_field, mutation_value, digest_field, scope_field in cases:
         case = tmp_path / name
         case.mkdir()
         _, fingerprint = write_contracts(case)
-        manifest = json.loads((case / filename).read_text())
-        mutation(manifest)
+        manifest = _read_json_object(case / filename)
+        match mutation_kind:
+            case "set":
+                manifest[mutation_field] = mutation_value
+            case "append":
+                values = manifest[mutation_field]
+                assert isinstance(values, list)
+                values.append(mutation_value)
+            case "replace-first":
+                values = manifest[mutation_field]
+                assert isinstance(values, list)
+                values[0] = mutation_value
         body = {key: value for key, value in manifest.items() if key != digest_field}
         manifest[digest_field] = sha256(canonical_bytes(body)).hexdigest()
-        (case / filename).write_text(json.dumps(manifest))
-        scope = json.loads((case / "scope.json").read_text())
+        _ = (case / filename).write_text(json.dumps(manifest))
+        scope = _read_json_object(case / "scope.json")
         scope[scope_field] = manifest[digest_field]
-        (case / "scope.json").write_text(json.dumps(scope))
+        _ = (case / "scope.json").write_text(json.dumps(scope))
         with pytest.raises(ShadowMeasurementCompositionError):
-            open_measurement(
+            _ = open_measurement(
                 db=case / "semantic-cohort.json",
                 authority=FixtureRetentionAuthority(),
                 measurement_public_key=case / "key.pub",
@@ -239,22 +284,26 @@ def test_cli_rejects_digest_consistent_manifest_semantic_conflicts(tmp_path):
         assert result.returncode == 2
         assert result.stderr == AUTHORITY_UNAVAILABLE
 
-def test_cli_rejects_manifest_body_drift_and_post_init_drift(tmp_path):
+def test_cli_rejects_manifest_body_drift_and_post_init_drift(tmp_path: Path) -> None:
     _, fingerprint = write_contracts(tmp_path)
-    source = json.loads((tmp_path / "source.json").read_text())
-    source["profiles"].append("forged")
-    (tmp_path / "source.json").write_text(json.dumps(source))
+    source = _read_json_object(tmp_path / "source.json")
+    source_profiles = source["profiles"]
+    assert isinstance(source_profiles, list)
+    source_profiles.append("forged")
+    _ = (tmp_path / "source.json").write_text(json.dumps(source))
     assert run(command(tmp_path, fingerprint, "init")).returncode == 2
 
     _, fingerprint = write_contracts(tmp_path)
     assert run(command(tmp_path, fingerprint, "init")).returncode == 2
-    capability = json.loads((tmp_path / "capability.json").read_text())
-    capability["capabilities"].append("forged")
-    (tmp_path / "capability.json").write_text(json.dumps(capability))
+    capability = _read_json_object(tmp_path / "capability.json")
+    capabilities = capability["capabilities"]
+    assert isinstance(capabilities, list)
+    capabilities.append("forged")
+    _ = (tmp_path / "capability.json").write_text(json.dumps(capability))
     assert run(command(tmp_path, fingerprint, "status")).returncode == 2
 
 
-def test_cli_rejects_cross_manifest_workspace_key_and_capability_incoherence(tmp_path):
+def test_cli_rejects_cross_manifest_workspace_key_and_capability_incoherence(tmp_path: Path) -> None:
     for field, value in (
         ("workspace_ref", "workspace:foreign"),
         ("holdout_key_ref", "key:native"),
@@ -263,28 +312,28 @@ def test_cli_rejects_cross_manifest_workspace_key_and_capability_incoherence(tmp
         case = tmp_path / field
         case.mkdir()
         _, fingerprint = write_contracts(case)
-        holdout = json.loads((case / "holdout.json").read_text())
+        holdout = _read_json_object(case / "holdout.json")
         holdout[field] = value
         body = {key: value for key, value in holdout.items() if key != "manifest_digest"}
         holdout["manifest_digest"] = canonical_ledger_digest("holdout-manifest-v1", body)
-        (case / "holdout.json").write_text(json.dumps(holdout))
+        _ = (case / "holdout.json").write_text(json.dumps(holdout))
         assert run(command(case, fingerprint, "init")).returncode == 2
-def test_cli_rejects_missing_or_corrupt_state_without_creating_it(tmp_path):
+def test_cli_rejects_missing_or_corrupt_state_without_creating_it(tmp_path: Path) -> None:
     _, fingerprint = write_contracts(tmp_path)
     missing = run(command(tmp_path, fingerprint, "status"))
     assert missing.returncode == 2
     assert not (tmp_path / "cohort.json").exists()
     assert not (tmp_path / "cohort.json.lock").exists()
 
-    (tmp_path / "cohort.json").write_text("{")
+    _ = (tmp_path / "cohort.json").write_text("{")
     corrupt = run(command(tmp_path, fingerprint, "verify"))
     assert corrupt.returncode == 2
     assert corrupt.stderr == AUTHORITY_UNAVAILABLE
-def test_boundary_checker_scans_explicit_native_file_root(tmp_path):
+def test_boundary_checker_scans_explicit_native_file_root(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
-    (tmp_path / "pyproject.toml").write_text("[project]\nname = \"boundary-test\"\nversion = \"0\"\n")
-    (tmp_path / "native.py").write_text("import socket\n")
-    config = {
+    _ = (tmp_path / "pyproject.toml").write_text("[project]\nname = \"boundary-test\"\nversion = \"0\"\n")
+    _ = (tmp_path / "native.py").write_text("import socket\n")
+    config: JsonObject = {
         "layers": {"native_measurement": ["native.py"]},
         "rules": [{
             "from_layers": ["native_measurement"],
@@ -295,11 +344,16 @@ def test_boundary_checker_scans_explicit_native_file_root(tmp_path):
         "schema_version": "phase3-boundaries-v1",
     }
     config_path = tmp_path / "boundaries.json"
-    config_path.write_bytes(canonical_bytes(config))
+    _ = config_path.write_bytes(canonical_bytes(config))
     result = subprocess.run(
         [sys.executable, str(ROOT / "scripts" / "check_architecture_boundaries.py"),
          "--repo-root", str(tmp_path), "--config", str(config_path), "--json"],
         text=True, capture_output=True, check=False,
     )
     assert result.returncode == 1
-    assert json.loads(result.stdout)["violations"][0]["imported_module"] == "socket"
+    output = _parse_json_object(result.stdout)
+    violations = output["violations"]
+    assert isinstance(violations, list)
+    first = violations[0]
+    assert isinstance(first, dict)
+    assert first["imported_module"] == "socket"

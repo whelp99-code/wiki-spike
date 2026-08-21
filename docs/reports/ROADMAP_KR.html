@@ -149,7 +149,8 @@
     <div class="meta">
       <span class="chip">브랜치 <b>docs-root-cleanup</b></span>
       <span class="chip">과거 커밋 <b>1264a1b</b> (3일 → 1일, historical)</span>
-      <span class="chip">현행 local code/doc floor <b>3일 / 72h</b> · <b>d76359e</b> 로컬 커밋·미푸시</span>
+      <span class="chip">현행 local code/doc floor <b>1일</b> · 로컬 정합·비권한 증거</span>
+      <span class="chip">Gate 8 durable <b>d9176d5</b> · canary <b>31950626791</b> · join <b>32036623702</b></span>
       <span class="chip">ADR <b>28건</b> (0001–0028)</span>
       <span class="chip">제품 결정 <b>DB-01..08</b></span>
       <span class="chip">서명 체크포인트 <b>g2 · g3 · g4</b></span>
@@ -168,11 +169,21 @@
   </div>
   <p class="note">
     ADR-0028(제품 경계)은 <b>Stage-0 해결 전까지 구현 차단(blocked)</b> 상태. 이 페이지의 현행 local closure는
-    CODE-01…07 및 3 full days/72h code/doc floor는 local commit <code>d76359ecffaf8215c5e6ec38c4a977afbdbab6bf</code>에 기록됐고, full suite는 2215 passed / 189.13s / rc 0입니다. commit은 미푸시입니다. 1일/14일과 기존 통과 수치는 historical record입니다.
-    V2/API/MCP, E2E/browser, source I/O/import/cutover/live operation은 이 closure에서 완료라고 주장하지 않습니다. 남은 것은 <b>서명·증거·리뷰 거버넌스</b>입니다. 2026-08-06 기준 서명 파이프라인을
+    CODE-01…07 및 현행 1 full day code/doc floor는 로컬로 정합되었으나 권한을 부여하지 않습니다. 3일/72h와 14일 및 기존 통과 수치는 historical record입니다.
+    V2/API/MCP, E2E/browser, source I/O/import/cutover/live operation은 이 closure에서 완료라고 주장하지 않습니다.
+    2026-08-18 현행 Gate 8 durable closure: implementation <code>d9176d5dd32e47fc86248fff75946e9042386fe4</code>,
+    canary <code>31950626791</code>, evidence join <code>32036623702</code>,
+    manifest <code>2e22de6de7cd17e1563c78cafbbe5d41afe8edaf00127139a25e8a15c34de285</code>,
+    join digest <code>109234c7699bc1f6a422880b77082e16b7dd78a390c4eac06ddd3e6c79359b70</code>,
+    inventory <code>44774b509724ce051f935cf688ac8a957f5704c16f56e1743cd34d192f4de459</code>,
+    receipt SHA-256 <code>5a81df57a2862afae4e41acff3208b3e8e656f12691fc7ce6718b7c841fff1d9</code>,
+    path <code>artifacts/encrypted-lifecycle/gate8-final/final-review-receipt.json</code>.
+    #69/#70 completed and closed. #76 owns durable closure. #75 may close after commit.
+    이 기록은 서빙 권한, 배포, 라이브 import, #64/#65 완료가 아닙니다.
+    남은 제품 블로커는 <b>서명된 DB 결정과 운영 거버넌스</b>입니다. 2026-08-06 기준 서명 파이프라인을
     가동했습니다: <b>SLO 동결 완료</b> · <b>서명 체인 dry-run 검증</b>(skeleton→signing-bytes→inspect→서명→
     envelope→assemble→verify, signatures_verified: true) · <b>13개 기록 본문 생성</b>. Phase 3 Core · Phase 4
-    Runtime · Encrypted Lifecycle Gate 8까지는 릴리스 태그로 마감된 이력.
+    Runtime 이력은 그대로입니다.
   </p>
 
   <!-- ================= 로드맵 타임라인 ================= -->
@@ -233,12 +244,13 @@
       <div class="ph-head">
         <span class="ph-name">Encrypted Single-Memory Lifecycle (Gate 1–8)</span>
         <span class="badge b-done">완료</span>
-        <span class="ph-period">Gate 8 컨포먼스 · 캐너리 · 리뷰</span>
+        <span class="ph-period">Gate 8 durable closure 기록 · 2026-08-18</span>
       </div>
       <ul>
         <li>암호화 CAS · identity/binding · floor protocol · ARK 삭제 · 복구 · 24h 캐너리</li>
+        <li>현행 체인: canary <code>31950626791</code> · join <code>32036623702</code> · receipt SHA-256 <code>5a81df57a2862afae4e41acff3208b3e8e656f12691fc7ce6718b7c841fff1d9</code></li>
         <li>ADR-0026(권위·정체성) / ADR-0027(복구·삭제) Gate 1 승인</li>
-        <li>이 증거는 <b>제품 증명으로 재사용 금지</b> (DB-05/ADR-0028 경계)</li>
+        <li>이 증거는 <b>제품 증명으로 재사용 금지</b> (DB-05/ADR-0028 경계). 서빙 권한·배포·라이브 import·#64/#65는 별건</li>
       </ul>
     </div>
 
@@ -265,7 +277,7 @@
         <li><b>Stage 1 보안 토대</b>: capability · consent/retention · credential broker · egress/telemetry · 복구/삭제 매핑 · 소스 샌드박스</li>
         <li><b>Stage 2 캡처</b>: 캡처 계약/영속화 · connector 4종(codex, claude_memory_bank, git, markdown) · V2 컴포지션</li>
         <li><b>Stage 3 서빙</b>: V2 API + MCP v2 · 서명 원장 · RecallServeSnapshotV2 · WAL 동시성/삭제 · G013 레드팀</li>
-        <li><b>Stage 4 평가 거버넌스</b>: benchmark/holdout 분리 키 · RecallSloV1 · 현행 3일/72h code/doc floor · 200/500/0.95 Wilson. 1일은 historical record이며 signed DRIFT-02 없이는 운영값이 아님</li>
+        <li><b>Stage 4 평가 거버넌스</b>: benchmark/holdout 분리 키 · RecallSloV1 · 현행 1일 code/doc floor · 200/500/0.95 Wilson. 3일/72h은 historical record이며 signed DRIFT-02 없이는 운영값이 아님</li>
         <li><b>Stage 5 제품 릴리스 증거</b>: 증거 DAG · ops 드릴 영수증 · Gate 8 재사용 차단</li>
         <li><b>Stage 6 컷오버</b>: 코호트 상태머신 · 컷오버 수식 · 인간 승인 없는 라이브 전환 차단</li>
       </ul>
@@ -354,8 +366,8 @@
       <span class="tag">ADR-0028 privacy classes</span>
     </div>
     <div class="card">
-      <h4>🚚 소스별 마이그레이션 + 3일/72h code/doc floor</h4>
-      <p>현행 code/doc 기준은 3 full days/72h입니다. 실제 cohort 측정, 200 패리티/500 E2E/95% Wilson, 수식·인간 승인·라이브 전환은 signed DRIFT-02와 manual authority가 없어 NOT_AUTHORIZED입니다. 1일은 historical record입니다.</p>
+      <h4>🚚 소스별 마이그레이션 + 1일 code/doc floor</h4>
+      <p>현행 code/doc 기준은 1 full day입니다. 실제 cohort 측정, 200 패리티/500 E2E/95% Wilson, 수식·인간 승인·라이브 전환은 signed DRIFT-02와 manual authority가 없어 NOT_AUTHORIZED입니다. 3일/72h는 historical record입니다.</p>
       <span class="tag">DB-07 · DB-05 · Stage 6</span>
     </div>
     <div class="card">
@@ -436,7 +448,8 @@
   </div>
 
   <footer>
-    생성: 2026-08-05 · 갱신: 2026-08-06 (Stage-0 서명 진행 반영) · 기준 커밋 <code>1264a1b</code> (docs-root-cleanup) ·
+    생성: 2026-08-05 · 갱신: 2026-08-18 (Gate 8 durable closure 반영) · 기준 커밋 <code>1264a1b</code> (docs-root-cleanup, historical) ·
+    Gate 8 현행 implementation <code>d9176d5dd32e47fc86248fff75946e9042386fe4</code> ·
     출처: README.md, docs/adr/ADR-0028, docs/product/decisions/DB-01..08, docs/ops/decision-record-signing-runbook.md,
     docs/releases, tests/second_brain 전 영역, scripts/second_brain_decision.py,
     scripts/second_brain_evaluation_governance.py. 테스트 수치는 <code>grep -c "def test_"</code> 집계 및

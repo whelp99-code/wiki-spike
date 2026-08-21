@@ -1,0 +1,24 @@
+{
+  "application_row_present": false,
+  "artifact_names": [
+    "capture-plan.json",
+    "catalog.json",
+    "identity.json",
+    "output-manifest.json",
+    "query-manifest.json",
+    "receipt.json"
+  ],
+  "body_present": false,
+  "cutover_eligible": false,
+  "dsn_read": false,
+  "evidence_version": "second-brain-unified-db-postgres-metadata-capture-output-conformance-v1",
+  "export_invoked": false,
+  "import_invoked": false,
+  "live_export_authorized": false,
+  "path_policy": "create-only-exclusive",
+  "private_key_material": false,
+  "production_executor_present": false,
+  "production_writer_present": false,
+  "serving_promotion": false,
+  "source_mutation": false
+}

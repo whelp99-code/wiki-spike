@@ -1,0 +1,13 @@
+{
+  "approved_mapping_count": "0",
+  "body_present": false,
+  "cutover_eligible": false,
+  "dsn_read": false,
+  "evidence_version": "second-brain-unified-db-live-export-plan-conformance-v1",
+  "import_invoked": false,
+  "live_export_authorized": false,
+  "private_key_material": false,
+  "production_registry_empty": true,
+  "serving_promotion": false,
+  "source_mutation": false
+}

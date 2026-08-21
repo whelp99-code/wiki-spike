@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/snapshot-import-receipt-v1.schema.json",
+  "title": "Second Brain Snapshot Import Receipt V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "receipt_version",
+    "cohort_id",
+    "state",
+    "transitions",
+    "serving_promoted",
+    "cutover_eligible",
+    "scope_authority_state",
+    "scope_join_seam",
+    "resolved_scope_digest",
+    "discovery_manifest_digest",
+    "snapshot_digest",
+    "record_count",
+    "receipt_digest"
+  ],
+  "properties": {
+    "receipt_version": {
+      "const": "second-brain-snapshot-import-receipt-v1"
+    },
+    "cohort_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+    },
+    "state": {
+      "const": "READY_NON_SERVING"
+    },
+    "transitions": {
+      "const": ["DISCOVERED", "IMPORTING", "RECONCILING", "READY_NON_SERVING"]
+    },
+    "serving_promoted": {
+      "const": false
+    },
+    "cutover_eligible": {
+      "const": false
+    },
+    "scope_authority_state": {
+      "const": "NON_AUTHORITATIVE_CALLER_ASSERTED"
+    },
+    "scope_join_seam": {
+      "const": "second-brain-snapshot-import-scope-join-v1"
+    },
+    "resolved_scope_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "discovery_manifest_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "snapshot_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "record_count": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$"
+    },
+    "receipt_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

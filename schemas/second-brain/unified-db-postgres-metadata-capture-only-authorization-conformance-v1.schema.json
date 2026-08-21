@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/unified-db-postgres-metadata-capture-only-authorization-conformance-v1.schema.json",
+  "title": "Second Brain Unified-DB Postgres Metadata-Capture-Only Authorization Conformance V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body_present",
+    "private_key_material",
+    "nonce_store_persisted",
+    "production_capture_authorized",
+    "application_row_query",
+    "source_mutation",
+    "import_invoked",
+    "serving_promotion",
+    "cutover_eligible",
+    "live_export_authorized",
+    "max_captures",
+    "operation",
+    "source_name",
+    "decision_record_semantics_unchanged",
+    "fixture_importer_semantics_unchanged",
+    "evidence_version"
+  ],
+  "properties": {
+    "evidence_version": {
+      "const": "second-brain-unified-db-postgres-metadata-capture-only-authorization-conformance-v1"
+    },
+    "body_present": {
+      "const": false
+    },
+    "private_key_material": {
+      "const": false
+    },
+    "nonce_store_persisted": {
+      "const": false
+    },
+    "production_capture_authorized": {
+      "const": false
+    },
+    "application_row_query": {
+      "const": false
+    },
+    "source_mutation": {
+      "const": false
+    },
+    "import_invoked": {
+      "const": false
+    },
+    "serving_promotion": {
+      "const": false
+    },
+    "cutover_eligible": {
+      "const": false
+    },
+    "live_export_authorized": {
+      "const": false
+    },
+    "max_captures": {
+      "const": "1"
+    },
+    "operation": {
+      "const": "METADATA_CAPTURE_ONLY"
+    },
+    "source_name": {
+      "const": "unified-db"
+    },
+    "decision_record_semantics_unchanged": {
+      "const": true
+    },
+    "fixture_importer_semantics_unchanged": {
+      "const": true
+    }
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/unified-db-live-export-mapping-v1.schema.json",
+  "title": "Second Brain Unified-DB Live Export Mapping V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "mapping_version",
+    "mapper_id",
+    "mapper_version",
+    "source_name",
+    "source_identity_digest",
+    "table",
+    "columns",
+    "native_identity",
+    "revision",
+    "content_hash",
+    "watermark",
+    "tombstone",
+    "deletion_semantics",
+    "absence_policy",
+    "select_template_digest",
+    "mapping_digest"
+  ],
+  "properties": {
+    "mapping_version": {
+      "const": "second-brain-unified-db-live-export-mapping-v1"
+    },
+    "mapper_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "mapper_version": {
+      "type": "string",
+      "pattern": "^v[1-9][0-9]*$"
+    },
+    "source_name": {
+      "const": "unified-db"
+    },
+    "source_identity_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "table": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "columns": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      }
+    },
+    "native_identity": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "revision": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "watermark": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "tombstone": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "deletion_semantics": {
+      "const": "EXPLICIT_TOMBSTONE_ONLY"
+    },
+    "absence_policy": {
+      "const": "ABSENCE_IS_NOT_DELETION"
+    },
+    "select_template_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "mapping_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

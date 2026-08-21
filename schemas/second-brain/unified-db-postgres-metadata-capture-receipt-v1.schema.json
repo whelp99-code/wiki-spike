@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/unified-db-postgres-metadata-capture-receipt-v1.schema.json",
+  "title": "Second Brain Unified-DB Postgres Metadata Capture Receipt V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "receipt_version",
+    "state",
+    "operation",
+    "source_name",
+    "authorization_kind",
+    "application_row_present",
+    "source_body_present",
+    "source_mutation",
+    "export_invoked",
+    "import_invoked",
+    "serving_promotion",
+    "cutover_eligible",
+    "query_manifest_digest",
+    "capture_plan_digest",
+    "catalog_digest",
+    "identity_digest",
+    "destination_digest",
+    "output_manifest_digest",
+    "output_digest",
+    "byte_count",
+    "receipt_digest"
+  ],
+  "properties": {
+    "receipt_version": {
+      "const": "second-brain-unified-db-postgres-metadata-capture-receipt-v1"
+    },
+    "state": {
+      "const": "METADATA_CAPTURED_NOT_AUTHORIZED"
+    },
+    "operation": {
+      "const": "METADATA_CAPTURE_ONLY"
+    },
+    "source_name": {
+      "const": "unified-db"
+    },
+    "authorization_kind": {
+      "const": "POSTGRES_METADATA_CAPTURE_ONLY"
+    },
+    "application_row_present": {
+      "const": false
+    },
+    "source_body_present": {
+      "const": false
+    },
+    "source_mutation": {
+      "const": false
+    },
+    "export_invoked": {
+      "const": false
+    },
+    "import_invoked": {
+      "const": false
+    },
+    "serving_promotion": {
+      "const": false
+    },
+    "cutover_eligible": {
+      "const": false
+    },
+    "query_manifest_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "capture_plan_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "catalog_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "identity_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "destination_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "output_manifest_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "output_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "byte_count": {
+      "$ref": "#/$defs/canonicalDecimal"
+    },
+    "receipt_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "canonicalDecimal": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

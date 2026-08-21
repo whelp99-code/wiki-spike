@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/unified-db-writer-quiescence-v1.schema.json",
+  "title": "Second Brain Unified-DB Writer Quiescence V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "quiescence_version",
+    "source_identity_digest",
+    "writer_count",
+    "quiesce_approved",
+    "captured_at",
+    "quiescence_digest"
+  ],
+  "properties": {
+    "quiescence_version": {
+      "const": "second-brain-unified-db-writer-quiescence-v1"
+    },
+    "source_identity_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "writer_count": {
+      "const": "0"
+    },
+    "quiesce_approved": {
+      "const": true
+    },
+    "captured_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "quiescence_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

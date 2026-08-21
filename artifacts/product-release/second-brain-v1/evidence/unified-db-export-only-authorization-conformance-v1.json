@@ -1,0 +1,16 @@
+{
+  "body_present": false,
+  "cutover_eligible": false,
+  "decision_record_semantics_unchanged": true,
+  "evidence_version": "second-brain-unified-db-export-only-authorization-conformance-v1",
+  "fixture_importer_semantics_unchanged": true,
+  "import_invoked": false,
+  "live_export_authorized": false,
+  "max_exports": "1",
+  "nonce_store_persisted": false,
+  "operation": "EXPORT_ONLY",
+  "private_key_material": false,
+  "serving_promotion": false,
+  "source_mutation": false,
+  "source_name": "unified-db"
+}

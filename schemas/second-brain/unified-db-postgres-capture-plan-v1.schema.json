@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/unified-db-postgres-capture-plan-v1.schema.json",
+  "title": "Second Brain Unified-DB PostgreSQL Capture Plan V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "plan_version",
+    "source_name",
+    "query_manifest_digest",
+    "system_identifier",
+    "database_oid",
+    "server_version_num",
+    "catalog_digest",
+    "captured_at",
+    "plan_digest"
+  ],
+  "properties": {
+    "plan_version": {
+      "const": "second-brain-unified-db-postgres-capture-plan-v1"
+    },
+    "source_name": {
+      "const": "unified-db"
+    },
+    "query_manifest_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "system_identifier": {
+      "$ref": "#/$defs/canonicalDecimal"
+    },
+    "database_oid": {
+      "$ref": "#/$defs/canonicalDecimal"
+    },
+    "server_version_num": {
+      "$ref": "#/$defs/canonicalDecimal"
+    },
+    "catalog_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "captured_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "plan_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "canonicalDecimal": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

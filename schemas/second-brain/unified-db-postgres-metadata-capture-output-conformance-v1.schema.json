@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/unified-db-postgres-metadata-capture-output-conformance-v1.schema.json",
+  "title": "Second Brain Unified-DB Postgres Metadata Capture Output Conformance V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "application_row_present",
+    "artifact_names",
+    "body_present",
+    "cutover_eligible",
+    "dsn_read",
+    "evidence_version",
+    "export_invoked",
+    "import_invoked",
+    "live_export_authorized",
+    "path_policy",
+    "private_key_material",
+    "production_executor_present",
+    "production_writer_present",
+    "serving_promotion",
+    "source_mutation"
+  ],
+  "properties": {
+    "evidence_version": {
+      "const": "second-brain-unified-db-postgres-metadata-capture-output-conformance-v1"
+    },
+    "application_row_present": {
+      "const": false
+    },
+    "artifact_names": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "prefixItems": [
+        {"const": "capture-plan.json"},
+        {"const": "catalog.json"},
+        {"const": "identity.json"},
+        {"const": "output-manifest.json"},
+        {"const": "query-manifest.json"},
+        {"const": "receipt.json"}
+      ],
+      "items": false
+    },
+    "body_present": {
+      "const": false
+    },
+    "cutover_eligible": {
+      "const": false
+    },
+    "dsn_read": {
+      "const": false
+    },
+    "export_invoked": {
+      "const": false
+    },
+    "import_invoked": {
+      "const": false
+    },
+    "live_export_authorized": {
+      "const": false
+    },
+    "path_policy": {
+      "const": "create-only-exclusive"
+    },
+    "private_key_material": {
+      "const": false
+    },
+    "production_executor_present": {
+      "const": false
+    },
+    "production_writer_present": {
+      "const": false
+    },
+    "serving_promotion": {
+      "const": false
+    },
+    "source_mutation": {
+      "const": false
+    }
+  }
+}

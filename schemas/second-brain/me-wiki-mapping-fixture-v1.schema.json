@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-spike.local/schemas/second-brain/me-wiki-mapping-fixture-v1.schema.json",
+  "title": "Second Brain me-wiki Mapping Fixture V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "fixture_version",
+    "source_name",
+    "entries",
+    "row_set_digest",
+    "fixture_digest"
+  ],
+  "properties": {
+    "fixture_version": {
+      "const": "second-brain-me-wiki-mapping-fixture-v1"
+    },
+    "source_name": {
+      "const": "me-wiki"
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    },
+    "row_set_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "fixture_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "canonicalDecimal": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$"
+    },
+    "sha1": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenario",
+        "native_id",
+        "revision",
+        "previous_revision",
+        "watermark",
+        "previous_watermark",
+        "tombstone",
+        "history_retained"
+      ],
+      "properties": {
+        "scenario": {
+          "enum": [
+            "current",
+            "updated",
+            "deleted_tombstone",
+            "history_unavailable_before_floor"
+          ]
+        },
+        "native_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?($|/))(?!.*\\\\).+$"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/sha1"
+            }
+          ]
+        },
+        "previous_revision": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/sha1"
+            }
+          ]
+        },
+        "watermark": {
+          "$ref": "#/$defs/canonicalDecimal"
+        },
+        "previous_watermark": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/canonicalDecimal"
+            }
+          ]
+        },
+        "tombstone": {
+          "type": "boolean"
+        },
+        "history_retained": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
