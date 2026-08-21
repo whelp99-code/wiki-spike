@@ -21,6 +21,10 @@ from wiki_spike.infrastructure.lifecycle_db_existing import (
     inspect_existing_serving_ready,
     open_existing_lifecycle_database,
 )
+from wiki_spike.infrastructure.mac_backup_receipt import (
+    MacBackupReceiptError,
+    verify_backup_receipt,
+)
 
 _READ = os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
 _WRITE = (
@@ -168,6 +172,7 @@ def _restore(args: argparse.Namespace) -> None:
     _inspect(sqlite, str(args.workspace_ref))
     _require_real_dir(cas, "CAS")
     _assert_tree_copyable(cas)
+    verify_backup_receipt(backup, str(args.workspace_ref))
     _require_absent_dest(dest)
     _mkdir_private(dest, 0o700)
     _copy_regular(sqlite, dest / "lifecycle.sqlite3")
@@ -177,7 +182,7 @@ def _restore(args: argparse.Namespace) -> None:
 def main(argv: list[str] | None = None) -> int:
     try:
         _restore(_parse(argv))
-    except (RestoreError, LifecycleDbError) as exc:
+    except (RestoreError, LifecycleDbError, MacBackupReceiptError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     return 0

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import stat
 from pathlib import Path
@@ -13,6 +14,17 @@ from wiki_spike.memory_core.second_brain_ledger_contracts import (
 
 _CHUNK = 1024 * 1024
 _KIND = "mac-lifecycle-backup-receipt-v1"
+_FIELDS = frozenset(
+    {
+        "cas_file_count",
+        "cas_manifest_digest",
+        "receipt_digest",
+        "receipt_kind",
+        "serving_ready",
+        "sqlite_sha256",
+        "workspace_ref",
+    }
+)
 _READ = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
 _WRITE = (
     os.O_WRONLY
@@ -58,10 +70,7 @@ def _cas_rows(root: Path) -> list[str]:
     return rows
 
 
-def write_backup_receipt(
-    dest: Path, workspace_ref: str, sqlite: Path, cas: Path
-) -> None:
-    """Write dest/backup-receipt.json create-only with string-only fields."""
+def _expected_body(workspace_ref: str, sqlite: Path, cas: Path) -> dict[str, str]:
     rows = _cas_rows(cas)
     body = {
         "cas_file_count": str(len(rows)),
@@ -74,7 +83,14 @@ def write_backup_receipt(
         "workspace_ref": workspace_ref,
     }
     body["receipt_digest"] = canonical_ledger_digest(_KIND, body)
-    payload = canonical_bytes(body) + b"\n"
+    return body
+
+
+def write_backup_receipt(
+    dest: Path, workspace_ref: str, sqlite: Path, cas: Path
+) -> None:
+    """Write dest/backup-receipt.json create-only with string-only fields."""
+    payload = canonical_bytes(_expected_body(workspace_ref, sqlite, cas)) + b"\n"
     fd = os.open(dest / "backup-receipt.json", _WRITE, 0o444)
     try:
         written = 0
@@ -83,3 +99,47 @@ def write_backup_receipt(
         os.fsync(fd)
     finally:
         os.close(fd)
+
+
+def _reject_number(value: str) -> int:
+    raise MacBackupReceiptError("raw numbers are forbidden")
+
+
+def verify_backup_receipt(backup: Path, workspace_ref: str) -> None:
+    """Refuse a missing, extra-field, or digest-mismatched backup receipt."""
+    receipt_path = backup / "backup-receipt.json"
+    try:
+        meta = os.lstat(receipt_path)
+    except OSError as exc:
+        raise MacBackupReceiptError("backup receipt is absent") from exc
+    if stat.S_ISLNK(meta.st_mode) or not stat.S_ISREG(meta.st_mode):
+        raise MacBackupReceiptError("backup receipt is not a regular file")
+    fd = os.open(receipt_path, _READ)
+    try:
+        raw = b""
+        while True:
+            chunk = os.read(fd, _CHUNK)
+            if not chunk:
+                break
+            raw += chunk
+    finally:
+        os.close(fd)
+    payload: object = json.loads(
+        raw.decode("utf-8"),
+        parse_int=_reject_number,
+        parse_float=_reject_number,
+    )
+    if not isinstance(payload, dict):
+        raise MacBackupReceiptError("backup receipt must be an object")
+    unknown = set(payload) - _FIELDS
+    missing = _FIELDS - set(payload)
+    if unknown or missing:
+        raise MacBackupReceiptError("backup receipt fields are invalid")
+    observed = {key: payload[key] for key in _FIELDS}
+    if any(not isinstance(value, str) or not value for value in observed.values()):
+        raise MacBackupReceiptError("backup receipt fields are invalid")
+    expected = _expected_body(
+        workspace_ref, backup / "lifecycle.sqlite3", backup / "cas"
+    )
+    if observed != expected:
+        raise MacBackupReceiptError("backup receipt does not match sqlite and CAS")

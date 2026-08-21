@@ -21,6 +21,7 @@ from wiki_spike.infrastructure.lifecycle_db_existing import (
     inspect_existing_serving_ready,
     open_existing_lifecycle_database,
 )
+from wiki_spike.infrastructure.mac_backup_receipt import write_backup_receipt
 
 _CLI = Path("scripts/second_brain_mac_restore.py")
 
@@ -69,6 +70,12 @@ def _write_backup(backup: Path, *, migration_state: str = "SERVING_READY") -> No
         migration_state=migration_state,
     )
     _write_cas(backup)
+    write_backup_receipt(
+        backup,
+        PINNED_WORKSPACE,
+        backup / "lifecycle.sqlite3",
+        backup / "cas",
+    )
     keychain = backup / "keychain"
     keychain.mkdir()
     _ = (keychain / "secret").write_bytes(b"secret")
