@@ -5,7 +5,10 @@
 - **Scope class:** Source-scoped
 - **Owner:** Migration
 - **Approver:** Security
-- **Status:** UNRESOLVED — draft decision specification; no migration source has signatures, evidence digests, or a valid GO.
+- **Status:** RESOLVED BY SOURCE — `legacy Mem0/RAG` and `unified-db` are signed
+  NO_GO; `me-wiki` is signed GO in
+  `artifacts/product-release/second-brain-v1/decisions/DB-03-me-wiki.json`,
+  decided `2026-08-21T22:18:10Z` and expiring `2027-08-21T22:18:10Z`.
 - **Decision deadline / implementation gate:** Before source registration or migration-cohort registration.
 - **Expiry:** Each source GO expires at the earlier of its stated expiry or a change to export behavior, schema/version, native identity/revision semantics, watermark behavior, or deletion/history behavior. A changed result requires a versioned superseding record.
 
@@ -31,7 +34,8 @@ A source-specific `GO` requires:
 
 - **GO:** permits only that source to be registered as a read-only migration input and to appear in allowed migration sources and a later signed cohort roster.
 - **NO_GO:** excludes only that source from the migration cohort. It cannot be imported, routed, retried, or substituted through configuration; no legacy or unified serving fallback is allowed.
-- **UNRESOLVED:** excludes that source. This document is not approval to import or route any migration source.
+- **UNRESOLVED:** excludes that source. This specification alone is not
+  approval; each source's signed record is authoritative.
 
 ## Acceptance evidence for the implementation gate
 

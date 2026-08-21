@@ -1,4 +1,5 @@
 """Canonical resolver inputs preserve the personal-key signing boundary."""
+
 from __future__ import annotations
 
 import base64
@@ -98,10 +99,7 @@ def _sign(
         "--private-key",
         str(key),
         "--resolver-signing-dir",
-        str(
-            root
-            / "artifacts/product-release/second-brain-v1/resolver-signing"
-        ),
+        str(root / "artifacts/product-release/second-brain-v1/resolver-signing"),
         "--output-directory",
         str(output),
     )
@@ -147,9 +145,7 @@ def test_public_envelopes_build_canonical_fail_closed_resolver_inputs(
     root, owner_key, approver_key = _fixture_root(tmp_path)
     release = root / "artifacts/product-release/second-brain-v1"
     trusted = decode_json_object(
-        (release / "governance/trusted-bindings.json").read_text(
-            encoding="utf-8"
-        )
+        (release / "governance/trusted-bindings.json").read_text(encoding="utf-8")
     )
     bindings = trusted["aggregate_binding"]
     assert isinstance(bindings, dict)
@@ -212,15 +208,13 @@ def test_public_envelopes_build_canonical_fail_closed_resolver_inputs(
     ]
 
 
-def test_real_authority_wall_names_only_owner_evidence_gaps() -> None:
+def test_real_authority_wall_names_only_db05_owner_evidence_gap() -> None:
     wall = decode_json_object(
-        (_REAL_RELEASE / "resolver/authority-wall.json").read_text(
-            encoding="utf-8"
-        )
+        (_REAL_RELEASE / "resolver/authority-wall.json").read_text(encoding="utf-8")
     )
     assert wall["outcome"] == "FAIL_CLOSED_OWNER_EVIDENCE_REQUIRED"
     assert wall["live_operation_authorized"] is False
-    assert wall["complete_signed_decision_records"] == "10"
+    assert wall["complete_signed_decision_records"] == "12"
     assert wall["expected_decision_records"] == "13"
     missing = wall["missing_decisions"]
     assert isinstance(missing, list)
@@ -237,7 +231,5 @@ def test_real_authority_wall_names_only_owner_evidence_gaps() -> None:
         assert isinstance(state, str)
         identities.append((decision_id, scope_kind, scope_name, state))
     assert identities == [
-        ("DB-01", "global", None, "SIGNED_UNRESOLVED"),
-        ("DB-03", "migration_source", "me-wiki", "SIGNED_UNRESOLVED"),
         ("DB-05", "global", None, "OWNER_EVIDENCE_REQUIRED"),
     ]
