@@ -92,3 +92,18 @@ def test_production_default_pin_parses_committed_expected_scopes() -> None:
     assert PINNED_EXPECTED_SCOPE_MANIFEST.digest == parsed.digest
     assert PINNED_EXPECTED_SCOPE_MANIFEST == parsed
     assert PACKAGED_SCOPES.read_bytes() == raw
+
+
+def test_compose_uses_fixed_keychain_service_and_ark_handle() -> None:
+    from wiki_spike.infrastructure.macos_keychain_existing import (
+        MAC_KEYCHAIN_SERVICE,
+        SERVING_ARK_HANDLE,
+    )
+
+    source = Path(
+        "src/wiki_spike/composition/mac_production_compose.py"
+    ).read_text(encoding="utf-8")
+    assert MAC_KEYCHAIN_SERVICE == "wiki-spike.second-brain-v1"
+    assert SERVING_ARK_HANDLE == "serving-ark-v1"
+    assert "MAC_KEYCHAIN_SERVICE" in source
+    assert "SERVING_ARK_HANDLE" in source
