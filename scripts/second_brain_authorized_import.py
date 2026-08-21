@@ -51,6 +51,16 @@ def _require_absent(path: Path) -> None:
         raise AuthorizedImportError("destination already exists")
 
 
+def _refuse_dest_inside(source: Path, dest: Path) -> None:
+    source_abs = Path(os.path.abspath(source))
+    dest_abs = Path(os.path.abspath(dest))
+    try:
+        dest_abs.relative_to(source_abs)
+    except ValueError:
+        return
+    raise AuthorizedImportError("destination is inside the source tree")
+
+
 def _read_bytes(path: Path) -> bytes:
     fd = os.open(path, _READ)
     try:
@@ -98,6 +108,7 @@ def _import(args: argparse.Namespace) -> None:
     dest = Path(str(args.dest))
     observed = _load_receipt(receipt)
     _require_dir(source, "source root")
+    _refuse_dest_inside(source, dest)
     _require_absent(dest)
     if observed["resolver_outcome"] != "RESOLVED":
         raise AuthorizedImportError("authorized import is refused")
