@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -21,6 +22,7 @@ from tests.second_brain.mac_production_status_compose_support import (
     write_keychain_layout,
     write_serving_ready,
 )
+from tests.second_brain.mac_production_status_persistence_support import track_mint
 from tests.second_brain.mac_production_status_serving_support import (
     sqlite_path,
     write_lifecycle_database,
@@ -32,8 +34,20 @@ from tests.second_brain.mac_production_status_support import (
     passwd_lookup,
     tree_snapshot,
 )
+from tests.second_brain.test_mac_signed_authority_bundle import (
+    NOW,
+    TRUSTED,
+    bundle_bytes,
+)
+from wiki_spike.applications.mac_signed_authority_bundle_verify import (
+    verify_mac_signed_authority_bundle,
+)
 from wiki_spike.composition.mac_production import main
+from wiki_spike.composition.mac_production_compose import compose_existing_mac_product
 from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore
+from wiki_spike.memory_core.second_brain_security_contracts import (
+    SecurityContextAuthority,
+)
 
 
 def _status(root: Path) -> int:
@@ -112,12 +126,39 @@ def test_status_refuses_unset_stage3_pins_after_existing_cas_keychain_bind(
     write_keychain_layout(home)
     root = marked_root(tmp_path)
     pin_and_bomb(monkeypatch)
+    minted = track_mint(monkeypatch)
+    seen: dict[str, object] = {}
+    real_compose = compose_existing_mac_product
+
+    def wrapping(**kwargs: Any) -> Any:
+        seen.update(kwargs)
+        return real_compose(**kwargs)
+
+    monkeypatch.setattr(
+        "wiki_spike.composition.mac_production.compose_existing_mac_product",
+        wrapping,
+    )
     before = tree_snapshot(tmp_path)
 
     code = _status(root)
 
     captured = capsys.readouterr()
     assert code == 1
+    assert len(minted) == 1
+    decisions, scope, expected, aggregate, keys, now = minted[0]
+    bundle = verify_mac_signed_authority_bundle(bundle_bytes(), TRUSTED, now=NOW)
+    assert [item.to_mapping() for item in decisions] == [
+        item.record.to_mapping() for item in bundle.decision_records
+    ]
+    assert scope.to_mapping() == bundle.aggregate.contract.resolved_scope.to_mapping()
+    assert (
+        expected.to_mapping()
+        == bundle.aggregate.contract.expected_scope_manifest.to_mapping()
+    )
+    assert aggregate.to_mapping() == bundle.aggregate.to_mapping()
+    assert keys is TRUSTED
+    assert now == NOW
+    assert isinstance(seen.get("authority"), SecurityContextAuthority)
     assert STAGE3_TOKEN in captured.err
     assert BIND_TOKEN not in captured.err
     assert CAS_TOKEN not in captured.err
@@ -125,6 +166,13 @@ def test_status_refuses_unset_stage3_pins_after_existing_cas_keychain_bind(
     assert AUTHORITY_REQUIRED_TOKEN not in captured.err
     assert PRODUCT_READY not in captured.out
     assert tree_snapshot(tmp_path) == before
+
+
+def test_mac_production_compose_does_not_pin_security_authority() -> None:
+    source = Path("src/wiki_spike/composition/mac_production_compose.py").read_text(
+        encoding="utf-8"
+    )
+    assert "PINNED_SECURITY_AUTHORITY" not in source
 
 
 def test_status_does_not_open_cas_or_keychain_when_serving_inspect_fails(

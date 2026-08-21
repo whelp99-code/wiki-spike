@@ -32,7 +32,6 @@ from wiki_spike.memory_core.second_brain_security_contracts import (
     SecurityContextAuthority,
 )
 
-PINNED_SECURITY_AUTHORITY: SecurityContextAuthority | None = None
 PINNED_RECALL_VERIFIER: RecallTrustVerifierV2 | None = None
 PINNED_CLOCK: Callable[[], str] | None = None
 PINNED_PROVENANCE: Mapping[str, AuthorityProvenanceV2] | None = None
@@ -52,6 +51,7 @@ def compose_existing_mac_product(
     authorization: object,
     workspace_ref: str,
     keychain_directory: Path,
+    authority: SecurityContextAuthority,
 ) -> SecondBrainProductV2:
     """Open existing CAS/Keychain, bind authorization, and compose if pinned."""
     try:
@@ -68,12 +68,8 @@ def compose_existing_mac_product(
             database=database,
             cas=cas,
         )
-        if PINNED_SECURITY_AUTHORITY is None:
-            raise ProductCompositionError(
-                "trusted Stage-3 authority dependencies are required"
-            )
         return compose_second_brain_product_v2(
-            authority=PINNED_SECURITY_AUTHORITY,
+            authority=authority,
             database=database,
             cas=cas,
             persistence_profile=profile,

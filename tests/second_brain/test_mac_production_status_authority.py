@@ -8,6 +8,7 @@ import pytest
 from tests.second_brain.mac_production_status_persistence_support import (
     pin_trusted,
     signed_persistence_pair,
+    track_mint,
     write_closed_artifacts,
 )
 from tests.second_brain.mac_production_status_support import (
@@ -17,7 +18,14 @@ from tests.second_brain.mac_production_status_support import (
     passwd_lookup,
     tree_snapshot,
 )
-from tests.second_brain.test_mac_signed_authority_bundle import bundle_bytes
+from tests.second_brain.test_mac_signed_authority_bundle import (
+    NOW,
+    TRUSTED,
+    bundle_bytes,
+)
+from wiki_spike.applications.mac_signed_authority_bundle_verify import (
+    verify_mac_signed_authority_bundle,
+)
 from wiki_spike.composition.mac_production import main
 
 SIGNED_AUTHORITY_ABSENT_TOKEN = "signed authority is absent"
@@ -52,12 +60,14 @@ def test_status_refuses_invalid_present_authority_before_storage(
     _write_closed_artifacts(home, INVALID_AUTHORITY)
     root = marked_root(tmp_path)
     bomb_storage(monkeypatch)
+    minted = track_mint(monkeypatch)
     before = tree_snapshot(tmp_path)
 
     code = main(["--root", str(root), "status"])
 
     captured = capsys.readouterr()
     assert code == 1
+    assert minted == []
     assert MISSING_FIELDS_TOKEN in captured.err
     assert SIGNED_AUTHORITY_ABSENT_TOKEN not in captured.err
     assert tree_snapshot(tmp_path) == before
@@ -74,12 +84,14 @@ def test_status_refuses_untrusted_present_authority_before_storage(
     _write_closed_artifacts(home, bundle_bytes())
     root = marked_root(tmp_path)
     bomb_storage(monkeypatch)
+    minted = track_mint(monkeypatch)
     before = tree_snapshot(tmp_path)
 
     code = main(["--root", str(root), "status"])
 
     captured = capsys.readouterr()
     assert code == 1
+    assert minted == []
     assert UNTRUSTED_TOKEN in captured.err
     assert SIGNED_AUTHORITY_ABSENT_TOKEN not in captured.err
     assert tree_snapshot(tmp_path) == before
@@ -102,12 +114,27 @@ def test_status_does_not_compose_when_present_authority_verifies(
     root = marked_root(tmp_path)
     bomb_storage(monkeypatch)
     pin_trusted(monkeypatch)
+    minted = track_mint(monkeypatch)
     before = tree_snapshot(tmp_path)
 
     code = main(["--root", str(root), "status"])
 
     captured = capsys.readouterr()
     assert code == 1
+    assert len(minted) == 1
+    decisions, scope, expected, aggregate, keys, now = minted[0]
+    bundle = verify_mac_signed_authority_bundle(bundle_bytes(), TRUSTED, now=NOW)
+    assert [item.to_mapping() for item in decisions] == [
+        item.record.to_mapping() for item in bundle.decision_records
+    ]
+    assert scope.to_mapping() == bundle.aggregate.contract.resolved_scope.to_mapping()
+    assert (
+        expected.to_mapping()
+        == bundle.aggregate.contract.expected_scope_manifest.to_mapping()
+    )
+    assert aggregate.to_mapping() == bundle.aggregate.to_mapping()
+    assert keys is TRUSTED
+    assert now == NOW
     assert SERVING_READY_ABSENT_TOKEN in captured.err
     assert SIGNED_AUTHORITY_ABSENT_TOKEN not in captured.err
     assert "authenticated V2 product ready" not in captured.out

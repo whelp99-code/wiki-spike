@@ -1,6 +1,8 @@
 """Helpers for Mac production persistence-profile status tests."""
 from __future__ import annotations
 
+from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -18,6 +20,13 @@ from tests.second_brain.test_macos_persistence_profile import (
 )
 from wiki_spike.infrastructure import crypto
 from wiki_spike.memory_core.contracts import canonical_bytes
+from wiki_spike.memory_core.second_brain_contracts import (
+    DecisionRecordV1,
+    ExpectedScopeManifestV1,
+    ResolvedScopeV1,
+    SignedSecondBrainContractEnvelopeV1,
+    TrustedDecisionKeyBindingsV1,
+)
 from wiki_spike.memory_core.second_brain_ledger_contracts import (
     canonical_ledger_digest,
 )
@@ -27,6 +36,10 @@ from wiki_spike.memory_core.second_brain_persistence import (
     MacPersistenceProfileV1,
     PersistenceProfileReceiptV1,
     persistence_profile_authorization_payload,
+)
+from wiki_spike.memory_core.second_brain_security_contracts import (
+    SecurityContextAuthority,
+    mint_security_context_authority,
 )
 
 INVALID_PROFILE = b"{}"
@@ -114,3 +127,40 @@ def pin_trusted(monkeypatch: pytest.MonkeyPatch) -> None:
         SQLCIPHER_ARTIFACT.read_bytes(),
         raising=False,
     )
+
+
+MintCall = tuple[
+    Sequence[DecisionRecordV1],
+    ResolvedScopeV1,
+    ExpectedScopeManifestV1,
+    SignedSecondBrainContractEnvelopeV1,
+    TrustedDecisionKeyBindingsV1,
+    datetime | None,
+]
+
+
+def track_mint(monkeypatch: pytest.MonkeyPatch) -> list[MintCall]:
+    calls: list[MintCall] = []
+
+    def tracking(
+        decisions: Sequence[DecisionRecordV1],
+        scope: ResolvedScopeV1,
+        expected_scopes: ExpectedScopeManifestV1,
+        aggregate: SignedSecondBrainContractEnvelopeV1,
+        trusted_keys: TrustedDecisionKeyBindingsV1,
+        *,
+        now: datetime | None = None,
+    ) -> SecurityContextAuthority:
+        calls.append(
+            (decisions, scope, expected_scopes, aggregate, trusted_keys, now)
+        )
+        return mint_security_context_authority(
+            decisions, scope, expected_scopes, aggregate, trusted_keys, now=now
+        )
+
+    monkeypatch.setattr(
+        "wiki_spike.composition.mac_production.mint_security_context_authority",
+        tracking,
+        raising=False,
+    )
+    return calls

@@ -44,6 +44,10 @@ from wiki_spike.memory_core.second_brain_persistence import (
     MacPersistenceProfileV1,
     PersistenceProfileReceiptV1,
 )
+from wiki_spike.memory_core.second_brain_security_contracts import (
+    SecurityContextAuthority,
+    mint_security_context_authority,
+)
 from wiki_spike.memory_core.unified_db_snapshot_export import UnifiedDbExportError
 from wiki_spike.memory_core.unified_db_snapshot_export_json import decode_json_object
 
@@ -105,18 +109,27 @@ def _trusted_now() -> datetime:
     return datetime.now(UTC) if PINNED_TRUSTED_NOW is None else PINNED_TRUSTED_NOW
 
 
-def _verify_present_authority(artifacts: MacArtifactBundle) -> int | None:
-    """Verify a present authority bundle; return an exit code on fail-closed refusal."""
+def _verify_present_authority(
+    artifacts: MacArtifactBundle,
+) -> tuple[SecurityContextAuthority | None, int | None]:
+    """Verify a present authority bundle and mint opaque Stage-0 authority."""
     try:
-        _ = verify_mac_signed_authority_bundle(
+        bundle = verify_mac_signed_authority_bundle(
             artifacts.authority,
             PINNED_TRUSTED_KEYS,
             now=_trusted_now(),
         )
+        return mint_security_context_authority(
+            tuple(item.record for item in bundle.decision_records),
+            bundle.aggregate.contract.resolved_scope,
+            bundle.aggregate.contract.expected_scope_manifest,
+            bundle.aggregate,
+            PINNED_TRUSTED_KEYS,
+            now=_trusted_now(),
+        ), None
     except CoreContractError as exc:
         print(str(exc), file=sys.stderr)
-        return 1
-    return None
+        return None, 1
 
 
 def _verify_existing_serving(
@@ -204,9 +217,9 @@ def main(argv: list[str] | None = None) -> int:
     except MacArtifactReadError as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    refused = _verify_present_authority(artifacts)
-    if refused is not None:
-        return refused
+    authority, refused = _verify_present_authority(artifacts)
+    if refused is not None or authority is None:
+        return 1 if refused is None else refused
     authorization, refused = _verify_present_persistence(artifacts)
     if refused is not None or authorization is None:
         return 1 if refused is None else refused
@@ -221,6 +234,7 @@ def main(argv: list[str] | None = None) -> int:
                 authorization=authorization,
                 workspace_ref=PINNED_WORKSPACE_REF,
                 keychain_directory=support.parent.parent / "Keychains",
+                authority=authority,
             )
         except MacProductionComposeError as exc:
             print(str(exc), file=sys.stderr)
