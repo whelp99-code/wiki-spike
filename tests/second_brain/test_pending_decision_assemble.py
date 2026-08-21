@@ -19,6 +19,7 @@ _STEMS = (
     "DB-02-git",
     "DB-02-markdown",
     "DB-03-legacy-mem0-rag",
+    "DB-03-unified-db",
     "DB-07",
 )
 _BODY_DIR = Path("artifacts/product-release/second-brain-v1/decision-signing")

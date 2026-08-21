@@ -26,6 +26,8 @@ def test_role_signing_runner_lists_every_unsigned_body_except_db05() -> None:
     assert "DB-05" not in script
     for stem in _REQUIRED:
         assert (_BODY_DIR / f"{stem}.body.json").is_file()
+    assert 'if [[ -f "$output" ]]' in script
+    assert "continue" in script
 
 
 _ASSEMBLE_ONLY = (
@@ -36,7 +38,7 @@ _ASSEMBLE_ONLY = (
     "DB-03-legacy-mem0-rag",
     "DB-07",
 )
-_UNRESOLVED = ("DB-01", "DB-03-me-wiki", "DB-03-unified-db")
+_UNRESOLVED = ("DB-01", "DB-03-me-wiki")
 
 
 def test_assemble_runner_lists_only_go_or_no_go_bodies() -> None:

@@ -53,8 +53,8 @@ def test_unsigned_body_binds_raw_inventory_digest_without_go_or_signatures() -> 
     assert body["scope_name"] == "unified-db"
     assert body["evidence_digest"] == sha256(_EVIDENCE.read_bytes()).hexdigest()
     assert body["evidence_refs"] == [_EVIDENCE.relative_to(_ROOT).as_posix()]
-    assert body["outcome"] == "UNRESOLVED"
-    assert body["outcome"] not in {"GO", "NO_GO"}
+    assert body["outcome"] == "NO_GO"
+    assert body["outcome"] != "GO"
     serialized = json.dumps(body, sort_keys=True)
     assert '"outcome": "GO"' not in serialized
     assert '"outcome":"GO"' not in raw.decode("utf-8")
@@ -70,11 +70,9 @@ def test_unsigned_body_is_not_authority_and_resolver_still_fail_closes(
     tmp_path: Path,
 ) -> None:
     assert _BODY.parent.name == "decision-signing"
+    assert "signatures" not in json.loads(_BODY.read_text(encoding="utf-8"))
     assert not (_DECISIONS / "DB-03.json").exists()
-    assert not (_DECISIONS / "DB-03-unified-db.json").exists()
-    assert list(_DECISIONS.glob("DB-03*.json")) == []
-    names = {path.name for path in _DECISIONS.glob("*.json")}
-    assert names == {"DB-04.json", "DB-06-model-a.json", "DB-08-archive.json"}
+    assert (_DECISIONS / "DB-03-unified-db.json").is_file()
     paths = build_inputs(tmp_path, current_world=True)
     result = run_cli(arguments(paths))
     assert CORE_COVERAGE_ERROR in result.stderr

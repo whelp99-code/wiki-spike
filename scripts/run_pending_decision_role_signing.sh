@@ -53,6 +53,9 @@ mkdir -p "$output_directory"
 for stem in "${bodies[@]}"; do
   body="$root/artifacts/product-release/second-brain-v1/decision-signing/$stem.body.json"
   output="$output_directory/$stem.$role-envelope.json"
+  if [[ -f "$output" ]]; then
+    continue
+  fi
   uv run --directory "$root" python "$root/scripts/sign_second_brain_decision_role.py" \
     --role "$role" \
     --key-id "$binding_id" \
