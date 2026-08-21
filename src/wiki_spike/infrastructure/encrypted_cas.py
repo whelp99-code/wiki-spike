@@ -32,6 +32,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from wiki_spike.resources import load_encrypted_cas_envelope_schema_bytes
+
 try:
     import jsonschema as _jsonschema
 except ImportError:  # pragma: no cover - exercised only when jsonschema absent
@@ -40,13 +42,9 @@ except ImportError:  # pragma: no cover - exercised only when jsonschema absent
 jsonschema = _jsonschema
 _HAVE_JSONSCHEMA = _jsonschema is not None
 
-_SCHEMA_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "schemas"
-    / "encrypted-lifecycle"
-    / "envelope-v1.schema.json"
+_ENVELOPE_SCHEMA: dict[str, Any] = json.loads(
+    load_encrypted_cas_envelope_schema_bytes().decode("utf-8")
 )
-_ENVELOPE_SCHEMA: dict[str, Any] = json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))
 
 # Obvious plaintext-bearing field names. Any top-level JSON object carrying
 # one of these is rejected outright: this store persists ciphertext only.
