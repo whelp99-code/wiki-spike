@@ -55,6 +55,16 @@ def _require_real_dir(path: Path, label: str) -> None:
         raise RestoreError(f"{label} is not a directory")
 
 
+def _refuse_dest_inside(source: Path, dest: Path) -> None:
+    source_abs = Path(os.path.abspath(source))
+    dest_abs = Path(os.path.abspath(dest))
+    try:
+        dest_abs.relative_to(source_abs)
+    except ValueError:
+        return
+    raise RestoreError("destination is inside the backup tree")
+
+
 def _require_absent_dest(path: Path) -> None:
     absolute = Path(os.path.abspath(path))
     current = Path(absolute.anchor)
@@ -175,6 +185,7 @@ def _restore(args: argparse.Namespace) -> None:
     _require_real_dir(cas, "CAS")
     _assert_tree_copyable(cas)
     backup_digest = verify_backup_receipt(backup, str(args.workspace_ref))
+    _refuse_dest_inside(backup, dest)
     _require_absent_dest(dest)
     _mkdir_private(dest, 0o700)
     copied_sqlite = dest / "lifecycle.sqlite3"

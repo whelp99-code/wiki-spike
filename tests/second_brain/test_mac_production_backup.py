@@ -208,3 +208,23 @@ def test_happy_path_copies_sqlite_and_cas_source_immutable(
     assert "delete-generic-password" not in source
     assert "--private-key" not in source
     assert "BEGIN" not in source
+
+
+def test_dest_inside_source_tree_refuses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    decoy = _decoy_home(tmp_path, monkeypatch)
+    home = tmp_path / "home"
+    write_backup_source(home)
+    dest = v1_dir(home) / "nested-backup"
+    arm_bombs(monkeypatch)
+    before = identity_snapshot(home)
+    before_tree = tree_snapshot(home)
+
+    code = run_backup(home, dest)
+
+    assert code != 0
+    assert not dest.exists()
+    assert identity_snapshot(home) == before
+    assert tree_snapshot(home) == before_tree
+    _assert_no_real_home_writes(decoy)

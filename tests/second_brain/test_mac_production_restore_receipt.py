@@ -92,3 +92,23 @@ def test_restore_receipt_matches_dest_and_refuses_tamper(
         verify_restore_receipt(dest, PINNED_WORKSPACE)
     assert identity_snapshot(backup) == before
     _assert_no_real_home_writes(decoy)
+
+
+def test_restore_dest_inside_backup_refuses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    decoy = _decoy_home(tmp_path, monkeypatch)
+    backup = tmp_path / "backup"
+    dest = backup / "nested-restore"
+    _write_backup(backup)
+    arm_bombs(monkeypatch)
+    before = identity_snapshot(backup)
+    before_tree = tree_snapshot(backup)
+
+    code = run_restore(backup, dest)
+
+    assert code != 0
+    assert not dest.exists()
+    assert identity_snapshot(backup) == before
+    assert tree_snapshot(backup) == before_tree
+    _assert_no_real_home_writes(decoy)
