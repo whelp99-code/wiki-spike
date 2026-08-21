@@ -80,16 +80,16 @@ def test_production_default_pinned_trusted_keys_match_committed_public_bindings(
     payload = json.loads(raw)
     aggregate = payload["aggregate_binding"]
     pinned = PINNED_TRUSTED_KEYS.aggregate_bindings
-    assert pinned.owner_key_id == "wiki-owner-2026"
-    assert pinned.approver_key_id == "wiki-approver-2026"
+    assert pinned.owner_key_id == "wiki-spike-local-owner-2026"
+    assert pinned.approver_key_id == "wiki-spike-local-approver-2026"
     assert pinned.owner_public_key_b64 == aggregate["owner_public_key_b64"]
     assert pinned.approver_public_key_b64 == aggregate["approver_public_key_b64"]
     identities: set[tuple[str, str, str | None]] = set()
     for entry in payload["decision_bindings"]:
         identity = (entry["decision_id"], entry["scope_kind"], entry["scope_name"])
         binding = PINNED_TRUSTED_KEYS.decision_bindings[identity]
-        assert binding.owner_key_id == "wiki-owner-2026"
-        assert binding.approver_key_id == "wiki-approver-2026"
+        assert binding.owner_key_id == "wiki-spike-local-owner-2026"
+        assert binding.approver_key_id == "wiki-spike-local-approver-2026"
         assert binding.owner_public_key_b64 == entry["owner_public_key_b64"]
         assert binding.approver_public_key_b64 == entry["approver_public_key_b64"]
         identities.add(identity)

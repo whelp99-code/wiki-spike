@@ -251,8 +251,8 @@ def test_runner_pins_trusted_capture_key_bindings() -> None:
     approver_key_id = _text(bindings["approver_key_id"])
     owner_public = _text(bindings["owner_public_key_b64"])
     approver_public = _text(bindings["approver_public_key_b64"])
-    assert owner_key_id == "wiki-owner-2026"
-    assert approver_key_id == "wiki-approver-2026"
+    assert owner_key_id == "wiki-spike-local-owner-2026"
+    assert approver_key_id == "wiki-spike-local-approver-2026"
     assert owner_key_id in script
     assert approver_key_id in script
     assert owner_public in script

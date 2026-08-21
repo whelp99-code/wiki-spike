@@ -23,12 +23,12 @@ signer_input="$2"
 output_directory="$3"
 case "$role" in
   owner)
-    binding_id="wiki-owner-2026"
-    binding_b64="K0zr+45z5JHxAKdqodvDeZSB36B7L8OooR+g9W+vo20="
+    binding_id="wiki-spike-local-owner-2026"
+    binding_b64="AqkUcin7vP0DSKNKq77+AoG4dLivjs7gBQC+I2U0znQ="
     ;;
   approver)
-    binding_id="wiki-approver-2026"
-    binding_b64="o3MsXdJIhRnHggMzCd1RGSVDJMqtb5abxWgKlElxc+g="
+    binding_id="wiki-spike-local-approver-2026"
+    binding_b64="qqjshbOlaEeE5umj4jBVJPYqOqFypULm4nX9FSxIMNQ="
     ;;
   *)
     printf 'metadata capture signing refused: unknown role\n' >&2
