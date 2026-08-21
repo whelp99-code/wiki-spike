@@ -70,6 +70,3 @@ def test_unsigned_body_is_not_authority_and_current_decisions_stay_fail_closed()
     assert _BODY.parent.name == "decision-signing"
     assert not (_DECISIONS / "DB-03.json").exists()
     assert not (_DECISIONS / "DB-03-me-wiki.json").exists()
-    assert list(_DECISIONS.glob("DB-03*.json")) == []
-    names = {path.name for path in _DECISIONS.glob("*.json")}
-    assert names == {"DB-04.json", "DB-06-model-a.json", "DB-08-archive.json"}

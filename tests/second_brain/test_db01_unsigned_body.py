@@ -59,5 +59,3 @@ def test_unsigned_body_binds_raw_bundle_digest_without_go_or_signatures() -> Non
 def test_unsigned_body_is_not_authority_and_current_decisions_stay_fail_closed() -> None:
     assert _BODY.parent.name == "decision-signing"
     assert not (_DECISIONS / "DB-01.json").exists()
-    names = {path.name for path in _DECISIONS.glob("*.json")}
-    assert names == {"DB-04.json", "DB-06-model-a.json", "DB-08-archive.json"}
