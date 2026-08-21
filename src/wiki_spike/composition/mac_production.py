@@ -20,6 +20,11 @@ from wiki_spike.composition.mac_artifact_io import (
     MacArtifactReadError,
     read_mac_artifact_bundle,
 )
+from wiki_spike.infrastructure.lifecycle_db_existing import (
+    LifecycleDbError,
+    inspect_existing_serving_ready,
+    open_existing_lifecycle_database,
+)
 from wiki_spike.infrastructure.persistence_profile import (
     PersistenceProfileAuthorizationError,
     verify_mac_persistence_authorization,
@@ -57,6 +62,7 @@ PINNED_TRUSTED_KEYS = TrustedDecisionKeyBindingsV1(
 )
 PINNED_TRUSTED_NOW: datetime | None = None
 PINNED_SQLCIPHER_ARTIFACT_BYTES: bytes = b""
+PINNED_WORKSPACE_REF = ""
 
 
 def _refuse_unauthorized(argv: list[str] | None) -> int:
@@ -102,6 +108,29 @@ def _verify_present_authority(artifacts: MacArtifactBundle) -> int | None:
             now=_trusted_now(),
         )
     except CoreContractError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    return None
+
+
+def _verify_existing_serving(support: Path) -> int | None:
+    """Inspect an existing lifecycle DB after persistence verifies; never create."""
+    sqlite_path = support / "second-brain-v1" / "lifecycle.sqlite3"
+    try:
+        meta = os.lstat(sqlite_path)
+    except OSError:
+        print(_ARTIFACT_REFUSAL_TOKENS[2], file=sys.stderr)
+        return 1
+    if stat.S_ISLNK(meta.st_mode) or not stat.S_ISREG(meta.st_mode):
+        print(_ARTIFACT_REFUSAL_TOKENS[2], file=sys.stderr)
+        return 1
+    try:
+        database = open_existing_lifecycle_database(sqlite_path)
+        try:
+            _ = inspect_existing_serving_ready(database, PINNED_WORKSPACE_REF)
+        finally:
+            database.close()
+    except LifecycleDbError as exc:
         print(str(exc), file=sys.stderr)
         return 1
     return None
@@ -167,6 +196,9 @@ def main(argv: list[str] | None = None) -> int:
     if refused is not None:
         return refused
     refused = _verify_present_persistence(artifacts)
+    if refused is not None:
+        return refused
+    refused = _verify_existing_serving(support)
     if refused is not None:
         return refused
     return run_authenticated_v2_cli(argv)

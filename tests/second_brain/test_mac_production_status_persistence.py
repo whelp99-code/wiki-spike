@@ -24,7 +24,6 @@ from tests.second_brain.test_macos_persistence_profile import persistence_profil
 from wiki_spike.composition.mac_production import main
 from wiki_spike.memory_core.contracts import canonical_bytes
 
-AUTHORITY_REQUIRED_TOKEN = "authority is required"
 SIGNED_AUTHORITY_ABSENT_TOKEN = "signed authority is absent"
 PERSISTENCE_PROFILE_ABSENT_TOKEN = "persistence profile is absent"
 SERVING_READY_ABSENT_TOKEN = "SERVING_READY is absent"
@@ -143,7 +142,7 @@ def test_status_does_not_compose_when_present_profile_verifies(
 
     captured = capsys.readouterr()
     assert code == 1
-    assert AUTHORITY_REQUIRED_TOKEN in captured.err
+    assert SERVING_READY_ABSENT_TOKEN in captured.err
     assert SIGNED_AUTHORITY_ABSENT_TOKEN not in captured.err
     assert PERSISTENCE_PROFILE_ABSENT_TOKEN not in captured.err
     assert "authenticated V2 product ready" not in captured.out

@@ -20,7 +20,6 @@ from tests.second_brain.mac_production_status_support import (
 from tests.second_brain.test_mac_signed_authority_bundle import bundle_bytes
 from wiki_spike.composition.mac_production import main
 
-AUTHORITY_REQUIRED_TOKEN = "authority is required"
 SIGNED_AUTHORITY_ABSENT_TOKEN = "signed authority is absent"
 PERSISTENCE_PROFILE_ABSENT_TOKEN = "persistence profile is absent"
 SERVING_READY_ABSENT_TOKEN = "SERVING_READY is absent"
@@ -109,7 +108,7 @@ def test_status_does_not_compose_when_present_authority_verifies(
 
     captured = capsys.readouterr()
     assert code == 1
-    assert AUTHORITY_REQUIRED_TOKEN in captured.err
+    assert SERVING_READY_ABSENT_TOKEN in captured.err
     assert SIGNED_AUTHORITY_ABSENT_TOKEN not in captured.err
     assert "authenticated V2 product ready" not in captured.out
     assert tree_snapshot(tmp_path) == before
