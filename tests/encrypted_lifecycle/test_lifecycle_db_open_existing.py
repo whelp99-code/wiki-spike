@@ -56,6 +56,10 @@ def _snapshot(root: Path) -> dict[str, tuple[str, int, bytes | None]]:
     return result
 
 
+def _bomb(*_args: object, **_kwargs: object) -> None:
+    raise AssertionError("existing-only open must not write")
+
+
 def test_open_existing_reads_ready_state_without_writes(tmp_path: Path) -> None:
     path = tmp_path / "lifecycle.sqlite3"
     _create_database(path)
@@ -70,6 +74,31 @@ def test_open_existing_reads_ready_state_without_writes(tmp_path: Path) -> None:
     assert status.ready is True
     assert status.authority_state == "ACTIVE"
     assert status.migration_state == "SERVING_READY"
+    assert _snapshot(tmp_path) == before
+
+
+def test_open_existing_returns_exact_read_only_lifecycle_database(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "lifecycle.sqlite3"
+    _create_database(path)
+    monkeypatch.setattr(LifecycleDatabase, "initialize", _bomb)
+    monkeypatch.setattr(Path, "mkdir", _bomb)
+    before = _snapshot(tmp_path)
+
+    database = open_existing_lifecycle_database(path)
+    try:
+        assert type(database) is LifecycleDatabase
+        assert database.con is not None
+        assert database.con.execute("PRAGMA query_only").fetchone() == (1,)
+        with pytest.raises(sqlite3.OperationalError):
+            _ = database.con.execute("CREATE TABLE forbidden(x TEXT)")
+        status = inspect_existing_serving_ready(database, _WORKSPACE)
+    finally:
+        database.close()
+
+    assert status.ready is True
     assert _snapshot(tmp_path) == before
 
 

@@ -22,6 +22,7 @@ from wiki_spike.memory_core.contracts import canonical_bytes
 CAS_TOKEN = "existing CAS"
 KEYCHAIN_TOKEN = "existing Keychain"
 BIND_TOKEN = "an initialized exact LifecycleDatabase is required"
+STAGE3_TOKEN = "trusted Stage-3 authority dependencies are required"
 PRODUCT_READY = "authenticated V2 product ready"
 AUTHORITY_REQUIRED_TOKEN = "authority is required"
 SIGNED_AUTHORITY_ABSENT_TOKEN = "signed authority is absent"

@@ -13,6 +13,7 @@ from tests.second_brain.mac_production_status_compose_support import (
     PRODUCT_READY,
     SERVING_READY_ABSENT_TOKEN,
     SIGNED_AUTHORITY_ABSENT_TOKEN,
+    STAGE3_TOKEN,
     bomb_existing_opens,
     cas_root,
     pin_and_bomb,
@@ -99,7 +100,7 @@ def test_status_refuses_missing_keychain_after_cas_without_constructors(
     assert tree_snapshot(tmp_path) == before
 
 
-def test_status_refuses_bind_of_existing_db_before_product_constructors(
+def test_status_refuses_unset_stage3_pins_after_existing_cas_keychain_bind(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -117,7 +118,8 @@ def test_status_refuses_bind_of_existing_db_before_product_constructors(
 
     captured = capsys.readouterr()
     assert code == 1
-    assert BIND_TOKEN in captured.err
+    assert STAGE3_TOKEN in captured.err
+    assert BIND_TOKEN not in captured.err
     assert CAS_TOKEN not in captured.err
     assert KEYCHAIN_TOKEN not in captured.err
     assert AUTHORITY_REQUIRED_TOKEN not in captured.err

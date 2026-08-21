@@ -6,6 +6,7 @@ import sqlite3
 import stat
 from dataclasses import dataclass
 from pathlib import Path
+from weakref import WeakKeyDictionary
 
 from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase, LifecycleDbError
 from wiki_spike.infrastructure.lifecycle_db_existing_decode import (
@@ -31,18 +32,10 @@ class ExistingLifecycleStatus:
     ready: bool
 
 
-class ExistingLifecycleDatabase(LifecycleDatabase):
-    """LifecycleDatabase admitted with an immutable main-file fingerprint."""
-
-    existing_read_fingerprint: tuple[int, int, int, int, int, int]
-
-    def __init__(
-        self,
-        path: Path,
-        fingerprint: tuple[int, int, int, int, int, int],
-    ) -> None:
-        super().__init__(path)
-        self.existing_read_fingerprint = fingerprint
+ExistingLifecycleDatabase = LifecycleDatabase
+_EXISTING_FINGERPRINTS: WeakKeyDictionary[
+    LifecycleDatabase, tuple[int, int, int, int, int, int]
+] = WeakKeyDictionary()
 
 
 def _refuse(message: str) -> LifecycleDbError:
@@ -96,7 +89,7 @@ def _fingerprint(metadata: os.stat_result) -> tuple[int, int, int, int, int, int
     )
 
 
-def open_existing_lifecycle_database(path: Path) -> ExistingLifecycleDatabase:
+def open_existing_lifecycle_database(path: Path) -> LifecycleDatabase:
     """Open a clean, exact-schema database without creation or WAL activity."""
     before = _validate_main_file(path)
     connection: sqlite3.Connection | None = None
@@ -120,13 +113,14 @@ def open_existing_lifecycle_database(path: Path) -> ExistingLifecycleDatabase:
         if connection is not None:
             connection.close()
         raise
-    database = ExistingLifecycleDatabase(path, _fingerprint(before))
+    database = LifecycleDatabase(path)
     database.con = connection
+    _EXISTING_FINGERPRINTS[database] = _fingerprint(before)
     return database
 
 
 def inspect_existing_serving_ready(
-    database: ExistingLifecycleDatabase,
+    database: LifecycleDatabase,
     workspace_ref: str,
 ) -> ExistingLifecycleStatus:
     """Read ACTIVE and SERVING_READY in one deferred immutable transaction."""
@@ -139,7 +133,9 @@ def inspect_existing_serving_ready(
     connection = database.con
     if connection is None:
         raise LifecycleDbError("existing lifecycle database is closed")
-    fingerprint = database.existing_read_fingerprint
+    fingerprint = _EXISTING_FINGERPRINTS.get(database)
+    if fingerprint is None:
+        raise LifecycleDbError("existing lifecycle database is closed")
     if _fingerprint(_validate_main_file(database.db_path)) != fingerprint:
         raise LifecycleDbError("existing lifecycle database changed since open")
     _ = connection.execute("BEGIN")
