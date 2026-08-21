@@ -1,0 +1,36 @@
+{
+  "decided_at": "2026-08-18T15:38:52Z",
+  "decision_id": "DB-02",
+  "decision_version": "second-brain-decision-record-v1",
+  "evidence_digest": "212681cefcc07725f71b784ec1ab3af95fde5e1f6062247201d2d688226fbcaf",
+  "evidence_refs": [
+    "artifacts/product-release/second-brain-v1/evidence/db-02-capture-disabled-evidence-v1.json"
+  ],
+  "expires_at": "2027-08-18T15:38:52Z",
+  "outcome": "NO_GO",
+  "post_interview_reconciliation": {
+    "original_question": "Codex, Claude/Memory Bank, Git, and Markdown are all intended first-release sources, but each remains disabled until its source-specific consent, retention, deletion, capability, and fixture evidence resolves GO.",
+    "reconciliation": "Markdown remains synthetic-only and is excluded from enabled capture sources, capabilities, and cohorts. No configuration, adapter, retry, path substitution, or fallback may re-enable it. This scoped NO_GO does not disable approved read-only migration sources or authenticated manual product operations. A future GO requires a signed superseding record with source-specific consent, retention, deletion, capability, and fixture evidence."
+  },
+  "reason": "NO_GO: no approved live Markdown root scope, consent fixture, retention/deletion proof, rename/symlink capability fixture, or immutable source evidence exists for the Mac-first private release. Fail closed rather than enable an unresolved live capture boundary.",
+  "record_revision": "1",
+  "scope_kind": "source_profile",
+  "scope_name": "Markdown",
+  "signatures": [
+    {
+      "key_id": "wiki-spike-local-approver-2026",
+      "public_key_b64": "qqjshbOlaEeE5umj4jBVJPYqOqFypULm4nX9FSxIMNQ=",
+      "role": "approver",
+      "signature_b64": "fSx/zuN1UConBMoB2jdUlnYx81U5og5s9ZfgTR12t/MfiG9yNeEUBOWZ/mGbhwkNg/40MC2S/ajj4UUn1MHSDw==",
+      "signature_version": "second-brain-decision-signature-v1"
+    },
+    {
+      "key_id": "wiki-spike-local-owner-2026",
+      "public_key_b64": "AqkUcin7vP0DSKNKq77+AoG4dLivjs7gBQC+I2U0znQ=",
+      "role": "owner",
+      "signature_b64": "ndYfB9BowmczAHKF1Em8wpITcjg7v+gzHtGoogPp1RMzxdO8rai8ue5ZX8ctq72bR+6dvBsddb9ejfvyTE3eBQ==",
+      "signature_version": "second-brain-decision-signature-v1"
+    }
+  ],
+  "supersedes": null
+}

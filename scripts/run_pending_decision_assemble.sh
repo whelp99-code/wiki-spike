@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   printf '%s\n' \
     "Usage: $0 <approver-envelope-directory> <owner-envelope-directory> <assembled-directory>" \
-    "Assembles the six pending public decision envelopes, approver then owner." \
+    "Assembles the pending public decision envelopes, approver then owner." \
     "Writes create-only assembled records. Never reads private keys."
 }
 
@@ -98,11 +98,11 @@ for stem in "${stems[@]}"; do
     printf 'pending decision assemble refused: output already exists\n' >&2
     exit 2
   fi
-  uv run python "$root/scripts/second_brain_decision.py" assemble \
+  uv run --directory "$root" python "$root/scripts/second_brain_decision.py" assemble \
     --body "$body" \
     --signature "$approver_dir/$stem.approver-envelope.json" \
     --signature "$owner_dir/$stem.owner-envelope.json" \
     --out "$dest"
 done
 
-printf 'Wrote six assembled records to %s\n' "$out_dir"
+printf 'Wrote %s assembled records to %s\n' "${#stems[@]}" "$out_dir"
