@@ -8,6 +8,7 @@ from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from wiki_spike.memory_core.contracts import canonical_bytes
 from wiki_spike.memory_core.unified_db_snapshot_export_json import decode_json_object
 
 _RUNNER = Path("scripts/run_pending_decision_assemble.sh")
@@ -154,6 +155,7 @@ def test_assemble_writes_six_create_only_records_when_public_envelopes_exist(
             if isinstance(item, dict) and isinstance((role := item.get("role")), str)
         ]
         assert roles == ["approver", "owner"]
+        assert record.read_bytes() == canonical_bytes(parsed)
     second = _run(str(approver_dir), str(owner_dir), str(out))
     assert second.returncode == 2
     assert "already exists" in second.stderr
