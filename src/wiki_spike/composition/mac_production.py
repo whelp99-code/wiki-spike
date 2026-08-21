@@ -5,7 +5,6 @@ import os
 import pwd
 import stat
 import sys
-from base64 import b64encode
 from datetime import datetime
 from pathlib import Path
 
@@ -25,28 +24,17 @@ from wiki_spike.composition.mac_production_compose import (
     MacProductionComposeError,
     compose_existing_mac_product,
 )
+from wiki_spike.composition.mac_production_trusted import load_pinned_trusted_keys
 from wiki_spike.infrastructure.lifecycle_db_existing import (
     inspect_existing_serving_ready,
     open_existing_lifecycle_database,
-)
-from wiki_spike.memory_core.second_brain_contracts import (
-    TrustedAuthorityBindingsV1,
-    TrustedDecisionKeyBindingsV1,
 )
 from wiki_spike.memory_core.second_brain_security_contracts import (
     mint_security_context_authority,
 )
 from wiki_spike.resources import load_pinned_sqlcipher_artifact_bytes
 
-PINNED_TRUSTED_KEYS = TrustedDecisionKeyBindingsV1(
-    {},
-    TrustedAuthorityBindingsV1(
-        "approver",
-        b64encode(bytes(32)).decode("ascii"),
-        "owner",
-        b64encode(bytes(32 * [1])).decode("ascii"),
-    ),
-)
+PINNED_TRUSTED_KEYS = load_pinned_trusted_keys()
 PINNED_TRUSTED_NOW: datetime | None = None
 PINNED_SQLCIPHER_ARTIFACT_BYTES: bytes = load_pinned_sqlcipher_artifact_bytes()
 PINNED_WORKSPACE_REF = ""

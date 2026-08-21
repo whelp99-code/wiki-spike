@@ -2,10 +2,17 @@
 from __future__ import annotations
 
 import ast
+import json
 from pathlib import Path
+
+from wiki_spike.composition.mac_production import PINNED_TRUSTED_KEYS
 
 COMPOSITION = Path("src/wiki_spike/composition/mac_production.py")
 PYPROJECT = Path("pyproject.toml")
+COMMITTED_BINDINGS = Path(
+    "artifacts/product-release/second-brain-v1/governance/trusted-bindings.json"
+)
+PACKAGED_BINDINGS = Path("src/wiki_spike/resources/trusted-bindings.json")
 BANNED_IMPORTS = {
     "http",
     "importlib",
@@ -47,3 +54,25 @@ def test_installed_wiki_entry_points_at_mac_production_main() -> None:
     assert 'wiki = "wiki_spike.composition.mac_production:main"' in PYPROJECT.read_text(
         encoding="utf-8"
     )
+
+
+def test_production_default_pinned_trusted_keys_match_committed_public_bindings() -> None:
+    raw = COMMITTED_BINDINGS.read_bytes()
+    payload = json.loads(raw)
+    aggregate = payload["aggregate_binding"]
+    pinned = PINNED_TRUSTED_KEYS.aggregate_bindings
+    assert pinned.owner_key_id == "wiki-owner-2026"
+    assert pinned.approver_key_id == "wiki-approver-2026"
+    assert pinned.owner_public_key_b64 == aggregate["owner_public_key_b64"]
+    assert pinned.approver_public_key_b64 == aggregate["approver_public_key_b64"]
+    identities: set[tuple[str, str, str | None]] = set()
+    for entry in payload["decision_bindings"]:
+        identity = (entry["decision_id"], entry["scope_kind"], entry["scope_name"])
+        binding = PINNED_TRUSTED_KEYS.decision_bindings[identity]
+        assert binding.owner_key_id == "wiki-owner-2026"
+        assert binding.approver_key_id == "wiki-approver-2026"
+        assert binding.owner_public_key_b64 == entry["owner_public_key_b64"]
+        assert binding.approver_public_key_b64 == entry["approver_public_key_b64"]
+        identities.add(identity)
+    assert set(PINNED_TRUSTED_KEYS.decision_bindings) == identities
+    assert PACKAGED_BINDINGS.read_bytes() == raw

@@ -15,7 +15,10 @@ dev = ["pytest>=8", "setuptools>=68", "wheel>=0.43", "jsonschema>=4"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-"wiki_spike.resources" = ["sqlcipher-feasibility-darwin-arm64.json"]
+"wiki_spike.resources" = [
+    "sqlcipher-feasibility-darwin-arm64.json",
+    "trusted-bindings.json",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]
