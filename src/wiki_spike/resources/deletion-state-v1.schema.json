@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://wiki-spike.local/schemas/encrypted-lifecycle/deletion-state-v1.schema.json",
+  "title": "Encrypted Lifecycle Deletion State v1",
+  "description": "Deletion phase state machine: REQUESTED (immediate live API veto) -> API_VETO_ACTIVE -> TOMBSTONE_ACTIVE -> CHECKPOINT_COMMITTED -> REVOCATION_KEYS_DESTROYED -> CRYPTO_SHRED_COMPLETE -> PURGE_PENDING -> COMPLETE. REQUESTED through CHECKPOINT_COMMITTED are application/API denial phases only; cryptographic undecryptability is claimed only once every usable wrap is destroyed. `report` carries three independent surface tiers (live corpus, 30-day backup residual, egress ledger) that each complete independently of one another.",
+  "definitions": {
+    "hex64": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "opaqueId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,62}$"},
+    "timestamp": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "nullableHex64": {"oneOf": [{"$ref": "#/definitions/hex64"}, {"type": "null"}]},
+    "nullableTimestamp": {"oneOf": [{"$ref": "#/definitions/timestamp"}, {"type": "null"}]},
+    "reportTierV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "verified_at", "evidence_digest"],
+      "properties": {
+        "status": {"enum": ["PENDING", "IN_PROGRESS", "COMPLETE"]},
+        "verified_at": {"$ref": "#/definitions/nullableTimestamp"},
+        "evidence_digest": {"$ref": "#/definitions/nullableHex64"}
+      }
+    },
+    "deletionReportV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["live", "backup", "egress"],
+      "properties": {
+        "live": {"$ref": "#/definitions/reportTierV1"},
+        "backup": {"$ref": "#/definitions/reportTierV1"},
+        "egress": {"$ref": "#/definitions/reportTierV1"}
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "workspace_id", "deletion_command_id", "phase", "report", "updated_at"],
+  "properties": {
+    "schema": {"const": "wiki-deletion-state-v1"},
+    "workspace_id": {"$ref": "#/definitions/opaqueId"},
+    "deletion_command_id": {"$ref": "#/definitions/hex64"},
+    "phase": {
+      "enum": [
+        "REQUESTED",
+        "API_VETO_ACTIVE",
+        "TOMBSTONE_ACTIVE",
+        "CHECKPOINT_COMMITTED",
+        "REVOCATION_KEYS_DESTROYED",
+        "CRYPTO_SHRED_COMPLETE",
+        "PURGE_PENDING",
+        "COMPLETE"
+      ]
+    },
+    "report": {"$ref": "#/definitions/deletionReportV1"},
+    "updated_at": {"$ref": "#/definitions/timestamp"}
+  }
+}

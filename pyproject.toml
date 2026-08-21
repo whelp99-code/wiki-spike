@@ -20,6 +20,7 @@ where = ["src"]
     "trusted-bindings.json",
     "expected-scopes.json",
     "envelope-v1.schema.json",
+    "deletion-state-v1.schema.json",
 ]
 
 [tool.pytest.ini_options]
