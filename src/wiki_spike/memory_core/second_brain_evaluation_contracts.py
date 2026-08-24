@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, Protocol, Sequence
 
 from .errors import InvalidContractValue
 from .second_brain_contracts import ResolvedScopeV1
@@ -580,12 +580,81 @@ NATIVE_SHADOW_MEASUREMENT_V1 = "second-brain-native-shadow-measurement-v1"
 NATIVE_SHADOW_SAMPLE_V1 = "second-brain-native-shadow-sample-v1"
 NATIVE_SHADOW_SOURCES = ("Codex", "Claude/Memory Bank", "Git", "Markdown")
 NATIVE_SHADOW_OUTCOMES = ("valid", "invalid", "abstained", "source-unavailable")
+CERTIFIED_COHORT_ROSTER_FIXTURE_V1 = "second-brain-certified-cohort-roster-fixture-v1"
+
+
+class ShadowMeasurementRootV1(Protocol):
+    """Structural contract shared with Task 48B's signed measurement root.
+
+    Task 48A deliberately does not mint or parse a signed root.  The retained
+    authority implementation owns that wire type; this protocol keeps the
+    fixture-side dependency compatible without creating a second wire model.
+    """
+
+    cohort_receipt_sha256: str
+    shadow_executor_bundle_sha256: str
+    shadow_run_config_payload_sha256: str
+
+
+class ShadowRunConfigV1(Protocol):
+    """Structural contract shared with Task 48B's signed run configuration."""
+
+    shadow_measurement_root_sha256: str
+    shadow_executor_bundle_sha256: str
+    run_config_payload_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class CertifiedCohortRosterFixtureV1:
+    """Unsigned test fixture that pins the body-free Task 47E cohort receipt.
+
+    It is intentionally not a live receipt and contains no signing material.
+    Every roster member must be explicitly enabled; disabled or duplicate
+    identities therefore fail before a shadow collector is opened.
+    """
+
+    fixture_version: str
+    cohort_receipt_sha256: str
+    workspace_ref: str
+    source_roster: tuple[str, ...]
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> "CertifiedCohortRosterFixtureV1":
+        values = _strict(data, {"fixture_version", "cohort_receipt", "source_roster"})
+        if values["fixture_version"] != CERTIFIED_COHORT_ROSTER_FIXTURE_V1:
+            raise InvalidContractValue("unsupported certified cohort roster fixture version")
+        receipt = _strict(values["cohort_receipt"], {
+            "import_receipt_digest", "receipt_sha256", "receipt_version", "result", "workspace_ref",
+        })
+        if receipt["receipt_version"] != "second-brain-certified-cohort-receipt-v1" or receipt["result"] != "PASS":
+            raise InvalidContractValue("fixture cohort receipt version or result is unsupported")
+        receipt_body = {key: receipt[key] for key in receipt if key != "receipt_sha256"}
+        receipt_digest = _digest(receipt["receipt_sha256"], "cohort_receipt.receipt_sha256")
+        if receipt_digest != canonical_ledger_digest("certified-cohort-receipt-v1", receipt_body):
+            raise InvalidContractValue("fixture cohort receipt digest does not bind its body")
+        _digest(receipt["import_receipt_digest"], "cohort_receipt.import_receipt_digest")
+        workspace_ref = _ref(receipt["workspace_ref"], "cohort_receipt.workspace_ref", "workspace")
+        if not isinstance(values["source_roster"], list) or not values["source_roster"]:
+            raise InvalidContractValue("fixture source_roster must be non-empty")
+        roster: list[str] = []
+        for item in values["source_roster"]:
+            entry = _strict(item, {"source_profile", "enabled"})
+            if entry["enabled"] is not True:
+                raise InvalidContractValue("fixture source_roster cannot accept disabled identities")
+            roster.append(_ref(entry["source_profile"], "source_roster.source_profile"))
+        if len(set(roster)) != len(roster):
+            raise InvalidContractValue("fixture source_roster identities must be unique")
+        return cls(CERTIFIED_COHORT_ROSTER_FIXTURE_V1, receipt_digest, workspace_ref, tuple(roster))
 
 __all__ = [
     "NATIVE_SHADOW_MEASUREMENT_V1",
     "NATIVE_SHADOW_SAMPLE_V1",
     "NATIVE_SHADOW_SOURCES",
     "NATIVE_SHADOW_OUTCOMES",
+    "CERTIFIED_COHORT_ROSTER_FIXTURE_V1",
+    "ShadowMeasurementRootV1",
+    "ShadowRunConfigV1",
+    "CertifiedCohortRosterFixtureV1",
     "EVALUATION_GOVERNANCE_V1",
     "BENCHMARK_MANIFEST_V1",
     "HOLDOUT_MANIFEST_V1",

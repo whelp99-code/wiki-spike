@@ -153,7 +153,10 @@ def _evaluate_history_metrics(*, root: Mapping[str, Any],
     if sum(sample["safety_violation"] for sample in samples) > slo.max_safety_violations:
         reasons.append("safety violations exceed zero")
     valid = lambda sample: sample["outcome"] == "valid"
-    for source in NATIVE_SHADOW_SOURCES:
+    sources = tuple(root.get("sources", NATIVE_SHADOW_SOURCES))
+    if not sources or any(not isinstance(source, str) or not source for source in sources) or len(set(sources)) != len(sources):
+        raise ShadowMeasurementError("measurement root source roster is invalid")
+    for source in sources:
         source_samples = [sample for sample in samples if sample["source_profile"] == source]
         if len(source_samples) < slo.min_parity_cases_per_source:
             reasons.append(f"{source} parity denominator is below its floor")
@@ -172,9 +175,11 @@ class NativeShadowMeasurementCollector:
     def __init__(self, *, path: str | Path, authority: MonotonicAppendAuthority,
                  scope: ResolvedScopeV1, benchmark: BenchmarkManifestV1,
                  holdout: HoldoutManifestV1, slo: RecallSloV1,
-                 measurement_public_key: Ed25519PublicKey, measurement_key_id: str) -> None:
-        if tuple(sorted(scope.enabled_source_profiles)) != tuple(sorted(NATIVE_SHADOW_SOURCES)) or len(scope.enabled_source_profiles) != 4:
-            raise ShadowMeasurementError("native measurement requires the exact four-source roster")
+                 measurement_public_key: Ed25519PublicKey, measurement_key_id: str,
+                 source_roster: tuple[str, ...] | None = None) -> None:
+        roster = NATIVE_SHADOW_SOURCES if source_roster is None else tuple(source_roster)
+        if not roster or len(set(roster)) != len(roster) or set(scope.enabled_source_profiles) != set(roster):
+            raise ShadowMeasurementError("native measurement requires the exact four-source roster or certified cohort roster")
         if scope.enabled_migration_sources or scope.enabled_external_model_routes or scope.egress_destinations:
             raise ShadowMeasurementError("migration, external routes, and egress are forbidden")
         if not measurement_key_id:
@@ -196,6 +201,7 @@ class NativeShadowMeasurementCollector:
             raise ShadowMeasurementError("external authority public key is invalid") from exc
         self.path, self.authority = Path(path), authority
         self.scope, self.benchmark, self.holdout, self.slo = scope, benchmark, holdout, slo
+        self._source_roster = roster
         self.public_key, self.key_id = measurement_public_key, measurement_key_id
         self._authority_identity = authority_identity
         self._authority_endpoint = authority_endpoint
@@ -205,7 +211,7 @@ class NativeShadowMeasurementCollector:
         self._base_root = {"scope_digest": _scope_digest(scope), "benchmark_manifest_digest": benchmark.manifest_digest,
             "holdout_manifest_digest": holdout.manifest_digest, "slo_digest": slo.slo_digest,
             "source_manifest_digest": scope.source_manifest_digest, "capability_manifest_digest": scope.capability_manifest_digest,
-            "sources": list(NATIVE_SHADOW_SOURCES), "measurement_key_id": measurement_key_id,
+            "sources": list(roster), "measurement_key_id": measurement_key_id,
             "measurement_public_key": measurement_public_key.public_bytes(Encoding.Raw, PublicFormat.Raw).hex(),
             "authority_identity": self._authority_identity, "authority_endpoint": self._authority_endpoint,
             "authority_policy_id": self._authority_policy_id,
@@ -489,7 +495,7 @@ class NativeShadowMeasurementCollector:
         required = {"sample_version", "sample_id", "source_profile", "outcome", "citation", "completeness", "parity", "safety_violation", "cohort_digest", "previous", "sequence", "signature"}
         if not isinstance(sample, Mapping) or set(sample) != required or sample.get("sample_version") != NATIVE_SHADOW_SAMPLE_V1: raise ShadowMeasurementError("raw sample fields are invalid")
         if sample["cohort_digest"] != cohort or sample["previous"] != previous or sample["sequence"] != sequence: raise ShadowMeasurementError("raw sample is not bound to this cohort head")
-        if sample["source_profile"] not in NATIVE_SHADOW_SOURCES or sample["outcome"] not in NATIVE_SHADOW_OUTCOMES: raise ShadowMeasurementError("raw sample source or outcome is unsupported")
+        if sample["source_profile"] not in self._source_roster or sample["outcome"] not in NATIVE_SHADOW_OUTCOMES: raise ShadowMeasurementError("raw sample source or outcome is unsupported")
         if not isinstance(sample["sample_id"], str) or not sample["sample_id"] or type(sample["sequence"]) is not int: raise ShadowMeasurementError("raw sample identity is invalid")
         if any(type(sample[field]) is not bool for field in ("citation", "completeness", "parity", "safety_violation")) or not isinstance(sample["signature"], str): raise ShadowMeasurementError("raw sample measures or signature are invalid")
         payload = {key: sample[key] for key in required - {"signature"}}
@@ -539,4 +545,11 @@ class NativeShadowMeasurementCollector:
             )
 
 
-__all__ = ["AuthoritySnapshot", "MonotonicAppendAuthority", "NativeShadowMeasurementCollector", "ShadowMeasurementError", "ShadowMeasurementReport", "DOMAIN"]
+SHADOW_ARTIFACT_DIGEST_FIELDS = (
+    "shadow_executor_bundle_sha256",
+    "shadow_measurement_root_sha256",
+    "shadow_run_config_payload_sha256",
+)
+
+
+__all__ = ["AuthoritySnapshot", "MonotonicAppendAuthority", "NativeShadowMeasurementCollector", "ShadowMeasurementError", "ShadowMeasurementReport", "DOMAIN", "SHADOW_ARTIFACT_DIGEST_FIELDS"]

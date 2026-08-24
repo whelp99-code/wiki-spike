@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from wiki_spike.canonical import CanonicalizationError, canonical_bytes
 
 from wiki_spike.applications.second_brain_shadow_measurement import (
-    AuthoritySnapshot,
+    SHADOW_ARTIFACT_DIGEST_FIELDS,
     MonotonicAppendAuthority,
     NativeShadowMeasurementCollector,
     ShadowMeasurementError,
@@ -19,6 +19,7 @@ from wiki_spike.applications.second_brain_shadow_measurement import (
 from wiki_spike.memory_core.second_brain_contracts import ResolvedScopeV1
 from wiki_spike.memory_core.second_brain_evaluation_contracts import (
     BenchmarkManifestV1,
+    CertifiedCohortRosterFixtureV1,
     HoldoutManifestV1,
     NATIVE_SHADOW_SOURCES,
     RecallSloV1,
@@ -130,6 +131,7 @@ def open_measurement(
     resolved_scope: str | Path, contract: str | Path, source_manifest: str | Path,
     capability_manifest: str | Path, benchmark_manifest: str | Path, holdout_manifest: str | Path,
     checkpoint: str | Path | None = None, create: bool = False,
+    certified_cohort_roster: str | Path | None = None,
 ) -> NativeShadowMeasurementCollector:
     """Open a cohort only when every supplied local manifest binds the same roots."""
     db_path = Path(db)
@@ -163,6 +165,17 @@ def open_measurement(
         raise ShadowMeasurementCompositionError("benchmark and holdout capabilities must be separate")
     _validate_source_manifest(source_data, benchmark.workspace_ref)
     _validate_capability_manifest(capability_data, benchmark, holdout)
+    roster: tuple[str, ...] | None = None
+    if certified_cohort_roster is not None:
+        try:
+            fixture = CertifiedCohortRosterFixtureV1.from_mapping(_load_object(certified_cohort_roster))
+        except Exception as exc:
+            raise ShadowMeasurementCompositionError("certified cohort roster fixture is invalid") from exc
+        if fixture.workspace_ref != benchmark.workspace_ref:
+            raise ShadowMeasurementCompositionError("certified cohort roster fixture workspace does not match")
+        roster = fixture.source_roster
+        if tuple(source_data["profiles"]) != roster or set(scope.enabled_source_profiles) != set(roster):
+            raise ShadowMeasurementCompositionError("source manifest or scope does not exactly bind certified cohort roster")
     key = _trusted_key(measurement_public_key, measurement_key_fingerprint)
     try:
         if not all(isinstance(value, str) and value for value in (
@@ -174,7 +187,7 @@ def open_measurement(
         raise ShadowMeasurementCompositionError("an external authenticated monotonic authority adapter is required") from exc
     collector = NativeShadowMeasurementCollector(
         path=db_path, authority=authority, scope=scope, benchmark=benchmark, holdout=holdout, slo=slo,
-        measurement_public_key=key, measurement_key_id=measurement_key_fingerprint,
+        measurement_public_key=key, measurement_key_id=measurement_key_fingerprint, source_roster=roster,
     )
     if create:
         checkpoint_data = _load_object(checkpoint)
@@ -190,13 +203,18 @@ def open_measurement(
 def report_measurement(collector: NativeShadowMeasurementCollector) -> dict[str, Any]:
     """Revalidate durable evidence and return its non-serving outcome."""
     report = collector.report()
-    return {
+    body: dict[str, Any] = {
         "outcome": report.outcome,
         "cohort_digest": report.cohort_digest,
         "sample_count": report.sample_count,
         "continuous_seconds": report.continuous_seconds,
         "reasons": list(report.reasons),
     }
+    for field in SHADOW_ARTIFACT_DIGEST_FIELDS:
+        value = getattr(collector.authority, field, None)
+        if isinstance(value, str) and len(value) == 64:
+            body[field] = value
+    return body
 
 
 __all__ = ["ShadowMeasurementCompositionError", "open_measurement", "report_measurement"]
