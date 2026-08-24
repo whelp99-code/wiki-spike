@@ -1,6 +1,7 @@
 """Bounded, read-only filesystem access beneath explicitly approved roots."""
 from __future__ import annotations
 
+import logging
 import os
 import re
 import stat
@@ -28,6 +29,7 @@ _SENSITIVE_WORD: Final = re.compile(
     r"(?:^|[._\-/])(?:access[-_]?token|auth[-_]?token|cookie|credential|private[-_]?key|refresh[-_]?token|secret|session|token)s?(?:[._\-/]|$)"
 )
 _REASONING_NAME: Final = re.compile(r"(?:^|[._\-/])(?:chain[-_]?of[-_]?thought|cot|hidden[-_]?reasoning)(?:[._\-/]|$)")
+_LOGGER: Final = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,9 +122,8 @@ class SafeSourceFilesystem:
         return open_approved_root(root, self._approved)
 
     def scan(self, root: Path) -> tuple[SourceFileMetadata, ...]:
-        """Scan bounded metadata through no-follow descriptors and pin every inode."""
+        """Scan bounded metadata through no-follow descriptors without retaining every file FD."""
         root_fd, root_metadata = self._open_root(root)
-        held: list[tuple[int, os.stat_result, str]] = [(root_fd, root_metadata, ".")]
         entries: list[SourceFileMetadata] = []
         entry_count = 0
         total_bytes = 0
@@ -139,7 +140,8 @@ class SafeSourceFilesystem:
                 if entry_count > self._limits.max_entries:
                     raise SafeSourceFilesystemError("source entries exceed the resource budget")
                 if is_denied_source_path(relative):
-                    raise SafeSourceFilesystemError(f"deny-class source path refused: {relative}")
+                    _LOGGER.warning("deny-class source path skipped: %s", relative)
+                    continue
                 try:
                     preview = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
                     if stat.S_ISLNK(preview.st_mode):
@@ -151,9 +153,11 @@ class SafeSourceFilesystem:
                         if depth >= self._limits.max_depth:
                             raise SafeSourceFilesystemError("source depth exceeds the resource budget")
                         child_fd = os.open(name, DIRECTORY_OPEN_FLAGS, dir_fd=directory_fd)
-                        assert_same(preview, os.fstat(child_fd), relative)
-                        held.append((child_fd, preview, relative))
-                        walk(child_fd, relative, depth + 1)
+                        try:
+                            assert_same(preview, os.fstat(child_fd), relative)
+                            walk(child_fd, relative, depth + 1)
+                        finally:
+                            os.close(child_fd)
                         continue
                     if not stat.S_ISREG(preview.st_mode):
                         raise SafeSourceFilesystemError(f"special source file refused: {relative}")
@@ -167,20 +171,20 @@ class SafeSourceFilesystem:
                     if total_bytes > self._limits.max_total_bytes:
                         raise SafeSourceFilesystemError("source aggregate bytes exceed the resource budget")
                     file_fd = os.open(name, _FILE_FLAGS, dir_fd=directory_fd)
-                    assert_same(preview, os.fstat(file_fd), relative)
-                    held.append((file_fd, preview, relative))
+                    try:
+                        assert_same(preview, os.fstat(file_fd), relative)
+                    finally:
+                        os.close(file_fd)
                     entries.append(SourceFileMetadata(relative, preview))
                 except OSError as exc:
                     raise translate_os_error(exc, relative) from exc
 
         try:
             walk(root_fd, "", 0)
-            for descriptor, metadata, relative in held:
-                assert_same(metadata, os.fstat(descriptor), relative)
+            assert_same(root_metadata, os.fstat(root_fd), ".")
             return tuple(sorted(entries, key=lambda entry: entry.relative_path))
         finally:
-            for descriptor, _metadata, _relative in reversed(held):
-                os.close(descriptor)
+            os.close(root_fd)
 
     def open_file(self, root: Path, relative_path: str) -> PinnedSourceFile:
         """Open one canonical regular file with no-follow checks on every component."""

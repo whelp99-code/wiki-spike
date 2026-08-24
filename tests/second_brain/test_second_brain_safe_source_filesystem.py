@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import threading
 from pathlib import Path
@@ -103,13 +104,14 @@ def test_symlinked_root_ancestor_refuses_before_child_open_or_body_read(
     assert "note.md" not in opened_names
 
 
-def test_credential_class_refuses_without_opening_or_reading_body(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_credential_class_is_skipped_and_reported_without_opening_or_reading_body(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    # Given: a credential-like path inside an approved root.
+    # Given: a credential-like path alongside an admissible source file.
     root = tmp_path / "source"
     root.mkdir()
     (root / "private.key").write_bytes(b"must stay unread")
+    (root / "note.md").write_bytes(b"admitted")
     client = _client(root)
     opened_names: list[str] = []
     original_open = os.open
@@ -125,10 +127,51 @@ def test_credential_class_refuses_without_opening_or_reading_body(
     monkeypatch.setattr(os, "open", recording_open)
     monkeypatch.setattr(os, "read", forbid_read)
 
-    # When / Then: name denial occurs before the child is opened.
-    with pytest.raises(SafeSourceFilesystemError, match="deny-class"):
-        client.scan(root)
+    # When: the bounded metadata scan encounters the denied class.
+    with caplog.at_level(logging.WARNING, logger="wiki_spike.infrastructure.safe_source_filesystem"):
+        entries = client.scan(root)
+
+    # Then: name denial occurs before the child is opened, is reported, and does not abort the tree.
     assert "private.key" not in opened_names
+    assert [entry.relative_path for entry in entries] == ["note.md"]
+    assert "deny-class source path skipped: private.key" in caplog.messages
+
+
+def test_scan_closes_file_descriptors_as_it_walks_a_wide_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Given: a source tree wider than one descriptor budget should require.
+    root = tmp_path / "source"
+    root.mkdir()
+    for index in range(64):
+        (root / f"note-{index:03}.md").write_bytes(b"body")
+    client = _client(root)
+    original_open = os.open
+    original_close = os.close
+    opened: set[int] = set()
+    peak_open = 0
+
+    def recording_open(path: str | bytes | os.PathLike[str] | os.PathLike[bytes], flags: int, mode: int = 0o777, *, dir_fd: int | None = None) -> int:
+        nonlocal peak_open
+        descriptor = original_open(path, flags, mode, dir_fd=dir_fd)
+        opened.add(descriptor)
+        peak_open = max(peak_open, len(opened))
+        return descriptor
+
+    def recording_close(descriptor: int) -> None:
+        opened.discard(descriptor)
+        original_close(descriptor)
+
+    monkeypatch.setattr(os, "open", recording_open)
+    monkeypatch.setattr(os, "close", recording_close)
+
+    # When: every file is scanned.
+    entries = client.scan(root)
+
+    # Then: descriptors are bounded by traversal depth, not the file count.
+    assert len(entries) == 64
+    assert peak_open <= 3
+    assert opened == set()
 
 
 @pytest.mark.parametrize("kind", ["symlink", "hardlink", "special"])
