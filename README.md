@@ -1,5 +1,11 @@
 # wiki-spike — Phase 1a Walking Skeleton (disposable)
 
+## Local second brain
+
+Private `LOCAL / UNCERTIFIED` operations are documented in
+[`docs/ops/second-brain-local.md`](docs/ops/second-brain-local.md).
+That page does not publish a certified product or authorize destructive work.
+
 Reference: `wiki_dev_plan_v3.3_standalone.md`, §13 (SUB-01/02), §14 (M1a).
 
 > ⚠️ **Disposable spike.** The schema here is NOT a production contract. Its purpose

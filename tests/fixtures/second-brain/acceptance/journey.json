@@ -1,0 +1,6 @@
+{
+  "schema": "second-brain-local-acceptance-fixture/v1",
+  "steps": ["init", "remember", "inbox", "review", "recall", "forget"],
+  "content_type": "markdown",
+  "surfaces": ["cli", "mcp"]
+}

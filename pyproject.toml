@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "wiki-spike"
 version = "0.0.3a0"
 requires-python = ">=3.12"
-dependencies = ["cryptography>=42"]
+dependencies = ["cryptography>=42", "mcp>=1.9"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "setuptools>=68", "wheel>=0.43", "jsonschema>=4"]
@@ -31,3 +31,4 @@ filterwarnings = ["error"]
 
 [project.scripts]
 wiki = "wiki_spike.cli:main"
+wiki-mcp = "wiki_spike.composition.mcp_stdio_v2:main"
