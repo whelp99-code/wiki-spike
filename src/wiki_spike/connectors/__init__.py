@@ -16,15 +16,15 @@ from typing import Any, Final
 
 from wiki_spike.memory_core.second_brain_capture_contracts import (
     CapturedItemV1,
-    EncryptedNativeMappingRefV1,
     EncryptedContentRefV1,
+    EncryptedNativeMappingRefV1,
     SourceScopeRefV1,
 )
 from wiki_spike.memory_core.second_brain_capture_ports import (
     CaptureApiPort,
     ConnectorSourceReaderPort,
-    EncryptedNativeMappingSealerPort,
     EncryptedContentSealerPort,
+    EncryptedNativeMappingSealerPort,
 )
 
 _FIXTURE_VERSION: Final = "second-brain-connector-fixture-v1"
@@ -137,16 +137,41 @@ class FixtureConnectorReader(ConnectorSourceReaderPort):
         return ciphertext
 
 
-from .claude_memory_bank import ClaudeMemoryBankFixtureConnector
-from .codex import CodexFixtureConnector
-from .git import GitFixtureConnector
-from .markdown import MarkdownFixtureConnector
+from .claude_memory_bank import ClaudeMemoryBankAdapter, ClaudeMemoryBankFixtureConnector  # noqa: E402
+from .codex import CodexFixtureConnector  # noqa: E402
+from .codex_session_jsonl import CodexSessionAdapter  # noqa: E402
+from .database_snapshot import DatabaseSnapshotAdapter  # noqa: E402
+from .document_root import DocumentRootConnector  # noqa: E402
+from .git import GitFixtureConnector, GitSourceAdapter  # noqa: E402
+from .gjc import GjcSessionAdapter  # noqa: E402
+from .legacy_mem0_rag import LegacyMem0RagConnector  # noqa: E402
+from .markdown import MarkdownFixtureConnector, MarkdownVaultAdapter  # noqa: E402
+from .me_wiki import MeWikiMigrationReader  # noqa: E402
+from .omo_sessions import OmoSessionAdapter  # noqa: E402
+from .opencode import OpenCodeSessionAdapter  # noqa: E402
+from .orca_records import OrcaRecordsAdapter  # noqa: E402
+from .project_records import ProjectRecordAdapter  # noqa: E402
+from .unified_db import UnifiedDbMigrationAdapter  # noqa: E402
 
 __all__ = [
+    "ClaudeMemoryBankAdapter",
     "ClaudeMemoryBankFixtureConnector",
     "CodexFixtureConnector",
+    "CodexSessionAdapter",
+    "DatabaseSnapshotAdapter",
+    "DocumentRootConnector",
     "FixtureConnectorError",
     "FixtureConnectorReader",
     "GitFixtureConnector",
+    "GitSourceAdapter",
+    "GjcSessionAdapter",
+    "LegacyMem0RagConnector",
     "MarkdownFixtureConnector",
+    "MarkdownVaultAdapter",
+    "MeWikiMigrationReader",
+    "OmoSessionAdapter",
+    "OpenCodeSessionAdapter",
+    "OrcaRecordsAdapter",
+    "ProjectRecordAdapter",
+    "UnifiedDbMigrationAdapter",
 ]

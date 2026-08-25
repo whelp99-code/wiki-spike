@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import PurePath, PurePosixPath
-from typing import Final, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 from .contracts import JsonValue, canonical_bytes
 from .errors import (
@@ -14,6 +14,9 @@ from .errors import (
     UnknownContractField,
     UnsupportedContractVersion,
 )
+
+if TYPE_CHECKING:
+    from .second_brain_complete_snapshot import CompleteSnapshotCertificateV1
 
 SOURCE_DISCOVERY_REQUEST_V1: Final = "second-brain-source-discovery-request-v1"
 SOURCE_DISCOVERY_ENTRY_V1: Final = "second-brain-source-discovery-entry-v1"
@@ -63,15 +66,17 @@ def _decimal(value: JsonValue, field: str) -> str:
 
 
 def _source_name(value: JsonValue) -> SourceName:
-    match value:
-        case "me-wiki":
-            return "me-wiki"
-        case "unified-db":
-            return "unified-db"
-        case "legacy Mem0/RAG":
-            return "legacy Mem0/RAG"
-        case _:
-            raise InvalidContractValue("source_name is not an approved discovery source")
+    approved: dict[str, SourceName] = {
+        "me-wiki": "me-wiki",
+        "unified-db": "unified-db",
+        "legacy Mem0/RAG": "legacy Mem0/RAG",
+    }
+    if not isinstance(value, str):
+        raise InvalidContractValue("source_name is not an approved discovery source")
+    try:
+        return approved[value]
+    except KeyError as exc:
+        raise InvalidContractValue("source_name is not an approved discovery source") from exc
 
 
 def _relative_path(value: JsonValue) -> str:
@@ -251,6 +256,12 @@ class SourceDiscoveryManifestV1:
         return cls.from_mapping(provisional.to_mapping() | {
             "manifest_digest": provisional.computed_digest()
         })
+
+    def complete_snapshot_certificate(self) -> CompleteSnapshotCertificateV1:
+        """Certify only a manifest emitted after the scanner's mutation checks."""
+        from .second_brain_complete_snapshot import CompleteSnapshotCertificateV1
+
+        return CompleteSnapshotCertificateV1.issue(self)
 
     def computed_digest(self) -> str:
         body = self.to_mapping()

@@ -1,12 +1,12 @@
 """Immutable, fail-closed Stage-0 Second Brain decision contracts."""
 from __future__ import annotations
 
+import re
 from base64 import b64decode
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from hashlib import sha256
-import re
 from typing import Any, ClassVar
 
 from cryptography.exceptions import InvalidSignature
@@ -14,6 +14,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from .contracts import canonical_bytes
 from .errors import InvalidContractValue, UnknownContractField, UnsupportedContractVersion
+from .second_brain_source_profiles import allowed_scope_inventories
 
 DECISION_RECORD_VERSION = "second-brain-decision-record-v1"
 RESOLVED_SCOPE_VERSION = "second-brain-resolved-scope-v1"
@@ -28,10 +29,6 @@ DECISION_IDS = frozenset({f"DB-{number:02d}" for number in range(1, 9)})
 FATAL_DECISIONS = frozenset({"DB-01", "DB-04", "DB-05", "DB-07"})
 SCOPED_DECISIONS = frozenset({"DB-02", "DB-03", "DB-06", "DB-08"})
 _SCOPE_KIND_BY_DECISION = {"DB-02": "source_profile", "DB-03": "migration_source", "DB-06": "external_model_route", "DB-08": "export_destination"}
-_REQUIRED_SCOPE_INVENTORY = {
-    "DB-02": frozenset({"Codex", "Claude/Memory Bank", "Git", "Markdown"}),
-    "DB-03": frozenset({"unified-db", "legacy Mem0/RAG", "me-wiki"}),
-}
 _FEATURE_BY_GLOBAL_DECISION = {
     "DB-01": "identity-auth",
     "DB-04": "conflict-behavior",
@@ -77,14 +74,14 @@ def _timestamp(value: Any, field: str) -> datetime:
     try: parsed = datetime.fromisoformat(_text(value, field).replace("Z", "+00:00"))
     except ValueError as exc: raise InvalidContractValue(f"{field} must be an ISO-8601 timestamp") from exc
     if parsed.tzinfo is None: raise InvalidContractValue(f"{field} must include a timezone")
-    return parsed.astimezone(timezone.utc)
+    return parsed.astimezone(UTC)
 def _canonical_utc_timestamp(value: Any, field: str) -> datetime:
     """Parse only the canonical UTC wire representation used by Stage-1 state."""
     value = _text(value, field)
     if re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z", value) is None:
         raise InvalidContractValue(f"{field} must be a canonical UTC timestamp")
     try:
-        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
     except ValueError as exc:
         raise InvalidContractValue(f"{field} must be a canonical UTC timestamp") from exc
 
@@ -105,7 +102,7 @@ class Ed25519SignatureEnvelopeV1:
     signature_version: str; role: str; key_id: str; public_key_b64: str; signature_b64: str
     FIELDS: ClassVar[set[str]] = {"signature_version", "role", "key_id", "public_key_b64", "signature_b64"}
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any], *, version: str) -> "Ed25519SignatureEnvelopeV1":
+    def from_mapping(cls, data: Mapping[str, Any], *, version: str) -> Ed25519SignatureEnvelopeV1:
         values = _strict(data, cls.FIELDS)
         if values["signature_version"] != version: raise UnsupportedContractVersion("unsupported signature_version")
         role = _text(values["role"], "role")
@@ -154,7 +151,7 @@ class TrustedDecisionKeyBindingsV1:
                 raise InvalidContractValue("trusted decision binding has an invalid decision scope identity")
         object.__setattr__(self, "decision_bindings", bindings)
 
-    def matches_decision(self, decision: "DecisionRecordV1", signature: Ed25519SignatureEnvelopeV1) -> bool:
+    def matches_decision(self, decision: DecisionRecordV1, signature: Ed25519SignatureEnvelopeV1) -> bool:
         return (binding := self.decision_bindings.get((decision.decision_id, decision.scope_kind, decision.scope_name))) is not None and binding.matches(signature)
 
     def matches_aggregate(self, signature: Ed25519SignatureEnvelopeV1) -> bool:
@@ -165,7 +162,7 @@ class DecisionRecordV1:
     decision_version: str; decision_id: str; outcome: str; scope_kind: str; scope_name: str | None; record_revision: str; decided_at: str; supersedes: tuple[str, str, str | None, str, str] | None; post_interview_reconciliation: tuple[str, str]; reason: str; evidence_refs: tuple[str, ...]; evidence_digest: str; expires_at: str; signatures: tuple[Ed25519SignatureEnvelopeV1, ...]
     FIELDS: ClassVar[set[str]] = {"decision_version", "decision_id", "outcome", "scope_kind", "scope_name", "record_revision", "decided_at", "supersedes", "post_interview_reconciliation", "reason", "evidence_refs", "evidence_digest", "expires_at", "signatures"}
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any], *, now: datetime | None = None) -> "DecisionRecordV1":
+    def from_mapping(cls, data: Mapping[str, Any], *, now: datetime | None = None) -> DecisionRecordV1:
         v = _strict(data, cls.FIELDS)
         if v["decision_version"] != DECISION_RECORD_VERSION: raise UnsupportedContractVersion("unsupported decision_version")
         decision_id, outcome = _text(v["decision_id"], "decision_id"), _text(v["outcome"], "outcome")
@@ -192,7 +189,7 @@ class DecisionRecordV1:
             if prior["decision_id"] != decision_id or prior["scope_kind"] != kind or prior["scope_name"] != name or int(prior_revision) != revision_number - 1:
                 raise InvalidContractValue("supersedes must link the immediately prior record for the same decision scope")
             supersedes = (decision_id, kind, name, prior_revision, _digest(prior["decision_digest"], "supersedes.decision_digest"))
-        if now is not None and _timestamp(v["expires_at"], "expires_at") <= now.astimezone(timezone.utc): raise InvalidContractValue("decision is expired")
+        if now is not None and _timestamp(v["expires_at"], "expires_at") <= now.astimezone(UTC): raise InvalidContractValue("decision is expired")
         return cls(v["decision_version"], decision_id, outcome, kind, name, revision, decided_at, supersedes, post_interview_reconciliation, _text(v["reason"], "reason"), _names(v["evidence_refs"], "evidence_refs", nonempty=True), _digest(v["evidence_digest"], "evidence_digest"), _text(v["expires_at"], "expires_at"), _signature_set(v["signatures"], version=DECISION_SIGNATURE_VERSION))
     def signing_payload(self) -> dict[str, Any]:
         result = self.to_mapping(); del result["signatures"]; return result
@@ -209,18 +206,18 @@ class ExpectedScopeManifestV1:
     FIELDS: ClassVar[set[str]] = {"manifest_version", "expected_scopes"}
 
     @classmethod
-    def from_tuples(cls, scopes: Sequence[tuple[str, str, str]]) -> "ExpectedScopeManifestV1":
+    def from_tuples(cls, scopes: Sequence[tuple[str, str, str]]) -> ExpectedScopeManifestV1:
         items = tuple(scopes)
         if tuple(sorted(items)) != items or len(set(items)) != len(items) or any(d not in SCOPED_DECISIONS or _SCOPE_KIND_BY_DECISION[d] != k or not isinstance(n, str) or not n for d, k, n in items): raise InvalidContractValue("expected scope manifest contains invalid or noncanonical scopes")
-        for decision_id, required_names in _REQUIRED_SCOPE_INVENTORY.items():
-            actual_names = {name for decision, _, name in items if decision == decision_id}
-            if actual_names != required_names: raise InvalidContractValue(f"{decision_id} required inventory must be exact")
+        for decision_id, allowed in allowed_scope_inventories().items():
+            actual_names = frozenset(name for decision, _, name in items if decision == decision_id)
+            if actual_names not in allowed: raise InvalidContractValue(f"{decision_id} required inventory must be exact")
         if not all(any(decision == decision_id for decision, _, _ in items) for decision_id in ("DB-06", "DB-08")):
             raise InvalidContractValue("DB-06 and DB-08 require explicit configured signed scopes")
         return cls(items)
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any]) -> "ExpectedScopeManifestV1":
+    def from_mapping(cls, data: Mapping[str, Any]) -> ExpectedScopeManifestV1:
         values = _strict(data, cls.FIELDS)
         if values["manifest_version"] != EXPECTED_SCOPE_MANIFEST_VERSION: raise UnsupportedContractVersion("unsupported manifest_version")
         entries = values["expected_scopes"]
@@ -243,7 +240,7 @@ class ResolvedScopeV1:
     scope_version: str; enabled_source_profiles: tuple[str, ...]; disabled_source_profiles: tuple[tuple[str, str], ...]; enabled_migration_sources: tuple[str, ...]; disabled_migration_sources: tuple[tuple[str, str], ...]; feature_flags: tuple[str, ...]; egress_destinations: tuple[str, ...]; enabled_external_model_routes: tuple[str, ...]; disabled_external_model_routes: tuple[tuple[str, str], ...]; disabled_export_destinations: tuple[tuple[str, str], ...]; capability_manifest_digest: str; source_manifest_digest: str; mandatory_release_constraints: tuple[str, ...]
     FIELDS: ClassVar[set[str]] = {"scope_version", "enabled_source_profiles", "disabled_source_profiles", "enabled_migration_sources", "disabled_migration_sources", "feature_flags", "egress_destinations", "enabled_external_model_routes", "disabled_external_model_routes", "disabled_export_destinations", "capability_manifest_digest", "source_manifest_digest", "mandatory_release_constraints"}
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any]) -> "ResolvedScopeV1":
+    def from_mapping(cls, data: Mapping[str, Any]) -> ResolvedScopeV1:
         v = _strict(data, cls.FIELDS)
         if v["scope_version"] != RESOLVED_SCOPE_VERSION: raise UnsupportedContractVersion("unsupported scope_version")
         def disabled(field: str) -> tuple[tuple[str, str], ...]:
@@ -267,13 +264,13 @@ class SecondBrainContractDigestV1:
     FIELDS: ClassVar[set[str]] = {"contract_version", "decision_digests", "resolved_scope", "expected_scope_manifest"}
 
     @classmethod
-    def create(cls, decisions: Sequence[DecisionRecordV1], scope: ResolvedScopeV1, manifest: ExpectedScopeManifestV1) -> "SecondBrainContractDigestV1":
+    def create(cls, decisions: Sequence[DecisionRecordV1], scope: ResolvedScopeV1, manifest: ExpectedScopeManifestV1) -> SecondBrainContractDigestV1:
         bindings = tuple(sorted((x.decision_id, x.scope_kind, x.scope_name or "", x.digest) for x in decisions))
         body = {"contract_version": CONTRACT_DIGEST_VERSION, "decision_digests": [{"decision_id": d, "scope_kind": k, "scope_name": n, "digest": h} for d,k,n,h in bindings], "resolved_scope": scope.to_mapping(), "expected_scope_manifest": manifest.to_mapping()}
         return cls(CONTRACT_DIGEST_VERSION, bindings, scope, manifest, sha256(canonical_bytes(body)).hexdigest())
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any], *, digest: str) -> "SecondBrainContractDigestV1":
+    def from_mapping(cls, data: Mapping[str, Any], *, digest: str) -> SecondBrainContractDigestV1:
         values = _strict(data, cls.FIELDS)
         if values["contract_version"] != CONTRACT_DIGEST_VERSION: raise UnsupportedContractVersion("unsupported contract_version")
         entries = values["decision_digests"]
@@ -313,7 +310,7 @@ class SignedSecondBrainContractEnvelopeV1:
     FIELDS: ClassVar[set[str]] = {"contract_envelope_version", "contract_version", "contract_body", "contract_digest", "signatures"}
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any]) -> "SignedSecondBrainContractEnvelopeV1":
+    def from_mapping(cls, data: Mapping[str, Any]) -> SignedSecondBrainContractEnvelopeV1:
         values = _strict(data, cls.FIELDS)
         if values["contract_envelope_version"] != CONTRACT_ENVELOPE_VERSION: raise UnsupportedContractVersion("unsupported contract_envelope_version")
         if values["contract_version"] != CONTRACT_DIGEST_VERSION: raise UnsupportedContractVersion("unsupported contract_version")
@@ -329,7 +326,7 @@ class SignedSecondBrainContractEnvelopeV1:
 
 
 def resolve_second_brain_contract(decisions: Sequence[DecisionRecordV1], scope: ResolvedScopeV1, expected_scopes: ExpectedScopeManifestV1, aggregate: SignedSecondBrainContractEnvelopeV1 | None = None, *, trusted_keys: TrustedDecisionKeyBindingsV1 | None = None, now: datetime | None = None) -> ContractResolutionV1:
-    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    current = (now or datetime.now(UTC)).astimezone(UTC)
     decisions = tuple(DecisionRecordV1.from_mapping(decision.to_mapping(), now=current) for decision in decisions)
     scope = ResolvedScopeV1.from_mapping(scope.to_mapping())
     expected_scopes = ExpectedScopeManifestV1.from_mapping(expected_scopes.to_mapping())

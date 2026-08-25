@@ -1,6 +1,7 @@
 """Closed non-serving bounded snapshot import contracts."""
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -46,8 +47,11 @@ _RECORD_FIELDS: Final = frozenset(
         "tombstone",
         "relative_path",
         "content_digest",
+        "keyed_dedupe_ref",
     }
 )
+_LEGACY_RECORD_FIELDS: Final = _RECORD_FIELDS - {"keyed_dedupe_ref"}
+_KEYED_DEDUPE_REF: Final = re.compile(r"^keyed-content:[0-9a-f]{64}$")
 
 
 def _relative_path(value: JsonValue) -> str:
@@ -71,20 +75,26 @@ class SnapshotRecordV1:
     tombstone: bool
     relative_path: str | None
     content_digest: str | None
+    keyed_dedupe_ref: str | None = None
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, JsonValue]) -> SnapshotRecordV1:
-        strict_fields(data, _RECORD_FIELDS)
+        strict_fields(data, _RECORD_FIELDS if "keyed_dedupe_ref" in data else _LEGACY_RECORD_FIELDS)
         native_id = parse_string(data["native_id"], "native_id")
         revision = parse_string(data["revision"], "revision")
         watermark = parse_string(data["watermark"], "watermark")
         tombstone = data["tombstone"]
         if not isinstance(tombstone, bool):
             raise InvalidContractValue("tombstone must be a boolean")
+        keyed_ref = data.get("keyed_dedupe_ref")
+        if keyed_ref is not None and (
+            not isinstance(keyed_ref, str) or _KEYED_DEDUPE_REF.fullmatch(keyed_ref) is None
+        ):
+            raise InvalidContractValue("keyed_dedupe_ref must be an opaque keyed-content reference")
         if tombstone:
             if data["relative_path"] is not None or data["content_digest"] is not None:
                 raise InvalidContractValue("tombstone records must omit path and digest")
-            return cls(native_id, revision, watermark, True, None, None)
+            return cls(native_id, revision, watermark, True, None, None, keyed_ref)
         return cls(
             native_id,
             revision,
@@ -92,10 +102,11 @@ class SnapshotRecordV1:
             False,
             _relative_path(data["relative_path"]),
             parse_digest(data["content_digest"], "content_digest"),
+            keyed_ref,
         )
 
     def to_mapping(self) -> dict[str, JsonValue]:
-        return {
+        result: dict[str, JsonValue] = {
             "native_id": self.native_id,
             "revision": self.revision,
             "watermark": self.watermark,
@@ -103,6 +114,9 @@ class SnapshotRecordV1:
             "relative_path": self.relative_path,
             "content_digest": self.content_digest,
         }
+        if self.keyed_dedupe_ref is not None:
+            result["keyed_dedupe_ref"] = self.keyed_dedupe_ref
+        return result
 
 
 def _records(value: JsonValue) -> tuple[SnapshotRecordV1, ...]:

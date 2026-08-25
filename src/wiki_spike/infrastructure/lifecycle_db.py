@@ -58,26 +58,25 @@ from __future__ import annotations
 import hashlib
 import secrets
 import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
 
-from wiki_spike.memory_core.second_brain_capture_ports import AtomicCapturePersistencePort
-import json
-
+from wiki_spike.infrastructure.crypto import aes_gcm_seal
+from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore
 from wiki_spike.memory_core.contracts import canonical_bytes
 from wiki_spike.memory_core.recovery import (
     AppliedDeletionOverlayEvidence,
     AppliedDeletionOverlayToken,
-    VerifiedDeletionOverlay,
     SignedDeletionOverlay,
+    VerifiedDeletionOverlay,
 )
 from wiki_spike.memory_core.second_brain_capture_contracts import (
-    CapturePersistenceAggregateV1, CaptureItemReceiptV1,
+    CapturePersistenceAggregateV1,
 )
-from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore
-from wiki_spike.infrastructure.crypto import aes_gcm_seal
+from wiki_spike.memory_core.second_brain_capture_ports import AtomicCapturePersistencePort
+from wiki_spike.memory_core.second_brain_outcome_contracts import CapabilityUseV3
 
 # --------------------------------------------------------------------------- #
 # Column-kind allowlist (no plaintext columns anywhere in this schema).
@@ -406,6 +405,83 @@ CREATE TABLE IF NOT EXISTS ledger_provenance (
   provenance_ref TEXT PRIMARY KEY, provenance_digest TEXT NOT NULL, workspace_ref TEXT NOT NULL,
   command_ref TEXT, request_digest TEXT, provenance_state TEXT NOT NULL, recorded_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS command_nonce (
+  nonce_digest TEXT PRIMARY KEY, capability_ref TEXT NOT NULL, subject_ref TEXT NOT NULL,
+  device_ref TEXT NOT NULL, workspace_ref TEXT NOT NULL, action_kind TEXT NOT NULL,
+  scope_digest TEXT NOT NULL, authority_epoch TEXT NOT NULL, request_digest TEXT NOT NULL,
+  expires_at TEXT NOT NULL, consumed_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS generation_intent (
+  intent_ref TEXT PRIMARY KEY, workspace_ref TEXT NOT NULL, command_ref TEXT NOT NULL,
+  generation_state TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS generation_activation (
+  generation_ref TEXT PRIMARY KEY, workspace_ref TEXT NOT NULL, candidate_ref TEXT NOT NULL,
+  reviewed_revision_ref TEXT NOT NULL, review_command_ref TEXT NOT NULL,
+  signer_ref TEXT NOT NULL, key_id TEXT NOT NULL, signature_digest TEXT NOT NULL,
+  activation_digest TEXT NOT NULL, activation_state TEXT NOT NULL,
+  signed_at TEXT NOT NULL, activated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS generation_intent_one_active_uq
+  ON generation_intent(workspace_ref) WHERE generation_state='ACTIVE';
+CREATE UNIQUE INDEX IF NOT EXISTS generation_activation_one_active_uq
+  ON generation_activation(workspace_ref) WHERE activation_state='ACTIVE';
+CREATE TABLE IF NOT EXISTS source_checkpoint (
+  source_ref TEXT NOT NULL, checkpoint_ref TEXT NOT NULL, workspace_ref TEXT NOT NULL,
+  command_ref TEXT NOT NULL, checkpoint_state TEXT NOT NULL, recorded_at TEXT NOT NULL,
+  PRIMARY KEY (source_ref, checkpoint_ref)
+);
+CREATE TABLE IF NOT EXISTS command_replay (
+  operation_ref TEXT PRIMARY KEY, request_digest TEXT NOT NULL, authority_digest TEXT NOT NULL,
+  outcome_state TEXT NOT NULL, operation_state TEXT NOT NULL, write_effect_state TEXT NOT NULL,
+  receipt_ref TEXT NOT NULL, receipt_digest TEXT NOT NULL, committed_at TEXT NOT NULL,
+  generation_ref TEXT NOT NULL, checkpoint_ref TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS staged_encrypted_artifact (
+  blob_ref TEXT PRIMARY KEY, workspace_ref TEXT NOT NULL, artifact_ref TEXT NOT NULL,
+  staging_state TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS local_artifact_staging (
+  staging_ref TEXT PRIMARY KEY, operation_ref TEXT NOT NULL UNIQUE,
+  workspace_ref TEXT NOT NULL, artifact_ref TEXT NOT NULL, blob_ref TEXT NOT NULL,
+  content_digest TEXT NOT NULL, staging_state TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS local_source_binding (
+  operation_ref TEXT PRIMARY KEY, workspace_ref TEXT NOT NULL, source_ref TEXT NOT NULL,
+  checkpoint_ref TEXT NOT NULL, binding_digest TEXT NOT NULL, recorded_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS local_remember_binding (
+  operation_ref TEXT PRIMARY KEY, workspace_ref TEXT NOT NULL, staging_ref TEXT NOT NULL,
+  artifact_ref TEXT NOT NULL, blob_ref TEXT NOT NULL, content_digest TEXT NOT NULL,
+  binding_digest TEXT NOT NULL, recorded_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS local_correction_binding (
+  operation_ref TEXT PRIMARY KEY, workspace_ref TEXT NOT NULL, custody_ref TEXT NOT NULL,
+  artifact_ref TEXT NOT NULL, blob_ref TEXT NOT NULL, content_digest TEXT NOT NULL,
+  internal_source_ref TEXT NOT NULL UNIQUE, target_candidate_ref TEXT NOT NULL,
+  binding_digest TEXT NOT NULL, recorded_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS local_authority (
+  operation_ref TEXT PRIMARY KEY, workspace_ref TEXT NOT NULL, capability_ref TEXT NOT NULL,
+  subject_ref TEXT NOT NULL, device_ref TEXT NOT NULL, action_kind TEXT NOT NULL,
+  scope_digest TEXT NOT NULL, authority_epoch TEXT NOT NULL, request_digest TEXT NOT NULL,
+  operation_digest TEXT NOT NULL, authority_digest TEXT NOT NULL,
+  authority_state TEXT NOT NULL, expires_at TEXT NOT NULL, recorded_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS local_generation (
+  generation_ref TEXT PRIMARY KEY, workspace_ref TEXT NOT NULL,
+  operation_ref TEXT NOT NULL UNIQUE, parent_generation_ref TEXT,
+  transaction_sequence TEXT NOT NULL, generation_digest TEXT NOT NULL,
+  generation_state TEXT NOT NULL, recorded_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS local_generation_one_active_uq
+  ON local_generation(workspace_ref) WHERE generation_state='ACTIVE';
+CREATE TABLE IF NOT EXISTS local_command_replay (
+  operation_ref TEXT PRIMARY KEY, request_digest TEXT NOT NULL,
+  operation_digest TEXT NOT NULL, authority_digest TEXT NOT NULL,
+  receipt_digest TEXT NOT NULL, generation_ref TEXT NOT NULL,
+  checkpoint_ref TEXT NOT NULL, replay_state TEXT NOT NULL, committed_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS ledger_citation_commitment (
   candidate_ref TEXT NOT NULL, revision_ref TEXT NOT NULL, workspace_ref TEXT NOT NULL,
   locator_ref TEXT NOT NULL, locator_digest TEXT NOT NULL, immutable_source_ref TEXT NOT NULL,
@@ -521,6 +597,28 @@ CREATE TABLE IF NOT EXISTS snapshot_import_reconciliation (
   record_set_digest TEXT NOT NULL,
   recorded_at TEXT NOT NULL,
   FOREIGN KEY (cohort_id) REFERENCES snapshot_import_cohort(cohort_id)
+);
+CREATE TABLE IF NOT EXISTS snapshot_reconciliation_commit (
+  cohort_id TEXT PRIMARY KEY,
+  previous_snapshot_digest TEXT NOT NULL,
+  current_snapshot_digest TEXT NOT NULL,
+  certificate_digest TEXT NOT NULL,
+  reconciliation_digest TEXT NOT NULL,
+  quarantined_sequence TEXT NOT NULL,
+  tombstoned_sequence TEXT NOT NULL,
+  edge_removal_sequence TEXT NOT NULL,
+  commit_state TEXT NOT NULL,
+  recorded_at TEXT NOT NULL,
+  FOREIGN KEY (cohort_id) REFERENCES snapshot_import_cohort(cohort_id)
+);
+CREATE TABLE IF NOT EXISTS snapshot_reconciliation_checkpoint (
+  cohort_id TEXT PRIMARY KEY,
+  checkpoint_ref TEXT NOT NULL UNIQUE,
+  reconciliation_digest TEXT NOT NULL,
+  receipt_digest TEXT NOT NULL,
+  checkpoint_state TEXT NOT NULL,
+  recorded_at TEXT NOT NULL,
+  FOREIGN KEY (cohort_id) REFERENCES snapshot_reconciliation_commit(cohort_id)
 );
 """
 
@@ -642,6 +740,19 @@ TABLE_NAMES: tuple[str, ...] = (
     "ledger_authority",
     "ledger_candidate_version",
     "ledger_provenance",
+    "command_nonce",
+    "generation_intent",
+    "generation_activation",
+    "source_checkpoint",
+    "command_replay",
+    "staged_encrypted_artifact",
+    "local_artifact_staging",
+    "local_source_binding",
+    "local_remember_binding",
+    "local_correction_binding",
+    "local_authority",
+    "local_generation",
+    "local_command_replay",
     "ledger_citation_commitment",
     "ledger_recall_cursor",
     "ledger_sequence",
@@ -650,9 +761,29 @@ TABLE_NAMES: tuple[str, ...] = (
     "snapshot_import_record",
     "snapshot_import_transition",
     "snapshot_import_reconciliation",
+    "snapshot_reconciliation_commit",
+    "snapshot_reconciliation_checkpoint",
 )
 
 EVENT_LOG_DOMAIN = "wiki-spike.lifecycle-db.event-log.v1"
+
+
+@dataclass(frozen=True, slots=True)
+class CanonicalCommandTransactionV1:
+    capability: CapabilityUseV3
+    generation_intent_ref: str
+    source_ref: str
+    source_checkpoint_ref: str
+
+
+@dataclass(frozen=True, slots=True)
+class ReplayRecordV1:
+    version: str; operation_ref: str; request_digest: str; authority_digest: str
+    outcome_state: str; operation_state: str; write_effect: str; receipt_ref: str
+    receipt_digest: str; committed_at: str; generation_ref: str; checkpoint_ref: str
+
+    def to_mapping(self) -> dict[str, str]:
+        return {name: getattr(self, name) for name in self.__slots__}
 
 
 class LifecycleDbError(RuntimeError):
@@ -963,7 +1094,7 @@ class UnitOfWork:
             (phase_state, updated_at, deletion_id),
         )
 
-    def get_deletion_state_by_artifact(self, artifact_id: str) -> "sqlite3.Row | None":
+    def get_deletion_state_by_artifact(self, artifact_id: str) -> sqlite3.Row | None:
         self._con.row_factory = sqlite3.Row
         return self._con.execute(
             "SELECT * FROM deletion_state WHERE artifact_id=? "
@@ -1414,6 +1545,18 @@ class LifecycleDatabase:
         con.execute("PRAGMA foreign_keys=ON")
         con.execute("PRAGMA busy_timeout=5000")
         return con
+    def open_readonly_connection(self) -> sqlite3.Connection:
+        """Open a query-only connection that cannot mutate durable state."""
+        if self.con is None:
+            raise LifecycleDbError("initialize() not called")
+        con = sqlite3.connect(
+            f"file:{self.db_path}?mode=ro", uri=True, isolation_level=None
+        )
+        con.execute("PRAGMA query_only=ON")
+        con.execute("PRAGMA foreign_keys=ON")
+        con.execute("PRAGMA busy_timeout=5000")
+        return con
+
     def assert_contract_pragmas(self) -> None:
         """Assert the four contract PRAGMAs are active on the open connection."""
         assert self.con is not None, "initialize() not called"

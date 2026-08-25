@@ -25,11 +25,19 @@ from wiki_spike.infrastructure.snapshot_import_sql import (
     require_exact,
     require_history,
 )
+from wiki_spike.infrastructure.snapshot_reconciliation_store import (
+    ReconciliationExactCheck,
+    ReconciliationPersistenceCommand,
+    checkpoint_row,
+    insert_reconciliation,
+    require_reconciliation_exact,
+)
 from wiki_spike.memory_core.snapshot_import import SnapshotImportRequestV1
 from wiki_spike.memory_core.snapshot_import_result import (
     ImportedRecordPayloadV1,
     RestoredSnapshotRecordV1,
     RestoredSnapshotV1,
+    SnapshotImportReceiptV1,
 )
 
 
@@ -89,6 +97,54 @@ class LifecycleSnapshotImportStore:
             if current is None:
                 raise SnapshotImportStoreError("conflicting snapshot import identity") from exc
             require_exact(require_connection(self._database.con), self._keys, request, sealed, current)
+
+    def persist_reconciliation(
+        self,
+        command: ReconciliationPersistenceCommand,
+    ) -> SnapshotImportReceiptV1:
+        """Persist import, reconciliation, checkpoint, event, and outbox atomically."""
+        self._require_binding()
+        sealed = tuple(
+            seal_record(
+                self._keys,
+                payload,
+                str(index),
+                command.request.cohort_id,
+                command.request.snapshot_digest,
+                command.request.discovery_manifest_digest,
+                command.request.target_namespace,
+            )
+            for index, payload in enumerate(command.payloads)
+        )
+        connection = require_connection(self._database.con)
+        checkpoint = checkpoint_row(connection, command.request.cohort_id)
+        if checkpoint is not None:
+            return require_reconciliation_exact(
+                ReconciliationExactCheck(connection, self._keys, command, sealed)
+            )
+        refs = tuple(self._cas.put(item.envelope) for item in sealed)
+        try:
+            with self._database.unit_of_work() as unit:
+                if checkpoint_row(unit._con, command.request.cohort_id) is not None:
+                    return require_reconciliation_exact(
+                        ReconciliationExactCheck(unit._con, self._keys, command, sealed)
+                    )
+                if cohort_row(unit._con, command.request.cohort_id) is not None:
+                    raise SnapshotImportStoreError("conflicting snapshot reconciliation identity")
+                self._insert(unit._con, command.request, sealed, refs)
+                insert_reconciliation(unit._con, command)
+        except sqlite3.IntegrityError:
+            if checkpoint_row(connection, command.request.cohort_id) is None:
+                raise
+            try:
+                return require_reconciliation_exact(
+                    ReconciliationExactCheck(connection, self._keys, command, sealed)
+                )
+            except SnapshotImportStoreError as conflict:
+                raise SnapshotImportStoreError(
+                    "conflicting snapshot reconciliation identity"
+                ) from conflict
+        return command.receipt
 
     def restore_import(self, cohort_id: str) -> RestoredSnapshotV1:
         self._require_binding()

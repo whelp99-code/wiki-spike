@@ -8,7 +8,7 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from types import TracebackType
-from typing import Final
+from typing import Final, Self
 
 from wiki_spike.infrastructure.safe_source_root import (
     DIRECTORY_OPEN_FLAGS,
@@ -60,7 +60,7 @@ class PinnedSourceFile:
     metadata: os.stat_result
     max_bytes: int
 
-    def __enter__(self) -> PinnedSourceFile:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(
@@ -121,8 +121,14 @@ class SafeSourceFilesystem:
     def _open_root(self, root: Path) -> tuple[int, os.stat_result]:
         return open_approved_root(root, self._approved)
 
-    def scan(self, root: Path) -> tuple[SourceFileMetadata, ...]:
-        """Scan bounded metadata through no-follow descriptors without retaining every file FD."""
+    def scan(self, root: Path, *, reject_denied: bool = False) -> tuple[SourceFileMetadata, ...]:
+        """Scan bounded metadata through no-follow descriptors without retaining every file FD.
+
+        By default, deny-class paths (credentials, keychains, tokens, hidden-reasoning
+        artifacts) are skipped and reported rather than aborting the whole scan. Callers
+        that must fail closed the instant a deny-class path is observed (e.g. discovery
+        manifests that are digest-bound and consumed by import) pass ``reject_denied=True``.
+        """
         root_fd, root_metadata = self._open_root(root)
         entries: list[SourceFileMetadata] = []
         entry_count = 0
@@ -140,6 +146,8 @@ class SafeSourceFilesystem:
                 if entry_count > self._limits.max_entries:
                     raise SafeSourceFilesystemError("source entries exceed the resource budget")
                 if is_denied_source_path(relative):
+                    if reject_denied:
+                        raise SafeSourceFilesystemError(f"deny-class source path refused: {relative}")
                     _LOGGER.warning("deny-class source path skipped: %s", relative)
                     continue
                 try:
