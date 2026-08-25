@@ -54,7 +54,7 @@ def _record_from_page(root: Path, page: MarkdownPageV1, watermark: str) -> Snaps
         return SnapshotRecordV1(page.native_id, page.revision, watermark, True, None, None, None)
     raw = (root / page.relative_path).read_bytes()
     return SnapshotRecordV1(
-        page.relative_path,
+        page.native_id,
         git_blob_oid(raw),
         watermark,
         False,

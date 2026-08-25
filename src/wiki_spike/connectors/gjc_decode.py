@@ -49,11 +49,14 @@ def _parent_id(value: JsonNode) -> ItemId | None | GjcQuarantineReason:
     return GjcQuarantineReason.INVALID_FORMAT if text is None else ItemId(text)
 
 
+def _prefix_digest(lines: tuple[str, ...], next_line: int) -> str:
+    return sha256("".join(lines[:next_line]).encode("utf-8")).hexdigest()
+
+
 def _cursor_mutated(lines: tuple[str, ...], cursor: GjcCursorV1) -> GjcStoreQuarantined | None:
     if cursor.next_line < 0 or cursor.next_line > len(lines):
         return GjcStoreQuarantined(GjcQuarantineReason.SOURCE_MUTATED)
-    prefix = "".join(lines[: cursor.next_line]).encode("utf-8")
-    if sha256(prefix).hexdigest() != cursor.prefix_digest:
+    if _prefix_digest(lines, cursor.next_line) != cursor.prefix_digest:
         return GjcStoreQuarantined(GjcQuarantineReason.SOURCE_MUTATED)
     return None
 
@@ -242,5 +245,5 @@ def parse_gjc_export(payload: bytes, cursor: GjcCursorV1 | None) -> GjcReadResul
         session_id,
         parent_session_id,
         tuple(items),
-        GjcCursorV1(len(lines), sha256(payload).hexdigest()),
+        GjcCursorV1(len(lines), _prefix_digest(lines, len(lines))),
     )

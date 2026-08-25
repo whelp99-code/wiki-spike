@@ -215,7 +215,7 @@ async def _mcp_journey(product: InstalledProduct, session: Session, protocol: st
         if (await tool("second_brain.review", {"decision": "APPROVE", "candidate_ref": str(item["candidate_ref"]), "expected_revision_ref": str(item["revision_ref"]), "expected_transaction_cut": "1"})).get("code") != "COMMITTED": raise AcceptanceError("mcp review failed")
         recalled = await tool("second_brain.recall", {"query": query, "as_of_cut": "2"})
         if recalled.get("ok") is not True: raise AcceptanceError("mcp recall failed")
-        if (await tool("second_brain.forget", {"revision_ref": str(item["candidate_ref"]), "expected_revision_ref": _revision_of(recalled, item["revision_ref"]), "expected_transaction_cut": "2"})).get("code") != "COMMITTED": raise AcceptanceError("mcp forget failed")
+        if (await tool("second_brain.forget", {"candidate_ref": str(item["candidate_ref"]), "expected_revision_ref": _revision_of(recalled, item["revision_ref"]), "expected_transaction_cut": "2"})).get("code") != "COMMITTED": raise AcceptanceError("mcp forget failed")
     return JOURNEY
 
 

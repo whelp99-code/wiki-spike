@@ -127,6 +127,7 @@ def _parts(parts: JsonNode, message_id: ItemId, parent: ItemId | None, session_i
     if not isinstance(parts, list):
         return OmoQuarantineReason.INVALID_FORMAT
     items: list[OmoAcceptedItem] = []
+    text_index = 0
     for part in parts:
         fields = _obj(part)
         if fields is None:
@@ -137,7 +138,9 @@ def _parts(parts: JsonNode, message_id: ItemId, parent: ItemId | None, session_i
                 if text is None:
                     return OmoQuarantineReason.INVALID_FORMAT
                 kind = OmoItemKind.USER_TEXT if role == "user" else OmoItemKind.ASSISTANT_TEXT
-                items.append(OmoAcceptedItem(message_id, session_id, parent, kind, text))
+                part_id = _id(fields.get("id")) or ItemId(f"{message_id}:{text_index}")
+                text_index += 1
+                items.append(OmoAcceptedItem(part_id, session_id, parent, kind, text))
             case "toolCall":
                 call_id, name, args = _id(fields.get("id")), _text(fields.get("name")), _obj(fields.get("arguments")) or {}
                 if call_id is None or name is None:

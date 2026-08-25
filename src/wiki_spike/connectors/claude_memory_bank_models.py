@@ -111,8 +111,12 @@ def with_tombstones(
 ) -> tuple[ClaudeAcceptedItem, ...]:
     project_id, session_id = identity
     present = {item.item_id for item in items}
-    items.extend(tombstone_item(item_id, project_id, session_id) for item_id in previous if item_id not in present)
-    return tuple(items)
+    extra = (
+        tombstone_item(item_id, project_id, session_id)
+        for item_id in previous
+        if item_id not in present
+    )
+    return (*items, *extra)
 
 
 __all__ = [
