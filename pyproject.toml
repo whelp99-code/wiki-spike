@@ -6,10 +6,18 @@ build-backend = "setuptools.build_meta"
 name = "wiki-spike"
 version = "0.0.3a0"
 requires-python = ">=3.12"
-dependencies = ["cryptography>=42", "mcp>=1.9"]
+dependencies = [
+    "cryptography>=42",
+    "mcp>=1.9",
+    "pyyaml>=6",
+    "defusedxml>=0.7",
+    "pypdf>=5",
+    "python-docx>=1.1",
+    "openpyxl>=3.1",
+]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "setuptools>=68", "wheel>=0.43", "jsonschema>=4"]
+dev = ["pytest>=8", "setuptools>=68", "wheel>=0.43", "jsonschema>=4", "ruff>=0.8", "basedpyright>=1.19", "toml>=0.10"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
