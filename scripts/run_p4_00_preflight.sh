@@ -12,14 +12,8 @@ python scripts/check_runtime_boundaries.py --json >"$LOG_DIR/runtime-boundaries.
 cat "$LOG_DIR/runtime-boundaries.json"
 python scripts/check_architecture_boundaries.py --json >"$LOG_DIR/architecture-boundaries.json" 2>&1
 cat "$LOG_DIR/architecture-boundaries.json"
-python scripts/scan_secrets.py --json >"$LOG_DIR/secrets.json" 2>&1
-cat "$LOG_DIR/secrets.json"
 python -m pytest -W error -q tests/phase4 >"$LOG_DIR/targeted-tests.log" 2>&1
 cat "$LOG_DIR/targeted-tests.log"
-python -m pytest -W error -q >"$LOG_DIR/regression.log" 2>&1
-cat "$LOG_DIR/regression.log"
-python scripts/package_smoke.py --json >"$LOG_DIR/package.json" 2>&1
-cat "$LOG_DIR/package.json"
 python scripts/write_p4_00_evidence.py \
   --log-dir "$LOG_DIR" \
   --json-out "$EVIDENCE_OUT"

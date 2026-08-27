@@ -3,8 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
+import tempfile
 
 from scripts.preflight_common import strict_json_load
+from scripts.write_p4_00_evidence import (
+    EVIDENCE_VERSION,
+    MINIMUM_PHASE4_TESTS,
+    build_evidence,
+)
 
 
 def root() -> Path:
@@ -33,6 +39,58 @@ def test_phase4_workflow_checks_out_tags_runs_gate_and_uploads_evidence():
     assert "bash scripts/run_p4_00_preflight.sh" in text
     assert "P4-00 contract pin" in text
     assert "actions/upload-artifact@v4" in text
+
+
+
+def test_p4_preflight_runs_only_phase_specific_validation():
+    text = (root() / "scripts/run_p4_00_preflight.sh").read_text("utf-8")
+    assert "verify_phase3_contract_pin.py" in text
+    assert "check_runtime_boundaries.py" in text
+    assert "check_architecture_boundaries.py" in text
+    assert "pytest -W error -q tests/phase4" in text
+    assert "scan_secrets.py" not in text
+    assert 'pytest -W error -q >"$LOG_DIR/regression.log"' not in text
+    assert "package_smoke.py" not in text
+
+
+def test_p4_evidence_contains_only_focused_gate_results():
+    ci_root = root() / ".ci"
+    ci_root.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="p4-00-test-", dir=ci_root) as temp_dir:
+        log_dir = Path(temp_dir)
+        (log_dir / "phase3-pin.json").write_text(
+            json.dumps(
+                {
+                    "status": "pass",
+                    "contract_release": "phase3-core-v1.0.0",
+                    "g3_checkpoint_id": "a" * 64,
+                    "pin_id": "b" * 64,
+                }
+            ),
+            encoding="utf-8",
+        )
+        for name in ("runtime-boundaries.json", "architecture-boundaries.json"):
+            (log_dir / name).write_text(
+                json.dumps({"status": "pass", "violations": []}),
+                encoding="utf-8",
+            )
+        (log_dir / "targeted-tests.log").write_text(
+            f"{MINIMUM_PHASE4_TESTS} passed in 1.00s\n",
+            encoding="utf-8",
+        )
+
+        evidence = build_evidence(root(), log_dir)
+
+    assert evidence["evidence_version"] == EVIDENCE_VERSION
+    assert set(evidence["commands"]) == {
+        "phase3_contract_pin",
+        "runtime_boundaries",
+        "architecture_boundaries",
+        "targeted_tests",
+    }
+    assert evidence["commands"]["targeted_tests"]["passed_tests"] == str(
+        MINIMUM_PHASE4_TESTS
+    )
 
 
 def test_phase3_g3_workflow_verifies_immutable_tag_not_evolving_head():

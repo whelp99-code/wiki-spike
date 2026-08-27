@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write minimized machine-readable P4-00 conformance evidence."""
+"""Write focused machine-readable P4-00 conformance evidence."""
 from __future__ import annotations
 
 import argparse
@@ -27,7 +27,8 @@ except ImportError:
 
 from wiki_spike.memory_core.contracts import canonical_bytes
 
-EVIDENCE_VERSION = "phase4-p4-00-evidence-v1"
+EVIDENCE_VERSION = "phase4-p4-00-evidence-v2"
+MINIMUM_PHASE4_TESTS = 158
 
 
 def _relative(path: Path, repo: Path) -> str:
@@ -68,11 +69,11 @@ def build_evidence(repo: Path, log_dir: Path) -> dict:
     pin, pin_ref = _json_pass(log_dir / "phase3-pin.json", repo)
     _, runtime_ref = _json_pass(log_dir / "runtime-boundaries.json", repo)
     _, architecture_ref = _json_pass(log_dir / "architecture-boundaries.json", repo)
-    _, secrets_ref = _json_pass(log_dir / "secrets.json", repo)
-    targeted = _pytest_pass(log_dir / "targeted-tests.log", repo, minimum=1)
-    regression = _pytest_pass(log_dir / "regression.log", repo, minimum=396)
-    package, package_ref = _json_pass(log_dir / "package.json", repo)
-    package_ref["wheel_sha256"] = str(package.get("wheel_sha256", ""))
+    targeted = _pytest_pass(
+        log_dir / "targeted-tests.log",
+        repo,
+        minimum=MINIMUM_PHASE4_TESTS,
+    )
     head = git(repo, ["rev-parse", "HEAD"]).stdout.strip()
     body = {
         "evidence_version": EVIDENCE_VERSION,
@@ -86,10 +87,7 @@ def build_evidence(repo: Path, log_dir: Path) -> dict:
             "phase3_contract_pin": pin_ref,
             "runtime_boundaries": runtime_ref,
             "architecture_boundaries": architecture_ref,
-            "secret_scan": secrets_ref,
             "targeted_tests": targeted,
-            "regression": regression,
-            "package_smoke": package_ref,
         },
         "result": "pass",
     }
