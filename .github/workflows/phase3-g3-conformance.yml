@@ -1,10 +1,10 @@
 name: phase3-g3-conformance
 
 on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main, "phase3/p3-12-conformance-checkpoint"]
+  workflow_dispatch:
+
+# Historical automatic triggers disabled for the local operating profile.
+# Previous trigger summary: on:   pull_request:     branches: [main]   push:     branches: [main, "phase3/p3-12-conformance-checkpoint"]
 
 permissions:
   contents: read

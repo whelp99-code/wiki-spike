@@ -16,6 +16,9 @@ def test_v1_mcp_factory_is_explicitly_compatibility_only() -> None:
 def test_product_entrypoints_do_not_import_the_v1_factory_or_legacy_runtime() -> None:
     for relative in (
         "src/wiki_spike/cli.py",
+        "src/wiki_spike/operational/cli.py",
+        "src/wiki_spike/operational/agent.py",
+        "src/wiki_spike/composition/local_second_brain.py",
         "src/wiki_spike/composition/second_brain_product.py",
         "src/wiki_spike/composition/api_v2.py",
         "src/wiki_spike/composition/mcp_v2.py",

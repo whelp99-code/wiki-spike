@@ -801,6 +801,25 @@ class UnitOfWork:
         return self._con.execute(
             "SELECT * FROM object_binding WHERE artifact_id=?", (artifact_id,)
         ).fetchone()
+
+    def supersede_other_active_revisions(
+        self,
+        *,
+        workspace_id: str,
+        logical_object_id: str,
+        active_artifact_id: str,
+        updated_at: str,
+    ) -> None:
+        """Keep exactly one ACTIVE revision for a logical memory object."""
+        self._con.execute(
+            "UPDATE key_state SET custody_state='SUPERSEDED', updated_at=? "
+            "WHERE custody_state='ACTIVE' AND artifact_id IN ("
+            "SELECT artifact_id FROM object_binding "
+            "WHERE workspace_id=? AND logical_object_id=? AND artifact_id<>?"
+            ")",
+            (updated_at, workspace_id, logical_object_id, active_artifact_id),
+        )
+
     # -- body-free source consent / retention policy ------------------------ #
 
     def upsert_source_consent_state(

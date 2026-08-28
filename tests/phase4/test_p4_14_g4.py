@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 import re
+import subprocess
+import tarfile
 
 from scripts.verify_g4_checkpoint import verify
 
@@ -11,8 +14,17 @@ def root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def test_signed_g4_checkpoint_and_inventory_verify():
-    result = verify(root())
+def test_signed_g4_checkpoint_and_inventory_verify(tmp_path: Path):
+    archive = subprocess.run(
+        ["git", "archive", "--format=tar", "phase4-runtime-v1.0.0"],
+        cwd=root(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    ).stdout
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as bundle:
+        bundle.extractall(tmp_path, filter="data")
+    result = verify(tmp_path)
     assert result["status"] == "pass"
     assert result["contract_release"] == "phase4-runtime-v1.0.0"
     assert result["verified_files"] >= 40

@@ -73,7 +73,11 @@ def test_mac_production_does_not_import_storage_or_network_constructors() -> Non
 
 
 def test_installed_wiki_entry_points_at_cli_main() -> None:
-    assert 'wiki = "wiki_spike.cli:main"' in PYPROJECT.read_text(encoding="utf-8")
+    text = PYPROJECT.read_text(encoding="utf-8")
+    assert 'wiki = "wiki_spike.cli:main"' in text
+    assert 'wiki-memory = "wiki_spike.operational.desktop:main"' in text
+    assert 'wiki-memory-support = "wiki_spike.operational.cli:main"' in text
+    assert 'wiki-memory-read = "wiki_spike.operational.agent:main"' in text
 
 
 def test_production_default_pinned_trusted_keys_match_committed_public_bindings() -> None:

@@ -21,15 +21,19 @@ def test_package_build_install_and_console_smoke():
     assert len(result["wheel_sha256"]) == 64
 
 
-def test_workflow_runs_full_history_and_preflight():
+def test_required_workflow_runs_current_operational_gate():
     text = (root() / ".github/workflows/phase3-preflight.yml").read_text("utf-8")
     assert "fetch-depth: 0" in text
     assert 'python-version: "3.12"' in text
-    assert "bash scripts/run_p3_00_preflight.sh" in text
+    assert "bash scripts/run_operational_gate.sh" in text
+    active = "\n".join(
+        line for line in text.splitlines() if not line.lstrip().startswith("#")
+    )
+    assert "run_p3_00_preflight.sh" not in active
+    assert "uv export --frozen --extra dev --no-emit-project" in text
     assert "actions/upload-artifact@v4" in text
-    assert "P3_00_LOG_DIR: artifacts/conformance/phase3/${{ github.sha }}/logs" in text
-    assert "path: artifacts/conformance/phase3/${{ github.sha }}/" in text
-
+    assert "artifacts/operational/${{ github.sha }}/gate.log" in text
+    assert "path: artifacts/operational/${{ github.sha }}/" in text
 
 def test_pytest_and_build_tooling_contracts_are_declared():
     config = tomllib.loads((root() / "pyproject.toml").read_text("utf-8"))

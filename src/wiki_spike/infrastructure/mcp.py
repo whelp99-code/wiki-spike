@@ -14,14 +14,13 @@ from dataclasses import dataclass, asdict
 from typing import Any, Mapping
 
 from wiki_spike.infrastructure import crypto, deletion, floor_protocol
-from wiki_spike.infrastructure.encrypted_cas import (
-    EncryptedContentStore,
-    NotFound as CasNotFound,
-    Tombstoned as CasTombstoned,
-    IntegrityError as CasIntegrityError,
+from wiki_spike.infrastructure.encrypted_cas import EncryptedContentStore
+from wiki_spike.infrastructure.encrypted_serving import (
+    EncryptedArtifactReader,
+    EncryptedServingError,
 )
-from wiki_spike.infrastructure.keystore import CreateOnlyKeyStore, KeyStoreError
-from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase
+from wiki_spike.infrastructure.keystore import CreateOnlyKeyStore
+from wiki_spike.infrastructure.lifecycle_db import LifecycleDatabase, ServeSnapshotResult
 from wiki_spike.memory_core.contracts import canonical_bytes
 
 MCP_DOMAIN = "wiki.mcp.v1"
@@ -130,6 +129,13 @@ class McpServer:
         self._platform_keystore = platform_keystore
         self._recovery_keystore = recovery_keystore
         self._nonce_guard = nonce_guard or McpNonceGuard()
+        self._reader = EncryptedArtifactReader(
+            workspace_id=workspace_id,
+            db=db,
+            cas=cas,
+            fallback_dek=dek,
+            platform_keystore=platform_keystore,
+        )
 
     # -- public API ------------------------------------------------------- #
 
@@ -266,7 +272,11 @@ class McpServer:
             )
 
         # Decrypt and return.
-        content, metadata, truncated = self._decrypt_cas_blob(artifact_id, blob_id)
+        content, metadata, truncated = self._decrypt_cas_blob(
+            artifact_id,
+            blob_id,
+            snapshot=snapshot,
+        )
         result: dict[str, Any] = {
             "artifact_id": artifact_id,
             "content": content,
@@ -332,7 +342,9 @@ class McpServer:
             )
 
         content, _metadata, truncated = self._decrypt_cas_blob(
-            source_content_digest, blob_id
+            source_content_digest,
+            blob_id,
+            snapshot=snapshot,
         )
         result: dict[str, Any] = {
             "source_content_digest": source_content_digest,
@@ -343,81 +355,27 @@ class McpServer:
 
     # -- helpers ---------------------------------------------------------- #
 
-    def _decrypt_cas_blob(self, artifact_id: str, blob_id: str) -> tuple[str, dict, bool]:
+    def _decrypt_cas_blob(
+        self,
+        artifact_id: str,
+        blob_id: str,
+        *,
+        snapshot: ServeSnapshotResult | None = None,
+    ) -> tuple[str, dict, bool]:
         """Read, decrypt, and bound-check a CAS blob.
 
         Returns ``(content_str, metadata_dict, truncated_bool)``.
         """
         try:
-            envelope_bytes = self._cas.get(blob_id)
-        except CasNotFound as exc:
-            raise McpToolError(
-                "blob_not_found",
-                f"CAS blob {blob_id} not found",
-            ) from exc
-        except CasTombstoned as exc:
-            raise McpToolError(
-                "blob_tombstoned",
-                f"CAS blob {blob_id} is tombstoned",
-            ) from exc
-
-        try:
-            envelope_str = envelope_bytes.decode("utf-8")
-            envelope = json.loads(envelope_str)
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise McpToolError(
-                "envelope_unreadable",
-                f"CAS blob {blob_id} is not valid JSON",
-            ) from exc
-
-        if not isinstance(envelope, dict):
-            raise McpToolError(
-                "envelope_unreadable",
-                f"CAS blob {blob_id} is not a JSON object",
+            result = self._reader.read(
+                artifact_id=artifact_id,
+                blob_id=blob_id,
+                max_chars=MAX_RESPONSE_SIZE,
+                snapshot=snapshot,
             )
-
-        nonce = envelope.get("nonce", "")
-        ciphertext = envelope.get("ciphertext", "")
-        tag = envelope.get("tag", "")
-        metadata = envelope.get("metadata", {})
-
-        # Resolve the DEK.
-        if self._platform_keystore is not None:
-            try:
-                dek = self._platform_keystore.get_ark_dek(self._workspace_id, artifact_id)
-            except KeyStoreError as exc:
-                raise McpToolError(
-                    "dek_unavailable",
-                    f"platform keystore DEK unavailable for artifact {artifact_id}: {exc}",
-                ) from exc
-        else:
-            dek = self._dek
-
-        aad = crypto.domain_prefix("wiki.envelope.v1") + bytes.fromhex(artifact_id)
-
-        try:
-            plaintext_bytes = crypto.aes_gcm_open(dek, nonce, ciphertext, tag, aad)
-        except Exception as exc:
-            raise McpToolError(
-                "decryption_failed",
-                f"AES-GCM decryption failed for artifact {artifact_id}: {exc}",
-            ) from exc
-
-        try:
-            plaintext_str = plaintext_bytes.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise McpToolError(
-                "decryption_failed",
-                f"plaintext is not valid UTF-8 for artifact {artifact_id}",
-            ) from exc
-
-        # Apply 64 KiB bound.
-        truncated = False
-        if len(plaintext_str) > MAX_RESPONSE_SIZE:
-            plaintext_str = plaintext_str[:MAX_RESPONSE_SIZE]
-            truncated = True
-
-        return plaintext_str, metadata, truncated
+        except EncryptedServingError as exc:
+            raise McpToolError(exc.code, str(exc)) from exc
+        return result.content, result.metadata, result.truncated
 
     def _serialize_response(self, response: McpResponse) -> str:
         raw = asdict(response)

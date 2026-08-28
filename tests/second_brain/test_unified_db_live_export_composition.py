@@ -131,7 +131,9 @@ def test_refuse_live_export_validates_store_and_leaves_dsn_unread(
         / "export-authority-v1"
         / "nonces.sqlite3"
     )
-    assert store.is_file()
+    # The fixed local-only product refuses external export before creating any
+    # export authority state. A disabled feature must be side-effect free.
+    assert not store.exists()
 
 
 def test_nonce_store_conformance_is_body_free_draft_2020_12() -> None:

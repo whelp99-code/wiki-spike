@@ -868,6 +868,18 @@ class EncryptedLifecyclePipeline:
                     "invalid_activation_state",
                     f"cannot activate from custody_state={ks['custody_state']!r}",
                 )
+            binding = uow.get_object_binding(artifact_id)
+            if binding is None:
+                raise PipelineError(
+                    "object_binding_missing",
+                    f"artifact {artifact_id} has no logical-object binding",
+                )
+            uow.supersede_other_active_revisions(
+                workspace_id=self.workspace_id,
+                logical_object_id=binding["logical_object_id"],
+                active_artifact_id=artifact_id,
+                updated_at=now,
+            )
             uow.upsert_key_state(artifact_id=artifact_id, custody_state="ACTIVE", updated_at=now)
             # F5: append the audit event atomically with the activation state.
             prev = uow.event_chain_head()
@@ -1045,7 +1057,12 @@ class EncryptedLifecyclePipeline:
 
         nonce_hex = os.urandom(12).hex()
         aad = crypto.domain_prefix("wiki.envelope.v1") + bytes.fromhex(artifact_semantic_digest_hex)
-        ciphertext_hex, tag_hex = crypto.aes_gcm_seal(self.dek, nonce_hex, normalized, aad)
+        art_dek = (
+            os.urandom(32)
+            if self.platform_keystore is not None and self.recovery_keystore is not None
+            else self.dek
+        )
+        ciphertext_hex, tag_hex = crypto.aes_gcm_seal(art_dek, nonce_hex, normalized, aad)
         now = _utcnow()
         envelope = {
             "schema": "wiki-envelope-v1",
@@ -1125,7 +1142,7 @@ class EncryptedLifecyclePipeline:
             object_id=artifact_semantic_digest_hex,
             revision_id=new_revision_id_hex,
             expected_active_revision_id=new_revision_id_hex,
-            envelope_ref=artifact_semantic_digest_hex,
+            envelope_ref=blob_id,
         )
         changeset = build_encrypted_accepted_changeset(
             workspace_id=self.workspace_id,
@@ -1138,7 +1155,7 @@ class EncryptedLifecyclePipeline:
         self.persist_changeset(
             changeset, trailing_events=[("CORRECT_ACCEPTED", command_id)]
         )
-
+        self._register_artifact_ark(artifact_semantic_digest_hex, art_dek)
         return {
             "command_id": command_id,
             "revision_id": new_revision_id_hex,

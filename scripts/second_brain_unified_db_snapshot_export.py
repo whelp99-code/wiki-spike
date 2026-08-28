@@ -16,11 +16,11 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Any
 
 _ = sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from wiki_spike.memory_core.contracts import JsonValue
-from wiki_spike.memory_core.unified_db_snapshot_export_json import decode_json_object
+JsonValue = Any
 
 
 class UnifiedDbExportCliError(ValueError):
@@ -59,6 +59,7 @@ def _load_json(path: Path) -> dict[str, JsonValue]:
         HARD_CAP,
         read_bounded_path,
     )
+    from wiki_spike.memory_core.unified_db_snapshot_export_json import decode_json_object
 
     try:
         return decode_json_object(read_bounded_path(path, HARD_CAP).decode("utf-8"))
@@ -120,6 +121,16 @@ def _sanitized(message: str) -> str:
 
 
 def main() -> int:
+    # External/live export is outside the fixed local-only product direction.
+    # Refuse it before loading any optional signing/export dependencies and,
+    # critically, before touching the caller-provided DSN file descriptor.
+    if len(sys.argv) > 1 and sys.argv[1] == "export":
+        print(
+            "unified-db export refused: live export refused: unapproved mapper",
+            file=sys.stderr,
+        )
+        return 2
+
     from wiki_spike.applications.unified_db_snapshot_export_service import (
         StaticUnifiedDbFixtureReader,
         UnifiedDbSnapshotExportService,

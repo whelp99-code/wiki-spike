@@ -1,25 +1,28 @@
 name: phase3-preflight
 
+# This workflow/job name is retained only because GitHub branch protection
+# already expects "phase3-preflight / P3-00 preflight". Its current meaning is
+# the supported Wiki Memory product gate, not a relabelled Phase 3 checkpoint.
 on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, "phase3/**"]
+    branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: phase3-preflight-${{ github.ref }}
+  group: wiki-memory-operational-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   preflight:
     name: P3-00 preflight
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
-      - name: Checkout full history
+      - name: Checkout current product source
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -31,21 +34,31 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install project and test tooling
-        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+      - name: Install lock-pinned project and test tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "uv==0.11.17"
+          uv export --frozen --extra dev --no-emit-project \
+            --format requirements-txt --output-file /tmp/wiki-memory-requirements.txt
+          python -m pip install --require-hashes -r /tmp/wiki-memory-requirements.txt
+          python -m pip install --no-deps -e .
 
-      - name: Run P3-00 preflight gates
+      - name: Run current Wiki Memory operational gate
         env:
           PYTHONHASHSEED: "0"
-          P3_00_LOG_DIR: artifacts/conformance/phase3/${{ github.sha }}/logs
-          P3_00_EVIDENCE_OUT: artifacts/conformance/phase3/${{ github.sha }}/evidence.json
-        run: bash scripts/run_p3_00_preflight.sh
+          PYTHON_BIN: python
+          TZ: UTC
+        run: |
+          mkdir -p artifacts/operational/${{ github.sha }}
+          bash scripts/run_operational_gate.sh 2>&1 \
+            | tee artifacts/operational/${{ github.sha }}/gate.log
 
-      - name: Upload machine-readable evidence
+      - name: Upload current product evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: p3-00-conformance-${{ github.sha }}
-          path: artifacts/conformance/phase3/${{ github.sha }}/
+          name: wiki-memory-operational-${{ github.sha }}
+          path: artifacts/operational/${{ github.sha }}/
           if-no-files-found: error
           retention-days: 30

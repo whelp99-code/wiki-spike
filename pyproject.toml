@@ -4,7 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wiki-spike"
-version = "0.0.3a0"
+version = "0.1.0"
+description = "Local-first encrypted Second Brain with a simple Mac app and read-only AI recall"
+readme = "README.md"
 requires-python = ">=3.12"
 dependencies = ["cryptography>=42"]
 
@@ -31,3 +33,6 @@ filterwarnings = ["error"]
 
 [project.scripts]
 wiki = "wiki_spike.cli:main"
+wiki-memory = "wiki_spike.operational.desktop:main"
+wiki-memory-support = "wiki_spike.operational.cli:main"
+wiki-memory-read = "wiki_spike.operational.agent:main"
